@@ -24,7 +24,7 @@ jobs:
         id: run_report
         env:
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
-        run: python report.py
+        run: python weeklyreport.py
 
       - name: Send Email Notification
         if: always()
