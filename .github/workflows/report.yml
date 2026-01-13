@@ -2,9 +2,9 @@ name: Weekly Sales Report
 
 on:
   schedule:
-    # 매주 월요일 한국 시간 오전 09:00
+    # 매주 월요일 한국 시간 오전 09:00 (UTC 00:00)
     - cron: '0 0 * * 1'
-  workflow_dispatch:
+  workflow_dispatch: # 수동 실행 버튼
 
 jobs:
   report:
@@ -34,9 +34,9 @@ jobs:
           server_port: 465
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
-          subject: "📊 [주간리포트] 조달청 기업별 매출 순위 (${{ steps.run_report.outputs.report_range }})"
-          # 등록하신 받는 사람 리스트(쉼표 구분)
+          # 제목에 날짜 범위 포함
+          subject: "📊 [주간리포트] 조달청 매출 순위 (${{ steps.run_report.outputs.report_range }})"
           to: mhy9680@innodep.com
           from: GitHub Actions Bot
-          # 파이썬에서 생성한 텍스트 파일을 본문으로 사용
-          file_body: mail_body.txt
+          # HTML 파일 본문 사용
+          html_body: file://report.html
