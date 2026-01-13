@@ -28,38 +28,20 @@ jobs:
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
         run: python main.py
 
-      - name: Send MS Teams Notification
+      - name: Send Email Notification
         if: always()
-        env:
-          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
-        run: |
-          # 파이썬 한 줄 코드로 안전하게 전송 (URL 꼬임 방지)
-          python - <<EOF
-          import os, requests, json
-          status = "${{ job.status }}"
-          status_text = "✅ 성공" if status == "success" else "❌ 실패"
-          color = "good" if status == "success" else "attention"
-          webhook_url = os.environ.get('TEAMS_WEBHOOK_URL')
-
-          payload = {
-              "type": "message",
-              "attachments": [{
-                  "contentType": "application/vnd.microsoft.card.adaptive",
-                  "content": {
-                      "type": "AdaptiveCard",
-                      "body": [
-                          {"type": "TextBlock", "text": "🤖 조달청 데이터 수집 봇 리포트", "weight": "Bolder", "size": "Medium"},
-                          {"type": "FactSet", "facts": [
-                              {"title": "결과", "value": status_text},
-                              {"title": "실행시간", "value": "한국 시간 09:30"},
-                              {"title": "로그", "value": "[GitHub Actions 확인](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"}
-                          ]},
-                          {"type": "TextBlock", "text": "데이터가 분기별 파일 내 해당 월 탭에 업데이트되었습니다.", "wrap": True}
-                      ],
-                      "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                      "version": "1.4"
-                  }
-              }]
-          }
-          requests.post(webhook_url, json=payload)
-          EOF
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "🤖 [조달청알림] 데이터 수집 결과"
+          to: mhy9680@innodep.com
+          from: GitHub Actions Bot
+          body: |
+            조달청 데이터 자동 수집 시스템 작업 리포트입니다.
+            
+            - 상태: ${{ job.status == 'success' && '✅ 성공' || '❌ 실패' }}
+            - 실행 시각: 한국 시간 09:30
+            - 로그 확인: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
