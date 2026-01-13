@@ -145,7 +145,7 @@ def main():
         else:
             summary_lines.append(" 0건")
         
-        summary_lines.append("\n") # 한 줄 띄움
+        summary_lines.append(" ") # 한 줄 띄움
         
         # B. 이노뎁 실적 (없으면 0건 표시)
         summary_lines.append("🏢 오늘자 이노뎁 실적:")
