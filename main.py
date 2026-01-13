@@ -93,17 +93,70 @@ def main():
     if final_data:
         ws.append_rows(final_data)
         print(f"🎉 {d_str} 데이터 {len(final_data)}건 저장 완료!")
-    
+        
+        # --- 학교별 지능형 CCTV 분석 로직 시작 ---
+        school_stats = {} 
+
+        for row in final_data:
+            # 시트에 들어가는 데이터 구조에 맞춰 추출 (딕셔너리 기준)
+            org_name = str(row.get('수요기관명', ''))
+            contract_name = str(row.get('계약명', ''))
+            item_name = str(row.get('물품분류명', ''))
+            comp_name = str(row.get('업체명', ''))
+            
+            try:
+                amt = int(str(row.get('금액', 0)).replace(',', '').split('.')[0])
+            except:
+                amt = 0
+
+            # 조건: 수요기관에 '학교' 포함 AND 계약명에 '지능형'과 'CCTV' 포함
+            if '학교' in org_name and '지능형' in contract_name and 'CCTV' in contract_name:
+                if org_name not in school_stats:
+                    school_stats[org_name] = {'total_amt': 0, 'main_vendor': '', 'vendor_priority': 3}
+                
+                # 1. 해당 학교의 전체 금액 합산
+                school_stats[org_name]['total_amt'] += amt
+
+                # 2. 대표 업체 우선순위 결정 (1: 영상감시장치, 2: 보안용카메라, 3: 기타)
+                priority = 3
+                if '영상감시장치' in item_name:
+                    priority = 1
+                elif '보안용카메라' in item_name:
+                    priority = 2
+                
+                # 더 높은 우선순위의 품목을 납품한 업체로 업데이트
+                if priority < school_stats[org_name]['vendor_priority']:
+                    school_stats[org_name]['main_vendor'] = comp_name
+                    school_stats[org_name]['vendor_priority'] = priority
+                elif school_stats[org_name]['main_vendor'] == '':
+                    school_stats[org_name]['main_vendor'] = comp_name
+
+        # 메일 본문용 텍스트 생성
+        school_summary = ""
+        if school_stats:
+            school_summary = "\n⭐ 오늘자 학교 지능형 CCTV 납품 현황:\n"
+            for school, info in school_stats.items():
+                vendor = info['main_vendor'] if info['main_vendor'] else "업체미정"
+                school_summary += f"- {school} [{vendor}]: {info['total_amt']:,}원\n"
+        else:
+            school_summary = "\n(오늘 학교 지능형 CCTV 관련 특이 내역 없음)\n"
+        # --- 분석 로직 끝 ---
+
+        # GitHub Actions로 변수 전달
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                 f.write(f"collect_date={d_str}\n")
                 f.write(f"collect_count={len(final_data)}\n")
+                # 줄바꿈을 공백 2개로 치환하여 한 줄로 전달 (YAML 오류 방지)
+                clean_info = school_summary.replace('\n', '  ')
+                f.write(f"school_info={clean_info}\n")
     else:
         print("❌ 수집된 데이터가 없습니다.")
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                 f.write(f"collect_date={d_str}\n")
                 f.write(f"collect_count=0\n")
+                f.write(f"school_info=  (오늘 수집된 데이터 없음)  \n")
 
 if __name__ == "__main__":
     main()
