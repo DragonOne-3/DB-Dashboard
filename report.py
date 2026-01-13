@@ -14,7 +14,7 @@ def get_target_companies():
             return [line.strip() for line in f if line.strip()]
     else:
         # 파일이 없을 경우 기본값
-        return ["이노뎁"]
+        return ["이노뎁(주)"]
 
 def get_last_week_range():
     today = datetime.date.today()
@@ -64,13 +64,13 @@ def main():
         # 2. 상위 20개 정렬
         sorted_list = sorted(summary.items(), key=lambda x: x[1], reverse=True)[:20]
         
-        # 3. 이노뎁 강제 포함 로직
+        # 3. 이노뎁(주) 강제 포함 로직
         top_names = [item[0] for item in sorted_list]
-        if "이노뎁" not in top_names:
-            # 전체 summary에서 이노뎁 값을 찾아 마지막에 추가
-            sorted_list.append(("이노뎁", summary.get("이노뎁", 0)))
+        if "이노뎁(주)" not in top_names:
+            # 전체 summary에서 이노뎁(주) 값을 찾아 마지막에 추가
+            sorted_list.append(("이노뎁(주)", summary.get("이노뎁(주)", 0)))
 
-        # 4. HTML 생성 (상단 20위 강조 및 이노뎁 노란색 처리)
+        # 4. HTML 생성 (상단 20위 강조 및 이노뎁(주) 노란색 처리)
         html_report = f"""
         <html>
         <body style="font-family: 'Malgun Gothic', sans-serif;">
@@ -87,7 +87,7 @@ def main():
                 <tbody>
         """
         for i, (name, val) in enumerate(sorted_list, 1):
-            bg_style = 'style="background-color: #FFF2CC;"' if name == "이노뎁" else ""
+            bg_style = 'style="background-color: #FFF2CC;"' if name == "이노뎁(주)" else ""
             html_report += f"""
                 <tr {bg_style}>
                     <td style="padding: 8px; text-align: center;">{i if i <= 20 else '-'}</td>
