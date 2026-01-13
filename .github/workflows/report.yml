@@ -36,7 +36,7 @@ jobs:
           password: ${{ secrets.EMAIL_PASS }}
           subject: "📊 [주간리포트] 조달청 기업별 매출 순위 (${{ steps.run_report.outputs.report_range }})"
           # 등록하신 받는 사람 리스트(쉼표 구분)
-          to: ${{ secrets.EMAIL_RECIPIENTS }}
+          to: mhy9680@innodep.com
           from: GitHub Actions Bot
           # 파이썬에서 생성한 텍스트 파일을 본문으로 사용
           file_body: mail_body.txt
