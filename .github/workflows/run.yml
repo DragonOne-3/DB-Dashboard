@@ -1,0 +1,83 @@
+name: Daily Procurement Data Bot
+
+on:
+  schedule:
+    # 한국 시간 기준 매일 09:30 (UTC 00:30)
+    - cron: '30 23 * * *'
+  workflow_dispatch: # 수동 실행 버튼 활성화
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install gspread oauth2client requests pytimekr
+
+      - name: Run script
+        env:
+          # Secrets에 저장한 변수를 환경변수로 주입
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+        run: python main.py
+
+      - name: Send MS Teams Notification
+        if: always()
+        run: |
+          # 1. 상태에 따른 색상 및 아이콘 설정
+          if [ "${{ job.status }}" == "success" ]; then
+            STATUS_TEXT="✅ 성공"
+            COLOR="good"
+          else
+            STATUS_TEXT="❌ 실패"
+            COLOR="attention"
+          fi
+
+          # 2. 팀즈 워크플로용 JSON 본문 생성 (Adaptive Cards 1.4 규격)
+          # 최신 워크플로는 이 규격으로 보내야 인증 에러가 나지 않습니다.
+          cat <<EOF > teams_payload.json
+          {
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "type": "AdaptiveCard",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "size": "Medium",
+                      "weight": "Bolder",
+                      "text": "🤖 조달청 데이터 수집 봇 리포트"
+                    },
+                    {
+                      "type": "FactSet",
+                      "facts": [
+                        { "title": "결과", "value": "$STATUS_TEXT" },
+                        { "title": "실행시간", "value": "한국 시간 09:30" },
+                        { "title": "로그", "value": "[GitHub Actions 확인](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" }
+                      ]
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "데이터가 분기별 파일 내 해당 월 탭에 업데이트되었습니다.",
+                      "wrap": true
+                    }
+                  ],
+                  "\$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "version": "1.4"
+                }
+              }
+            ]
+          }
+          EOF
+
+          # 3. Webhook 전송
+          curl -X POST -H "Content-Type: application/json" -d @teams_payload.json "${{ secrets.TEAMS_WEBHOOK_URL }}"
