@@ -43,9 +43,8 @@ jobs:
           body: |
             조달청 데이터 자동 수집 시스템 작업 리포트입니다.
             
-            - 수집 날짜: ${{ steps.run_script.outputs.collect_date }}
-            - 저장 건수: ${{ steps.run_script.outputs.collect_count }} 건
-            - 실행 상태: ${{ job.status == 'success' && '✅ 성공' || '❌ 실패' }}
-            - 상세 로그: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - 날짜: ${{ steps.run_script.outputs.collect_date }}
+            - 건수: ${{ steps.run_script.outputs.collect_count }}건 저장완료
+            - 상태: ${{ job.status }}
             
             데이터가 구글 시트에 정상적으로 업데이트되었습니다.
