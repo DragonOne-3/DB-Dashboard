@@ -83,7 +83,7 @@ def main():
         html_report = f"""
         <html>
         <body style="font-family: 'Malgun Gothic', sans-serif; padding: 20px;">
-            <h2 style="color: #2E75B6;">📊 주간 조달청 분석 리포트</h2>
+            <h2 style="color: #2E75B6;">📊 주간 특정품목 납품내역 분석 리포트</h2>
             <p>📅 <b>분석 기간:</b> {last_mon} ~ {last_sun}</p>
             
             <div style="background-color: #F8F9FA; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2E75B6;">
