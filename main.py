@@ -96,15 +96,28 @@ def main():
 
 if __name__ == "__main__":
     main()
-# main.py 파일 하단에 추가
+# main.py 최하단
+
 import os
 
-# 예시: total_count는 수집된 행의 수, target_date는 조회한 날짜 변수라고 가정
-# 이 변수들은 실제 사용자님의 코드 내 변수명에 맞춰 수정하세요.
-print(f"DEBUG: {target_date} 데이터 {total_count}건 저장 완료")
+# 1. 실제 코드에서 날짜와 건수를 담고 있는 변수명을 찾아서 아래에 대입하세요.
+# 만약 변수명을 모르겠다면, 아래처럼 오늘 날짜와 수집된 데이터 리스트(rows 등)의 길이를 넣으세요.
+try:
+    # 예: 수집 날짜 (YYYYMMDD 형식)
+    # target_date 변수가 없다면 오늘 날짜로 대체
+    final_date = target_date if 'target_date' in locals() else datetime.datetime.now().strftime("%Y%m%d")
+    
+    # 예: 수집 건수 (리스트의 길이)
+    # 데이터가 담긴 리스트 변수 이름이 rows라면 len(rows)를 사용
+    final_count = total_count if 'total_count' in locals() else 0 
+except Exception:
+    final_date = "날짜확인불가"
+    final_count = "확인불가"
 
-# GitHub Actions의 환경 파일에 값 기록
+# 2. GitHub Actions로 값 전달
 if "GITHUB_OUTPUT" in os.environ:
     with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-        f.write(f"collect_date={target_date}\n")
-        f.write(f"collect_count={total_count}\n")
+        f.write(f"collect_date={final_date}\n")
+        f.write(f"collect_count={final_count}\n")
+
+print(f"✅ 결과 기록 완료: {final_date} / {final_count}건")
