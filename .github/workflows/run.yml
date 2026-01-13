@@ -22,6 +22,7 @@ jobs:
           pip install gspread oauth2client requests pytimekr
 
       - name: Run script
+        id: run_script
         env:
           # Secrets에 저장한 변수를 환경변수로 주입
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
@@ -36,12 +37,15 @@ jobs:
           server_port: 465
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
-          subject: "🤖 [조달청알림] 데이터 수집 결과"
+          subject: "🤖 [조달청알림] ${{ steps.run_script.outputs.collect_date }} 수집 결과"
           to: mhy9680@innodep.com
           from: GitHub Actions Bot
           body: |
             조달청 데이터 자동 수집 시스템 작업 리포트입니다.
             
-            - 상태: ${{ job.status == 'success' && '✅ 성공' || '❌ 실패' }}
-            - 실행 시각: 한국 시간 09:30
-            - 로그 확인: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - 수집 날짜: ${{ steps.run_script.outputs.collect_date }}
+            - 저장 건수: ${{ steps.run_script.outputs.collect_count }} 건
+            - 실행 상태: ${{ job.status == 'success' && '✅ 성공' || '❌ 실패' }}
+            - 상세 로그: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            데이터가 구글 시트에 정상적으로 업데이트되었습니다.
