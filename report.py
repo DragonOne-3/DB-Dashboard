@@ -1,97 +1,98 @@
-import os, json, datetime, time
+import os, json, datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import requests
 
 # 환경 변수 로드
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
-TEAMS_WEBHOOK_URL = os.environ.get('TEAMS_WEBHOOK_URL')
 
 def get_last_week_range():
     """지난주 월요일~일요일 날짜 계산"""
     today = datetime.date.today()
-    # 실행 시점(월요일) 기준 7일 전이 지난주 월요일
+    # 실행일(월요일) 기준 지난주 월요일(-7) ~ 일요일(-1)
     last_monday = today - datetime.timedelta(days=today.weekday() + 7)
     last_sunday = last_monday + datetime.timedelta(days=6)
     return last_monday, last_sunday
 
-def send_teams_report(content):
-    """최신 팀즈 워크플로 규격(Adaptive Cards)으로 전송"""
-    payload = {
-        "type": "message",
-        "attachments": [{
-            "contentType": "application/vnd.microsoft.card.adaptive",
-            "content": {
-                "type": "AdaptiveCard",
-                "body": [
-                    {"type": "TextBlock", "text": "📊 주간 매출 요약 리포트 (전주 기준)", "weight": "Bolder", "size": "Medium", "color": "Accent"},
-                    {"type": "TextBlock", "text": content, "wrap": True}
-                ],
-                "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                "version": "1.4"
-            }
-        }]
-    }
-    requests.post(TEAMS_WEBHOOK_URL, json=payload)
-
 def main():
-    if not AUTH_JSON_STR or not TEAMS_WEBHOOK_URL:
-        print("❌ 환경변수 설정 누락"); return
+    if not AUTH_JSON_STR:
+        print("❌ 에러: GOOGLE_AUTH_JSON 환경변수가 없습니다.")
+        return
 
-    # 구글 서비스 계정 인증
+    # 구글 인증
+    creds_dict = json.loads(AUTH_JSON_STR)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(
-        json.loads(AUTH_JSON_STR), 
+        creds_dict, 
         ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     )
     client = gspread.authorize(creds)
     
+    # 날짜 및 파일 설정
     last_mon, last_sun = get_last_week_range()
-    
-    # 지난주가 걸쳐있는 연도와 분기 계산
     year = last_mon.year
     quarter = (last_mon.month - 1) // 3 + 1
     file_name = f"조달청_납품내역_{year}_{quarter}분기"
     
+    print(f"📅 분석 기간: {last_mon} ~ {last_sun}")
+    
     try:
         sh = client.open(file_name)
-        # 지난주가 두 달에 걸쳐 있을 수 있으므로 월 리스트 생성
         months = list(set([last_mon.month, last_sun.month]))
-        
         all_data = []
+
         for m in months:
+            sheet_name = f"{year}_{m}월"
             try:
-                ws = sh.worksheet(f"{year}_{m}월")
+                ws = sh.worksheet(sheet_name)
                 all_data.extend(ws.get_all_records())
-            except: continue
+            except:
+                print(f"⚠️ {sheet_name} 시트가 없습니다. 건너뜁니다.")
 
         # 기업별 매출 합산
         summary = {}
         for row in all_data:
-            date_str = str(row.get('계약납품요구일자', ''))
-            if not date_str: continue
-            
-            row_date = datetime.datetime.strptime(date_str, "%Y%m%d").date()
-            # 지난주 범위 내 데이터만 필터링
-            if last_mon <= row_date <= last_sun:
-                company = row.get('업체명', '알수없음')
-                amount = int(row.get('금액', 0))
-                summary[company] = summary.get(company, 0) + amount
+            d_val = str(row.get('계약납품요구일자', ''))
+            if len(d_val) == 8:
+                try:
+                    row_date = datetime.datetime.strptime(d_val, "%Y%m%d").date()
+                    if last_mon <= row_date <= last_sun:
+                        comp = row.get('업체명', '알수없음')
+                        # 금액 콤마 제거 및 정수 변환
+                        amt_raw = str(row.get('금액', 0)).replace(',', '').split('.')[0]
+                        amt = int(amt_raw) if amt_raw else 0
+                        summary[comp] = summary.get(comp, 0) + amt
+                except: continue
 
-        # 금액 기준 내림차순 정렬 후 상위 10개 추출
-        sorted_summary = sorted(summary.items(), key=lambda x: x[1], reverse=True)[:10]
+        # 상위 10개 정렬
+        sorted_list = sorted(summary.items(), key=lambda x: x[1], reverse=True)[:10]
         
-        if not sorted_summary:
-            report_text = f"📅 **기간:** {last_mon} ~ {last_sun}\n\n결과: 지난주 매출 데이터가 없습니다."
+        # --- 메일 본문 생성 ---
+        report_body = f"📊 지난주 조달청 매출 순위 리포트\n"
+        report_body += f"기간: {last_mon} ~ {last_sun}\n"
+        report_body += "="*40 + "\n\n"
+        
+        if not sorted_list:
+            report_body += "해당 기간에 집계된 매출 데이터가 없습니다."
         else:
-            report_text = f"📅 **기간:** {last_mon} ~ {last_sun}\n\n"
-            for i, (comp, amt) in enumerate(sorted_summary, 1):
-                report_text += f"**{i}위. {comp}**\n   - 매출액: {amt:,}원\n"
+            for i, (name, val) in enumerate(sorted_list, 1):
+                report_body += f"{i}위. {name}\n   - 매출액: {val:,}원\n"
+        
+        report_body += "\n" + "="*40 + "\n"
+        report_body += "본 메일은 시스템에서 자동으로 발송되었습니다."
 
-        send_teams_report(report_text)
-        print("✅ 주간 보고서 전송 완료")
+        # --- GitHub Actions를 위한 결과 전달 ---
+        # 1. 메일 제목에 쓸 날짜 범위 전달
+        if "GITHUB_OUTPUT" in os.environ:
+            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                f.write(f"report_range={last_mon}~{last_sun}\n")
+        
+        # 2. 메일 본문 파일 생성 (mail_body.txt)
+        with open("mail_body.txt", "w", encoding="utf-8") as bf:
+            bf.write(report_body)
+
+        print("✅ 리포트 생성 및 파일 저장 완료")
 
     except Exception as e:
-        print(f"❌ 에러 발생: {e}")
+        print(f"🔥 치명적 에러: {e}")
 
 if __name__ == "__main__":
     main()
