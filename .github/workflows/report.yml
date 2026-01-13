@@ -1,0 +1,28 @@
+name: Weekly Sales Report
+
+on:
+  schedule:
+    # 매주 월요일 한국 시간 오전 09:00 (UTC 00:00)
+    - cron: '0 0 * * 1'
+  workflow_dispatch: # 필요할 때 수동으로 버튼 눌러 실행 가능
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install gspread oauth2client requests
+
+      - name: Run Weekly Report
+        env:
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: python report.py
