@@ -43,8 +43,14 @@ jobs:
           body: |
             조달청 특정품목 납품내역 데이터 자동 수집 시스템 작업 리포트입니다.
             
-            - 날짜: ${{ steps.run_script.outputs.collect_date }}
-            - 건수: ${{ steps.run_script.outputs.collect_count }}건 저장완료
+            - 수집 날짜: ${{ steps.run_script.outputs.collect_date }}
+            - 총 저장 건수: ${{ steps.run_script.outputs.collect_count }}건 저장완료
             - 상태: ${{ job.status }}
+            
+            ${{ steps.run_script.outputs.school_info }}
+            
+            상세 로그 및 결과 확인:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
             
             데이터가 구글 시트에 정상적으로 업데이트되었습니다.
