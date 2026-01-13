@@ -37,11 +37,11 @@ jobs:
           server_port: 465
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
-          subject: "🤖 [조달청알림] ${{ steps.run_script.outputs.collect_date }} 수집 결과"
+          subject: "🤖 [조달 DATA] 특정품목 납품 DATA ${{ steps.run_script.outputs.collect_date }} 수집 결과"
           to: mhy9680@innodep.com
           from: GitHub Actions Bot
           body: |
-            조달청 데이터 자동 수집 시스템 작업 리포트입니다.
+            조달청 특정품목 납품내역 데이터 자동 수집 시스템 작업 리포트입니다.
             
             - 날짜: ${{ steps.run_script.outputs.collect_date }}
             - 건수: ${{ steps.run_script.outputs.collect_count }}건 저장완료
