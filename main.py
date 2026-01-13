@@ -141,6 +141,8 @@ def main():
             summary_text += "\\n⭐ 오늘자 학교 지능형 CCTV 납품 현황:\\n"
             for school, info in school_stats.items():
                 summary_text += f"- {school} [{info['main_vendor']}]: {info['total_amt']:,}원\\n"
+        else:
+            summary_text += "- 오늘자 학교 계약건 0건\\n"
         
         # B. 이노뎁 실적 (무조건 추가)
         summary_text += "\\n🏢 오늘자 이노뎁 실적:\\n"
