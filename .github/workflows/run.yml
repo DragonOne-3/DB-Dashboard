@@ -27,7 +27,7 @@ jobs:
           # Secrets에 저장한 변수를 환경변수로 주입
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
-        run: python main.py
+        run: python backfill.py
 
       - name: Send Email Notification
         if: always()
