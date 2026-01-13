@@ -96,3 +96,15 @@ def main():
 
 if __name__ == "__main__":
     main()
+# main.py 파일 하단에 추가
+import os
+
+# 예시: total_count는 수집된 행의 수, target_date는 조회한 날짜 변수라고 가정
+# 이 변수들은 실제 사용자님의 코드 내 변수명에 맞춰 수정하세요.
+print(f"DEBUG: {target_date} 데이터 {total_count}건 저장 완료")
+
+# GitHub Actions의 환경 파일에 값 기록
+if "GITHUB_OUTPUT" in os.environ:
+    with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+        f.write(f"collect_date={target_date}\n")
+        f.write(f"collect_count={total_count}\n")
