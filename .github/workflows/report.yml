@@ -2,9 +2,9 @@ name: Weekly Sales Report
 
 on:
   schedule:
-    # 매주 월요일 한국 시간 오전 09:00 (UTC 00:00)
+    # 매주 월요일 한국 시간 오전 09:00
     - cron: '0 0 * * 1'
-  workflow_dispatch: # 필요할 때 수동으로 버튼 눌러 실행 가능
+  workflow_dispatch:
 
 jobs:
   report:
@@ -18,11 +18,25 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: |
-          pip install gspread oauth2client requests
+        run: pip install gspread oauth2client requests
 
       - name: Run Weekly Report
+        id: run_report
         env:
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
-          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
         run: python report.py
+
+      - name: Send Email Notification
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.EMAIL_USER }}
+          password: ${{ secrets.EMAIL_PASS }}
+          subject: "📊 [주간리포트] 조달청 기업별 매출 순위 (${{ steps.run_report.outputs.report_range }})"
+          # 등록하신 받는 사람 리스트(쉼표 구분)
+          to: ${{ secrets.EMAIL_RECIPIENTS }}
+          from: GitHub Actions Bot
+          # 파이썬에서 생성한 텍스트 파일을 본문으로 사용
+          file_body: mail_body.txt
