@@ -35,7 +35,7 @@ jobs:
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
           # 제목에 날짜 범위 포함
-          subject: "📊 [주간리포트] 조달청 매출 순위 (${{ steps.run_report.outputs.report_range }})"
+          subject: "📊 [주간리포트] 특정품목 납품 업체별 매출 순위 (${{ steps.run_report.outputs.report_range }})"
           to: mhy9680@innodep.com
           from: GitHub Actions Bot
           # HTML 파일 본문 사용
