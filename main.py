@@ -90,7 +90,7 @@ def main():
         if data: final_data.extend(data)
         time.sleep(0.5)
     
-        if final_data:
+    if final_data:
         ws.append_rows(final_data)
         print(f"🎉 {d_str} 데이터 {len(final_data)}건 저장 완료!")
         
