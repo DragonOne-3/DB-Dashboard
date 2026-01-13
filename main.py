@@ -143,9 +143,9 @@ def main():
             for school, info in school_stats.items():
                 summary_lines.append(f"- {school} [{info['main_vendor']}]: {info['total_amt']:,}원")
         else:
-            summary_lines.append("- 오늘자 학교 계약건 0건")
+            summary_lines.append(" 0건")
         
-        summary_lines.append("") # 한 줄 띄움
+        summary_lines.append("\n") # 한 줄 띄움
         
         # B. 이노뎁 실적 (없으면 0건 표시)
         summary_lines.append("🏢 오늘자 이노뎁 실적:")
@@ -154,7 +154,7 @@ def main():
                 summary_lines.append(f"- {item}")
             summary_lines.append(f"** 총합계: {innodep_total_amt:,}원")
         else:
-            summary_lines.append("- 오늘자 이노뎁 실적 0건")
+            summary_lines.append(" 0건")
 
         # --- GitHub Actions 변수 전달 (가장 안전한 방식) ---
         if "GITHUB_OUTPUT" in os.environ:
