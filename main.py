@@ -157,11 +157,15 @@ def main():
         # GitHub Actions 변수 전달
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                f.write(f"collect_date={d_str}\\n")
-                f.write(f"collect_count={len(final_data)}\\n")
-                # 줄바꿈 처리를 위해 공백으로 치환하여 전달
-                clean_info = summary_text.replace('\\n', '  ')
-                f.write(f"school_info={clean_info}\\n")
+                # 1. 날짜 기록
+                f.write(f"collect_date={d_str}\n")
+                # 2. 건수 기록
+                f.write(f"collect_count={len(final_data)}\n")
+                # 3. 학교/이노뎁 정보 기록 (줄바꿈을 공백으로 확실히 밀어버림)
+                clean_info = summary_text.replace('\n', '  ').replace('\r', '').strip()
+                f.write(f"school_info={clean_info}\n")
+        
+        print(f"✅ 전달 완료: {d_str} / {len(final_data)}건")
 
 
 if __name__ == "__main__":
