@@ -161,9 +161,13 @@ def main():
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                 f.write(f"collect_date={d_str}\n")
                 f.write(f"collect_count={len(final_data)}\n")
-                # 모든 내용을 한 줄로 합쳐서 전달 (메일 본문에서 다시 줄바꿈 됨)
-                full_info = "  ".join(summary_lines)
-                f.write(f"school_info={full_info}\n")
+                
+                f.write("school_info<<EOF\n")
+                for line in summary_lines:
+                    f.write(f"{line}\n")
+                f.write("EOF\n")
+        
+        print(f"✅ 메일 데이터 구성 완료 (전달 날짜: {d_str})")
 
 
 
