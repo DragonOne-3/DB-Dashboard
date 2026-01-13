@@ -90,42 +90,37 @@ def main():
         if data: final_data.extend(data)
         time.sleep(0.5)
     
-    if final_data:
+        if final_data:
         ws.append_rows(final_data)
         print(f"🎉 {d_str} 데이터 {len(final_data)}건 저장 완료!")
         
-        # --- 학교별 지능형 CCTV 분석 로직 시작 ---
+        # --- 분석 로직 시작 ---
         school_stats = {} 
+        innodep_today_list = [] # 오늘자 이노뎁 실적 저장용
+        innodep_total_amt = 0
 
         for row in final_data:
             try:
-                # 리스트 인덱스 번호 (실제 데이터 순서에 맞게 조정이 필요할 수 있습니다)
-                # 만약 업체명이 2번째가 아니라면 숫자를 바꿔주세요.
-                contract_name = str(row[34])  # 계약명
+                org_name = str(row[7])        # 수요기관명
+                item_name = str(row[14])      # 물품분류명
+                amt_val = str(row[20])        # 금액
                 comp_name = str(row[21])      # 업체명
-                org_name = str(row[7])       # 수요기관명
-                item_name = str(row[14])      # 물품분류명 (또는 품목명)
+                contract_name = str(row[23])  # 계약명
                 
-                # 금액 정제 (금액이 리스트의 몇 번째인지 확인 필요, 여기선 5번째 가정)
-                amt_raw = str(row[20]).replace(',', '').split('.')[0]
+                amt_raw = amt_val.replace(',', '').split('.')[0]
                 amt = int(amt_raw) if amt_raw else 0
             except (IndexError, ValueError):
                 continue
 
-            # 조건: 수요기관에 '학교' 포함 AND 계약명에 '지능형'과 'CCTV' 포함
+            # 1. 학교 & 지능형 CCTV 분석
             if '학교' in org_name and '지능형' in contract_name and 'CCTV' in contract_name:
                 if org_name not in school_stats:
                     school_stats[org_name] = {'total_amt': 0, 'main_vendor': '', 'vendor_priority': 3}
                 
-                # 1. 해당 학교의 전체 금액 합산
                 school_stats[org_name]['total_amt'] += amt
-
-                # 2. 대표 업체 우선순위 (1: 영상감시장치, 2: 보안용카메라, 3: 기타)
                 priority = 3
-                if '영상감시장치' in item_name:
-                    priority = 1
-                elif '보안용카메라' in item_name:
-                    priority = 2
+                if '영상감시장치' in item_name: priority = 1
+                elif '보안용카메라' in item_name: priority = 2
                 
                 if priority < school_stats[org_name]['vendor_priority']:
                     school_stats[org_name]['main_vendor'] = comp_name
@@ -133,30 +128,39 @@ def main():
                 elif school_stats[org_name]['main_vendor'] == '':
                     school_stats[org_name]['main_vendor'] = comp_name
 
-        # 메일 본문용 텍스트 생성 (학교가 있을 때만 생성)
-        school_summary = ""
+            # 2. 이노뎁 오늘자 실적 추출
+            if '이노뎁' in comp_name:
+                innodep_today_list.append(f"{org_name}: {amt:,}원")
+                innodep_total_amt += amt
+
+        # --- 메일 본문 구성 ---
+        summary_text = ""
+        
+        # A. 학교 현황 (있을 때만 추가)
         if school_stats:
-            school_summary = "\n⭐ 오늘자 학교 지능형 CCTV 납품 현황:\n"
+            summary_text += "\\n⭐ 오늘자 학교 지능형 CCTV 납품 현황:\\n"
             for school, info in school_stats.items():
-                vendor = info['main_vendor'] if info['main_vendor'] else "업체미정"
-                school_summary += f"- {school} [{vendor}]: {info['total_amt']:,}원\n"
-        # 학교 정보가 없으면 school_summary는 빈 문자열 상태 유지
+                summary_text += f"- {school} [{info['main_vendor']}]: {info['total_amt']:,}원\\n"
+        
+        # B. 이노뎁 실적 (무조건 추가)
+        summary_text += "\\n🏢 오늘자 이노뎁 실적:\\n"
+        if innodep_today_list:
+            for item in innodep_today_list:
+                summary_text += f"- {item}\\n"
+            summary_text += f"** 총합계: {innodep_total_amt:,}원\\n"
+        else:
+            summary_text += "- 오늘자 이노뎁 실적 0건\\n"
         # ----------------------------------------------
 
-        # GitHub Actions로 변수 전달
+        # GitHub Actions 변수 전달
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                f.write(f"collect_date={d_str}\n")
-                f.write(f"collect_count={len(final_data)}\n")
-                # school_info가 비어있으면 메일에서도 안 보임
-                clean_info = school_summary.replace('\n', '  ') if school_summary else ""
-                f.write(f"school_info={clean_info}\n")
-    else:
-        if "GITHUB_OUTPUT" in os.environ:
-            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                f.write(f"collect_date={d_str}\n")
-                f.write(f"collect_count=0\n")
-                f.write(f"school_info=\n") # 빈 값 전달
+                f.write(f"collect_date={d_str}\\n")
+                f.write(f"collect_count={len(final_data)}\\n")
+                # 줄바꿈 처리를 위해 공백으로 치환하여 전달
+                clean_info = summary_text.replace('\\n', '  ')
+                f.write(f"school_info={clean_info}\\n")
+
 
 if __name__ == "__main__":
     main()
