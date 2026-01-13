@@ -101,6 +101,7 @@ def main():
 
         for row in final_data:
             try:
+                # 리스트 인덱스 기준 (사용자 데이터 구조 반영)
                 org_name = str(row[7])        # 수요기관명
                 item_name = str(row[14])      # 물품분류명
                 amt_val = str(row[20])        # 금액
@@ -133,39 +134,37 @@ def main():
                 innodep_today_list.append(f"{org_name}: {amt:,}원")
                 innodep_total_amt += amt
 
-        # --- 메일 본문 구성 ---
-        summary_text = ""
+        # --- 메일 본문 구성 (줄바꿈 오류 방지를 위해 리스트로 관리) ---
+        summary_lines = []
         
-        # A. 학교 현황 (있을 때만 추가)
+        # A. 학교 현황 (없으면 0건 표시)
+        summary_lines.append("⭐ 오늘자 학교 지능형 CCTV 납품 현황:")
         if school_stats:
-            summary_text += "\\n⭐ 오늘자 학교 지능형 CCTV 납품 현황:\\n"
             for school, info in school_stats.items():
-                summary_text += f"- {school} [{info['main_vendor']}]: {info['total_amt']:,}원\\n"
+                summary_lines.append(f"- {school} [{info['main_vendor']}]: {info['total_amt']:,}원")
         else:
-            summary_text += "- 오늘자 학교 계약건 0건\\n"
+            summary_lines.append("- 오늘자 학교 계약건 0건")
         
-        # B. 이노뎁 실적 (무조건 추가)
-        summary_text += "\\n🏢 오늘자 이노뎁 실적:\\n"
+        summary_lines.append("") # 한 줄 띄움
+        
+        # B. 이노뎁 실적 (없으면 0건 표시)
+        summary_lines.append("🏢 오늘자 이노뎁 실적:")
         if innodep_today_list:
             for item in innodep_today_list:
-                summary_text += f"- {item}\\n"
-            summary_text += f"** 총합계: {innodep_total_amt:,}원\\n"
+                summary_lines.append(f"- {item}")
+            summary_lines.append(f"** 총합계: {innodep_total_amt:,}원")
         else:
-            summary_text += "- 오늘자 이노뎁 실적 0건\\n"
-        # ----------------------------------------------
+            summary_lines.append("- 오늘자 이노뎁 실적 0건")
 
-        # GitHub Actions 변수 전달
+        # --- GitHub Actions 변수 전달 (가장 안전한 방식) ---
         if "GITHUB_OUTPUT" in os.environ:
-            with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-                # 1. 날짜 기록
+            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                 f.write(f"collect_date={d_str}\n")
-                # 2. 건수 기록
                 f.write(f"collect_count={len(final_data)}\n")
-                # 3. 학교/이노뎁 정보 기록 (줄바꿈을 공백으로 확실히 밀어버림)
-                clean_info = summary_text.replace('\n', '  ').replace('\r', '').strip()
-                f.write(f"school_info={clean_info}\n")
-        
-        print(f"✅ 전달 완료: {d_str} / {len(final_data)}건")
+                # 모든 내용을 한 줄로 합쳐서 전달 (메일 본문에서 다시 줄바꿈 됨)
+                full_info = "  ".join(summary_lines)
+                f.write(f"school_info={full_info}\n")
+
 
 
 if __name__ == "__main__":
