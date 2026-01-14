@@ -48,13 +48,14 @@ def get_data_from_gsheet():
         st.error(f"❌ 시트 로드 중 오류: {e}")
         return pd.DataFrame()
 
-# --- 3. 지자체 본청 필터링 함수 ---
+# --- 3. 지자체 본청 필터링 함수 (산하기관 및 읍면동 제외) ---
 def is_pure_district(agency_name, district_list):
     exclude_keywords = [
         '센터', '보건소', '소장', '사업소', '의회', '도서관', '공원', '본부', '학교', '연구소', 
         '읍', '면', '동', '박물관', '사업단', '관리소', '휴양림', '미술관', '체육시설', '상하수도'
     ]
     agency_name = str(agency_name).strip()
+    
     for dist in district_list:
         if dist in agency_name:
             if any(key in agency_name for key in exclude_keywords):
@@ -104,15 +105,15 @@ def calculate_logic(row):
         return expire_str, remain_str
     except: return "계산불가", "오류"
 
-# --- 5. 스트림릿 메인 ---
+# --- 5. 스트림릿 메인 실행 ---
 st.set_page_config(layout="wide")
-st.title("🏛️ 전국 지자체별 유지관리/통합관제 계약 현황")
+st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
 
 try:
     df = get_data_from_gsheet()
 
     if not df.empty:
-        # 1. 필터링: 유지 + 통합관제
+        # 1. 필터링: 계약명에 "유지" 및 "통합관제" 포함
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
         df = df[df['★가공_계약명'].str.contains("통합관제", na=False)]
 
@@ -127,58 +128,41 @@ try:
         df = df.sort_values(by=['★가공_수요기관', 'temp_date'], ascending=[True, False])
         df = df.drop_duplicates(subset=['★가공_수요기관'], keep='first')
 
-        # 5. 금액 숫자 변환 및 콤마 처리 로직 (핵심 수정 부분)
-        def force_int(val):
-            try:
-                # 모든 콤마와 문자를 제거하고 숫자만 추출
-                s = re.sub(r'[^0-9]', '', str(val))
-                return int(s) if s else 0
-            except:
-                return 0
-        
-        # '★가공_계약금액' 열을 실제 숫자 타입으로 변환
-        df['★가공_계약금액'] = df['★가공_계약금액'].apply(force_int)
+        # 5. 금액 데이터 강제 숫자 변환 (엑셀 설정과 별개로 코드에서 안전장치)
+        df['★가공_계약금액'] = pd.to_numeric(df['★가공_계약금액'], errors='coerce').fillna(0).astype(int)
 
-        # 6. 상단 요약 통계
+        # 6. 상단 요약 통계 (광역별 건수)
         df['광역단위'] = df['★가공_수요기관'].apply(lambda x: str(x).split()[0])
         summary = df.groupby('광역단위').size().reset_index(name='개수')
         
-        st.subheader("📊 광역자치단체별 현황 요약")
-        cols = st.columns(len(summary) if len(summary) > 0 else 1)
-        for i, row in summary.iterrows():
-            cols[i].metric(row['광역단위'], f"{row['개수']}건")
+        st.subheader("📊 광역자치단체별 분석 현황")
+        summary_cols = st.columns(len(summary) if len(summary) > 0 else 1)
+        for idx, row in summary.iterrows():
+            summary_cols[idx].metric(row['광역단위'], f"{row['개수']}건")
 
         st.divider()
 
         # 7. 컬럼 정리 및 이름 변경
-        display_cols = [
-            '★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', 
-            '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL'
-        ]
-        
+        display_cols = ['★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL']
         existing_cols = [c for c in display_cols if c in df.columns or c in ['★가공_계약만료일', '남은기간']]
         final_df = df[existing_cols].copy()
         
         final_df.columns = [c.replace('★가공_', '') for c in final_df.columns]
         final_df.columns = [c.replace('계약상세정보URL', 'URL') for c in final_df.columns]
 
-        # 8. 표 출력 (천 단위 콤마 서식 강제 적용)
+        # 8. 표 출력 (천 단위 콤마 서식: ,d)
         st.dataframe(
             final_df,
             column_config={
                 "URL": st.column_config.LinkColumn("상세정보"),
-                "계약금액": st.column_config.NumberColumn(
-                    "계약금액(원)",
-                    help="계약된 총 금액입니다.",
-                    format="%d" # %d는 데이터가 숫자형일 때 천 단위 콤마를 자동으로 붙입니다.
-                ),
+                "계약금액": st.column_config.NumberColumn("계약금액(원)", format="%d"),
             },
             use_container_width=True,
             hide_index=True,
             height=800
         )
     else:
-        st.warning("데이터가 없습니다. (계약명에 '유지' 및 '통합관제' 포함 여부 확인)")
+        st.warning("표출할 데이터가 없습니다.")
 
 except Exception as e:
     st.error(f"오류 발생: {e}")
