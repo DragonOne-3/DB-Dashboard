@@ -28,7 +28,24 @@ FULL_DISTRICT_LIST = [
     "경상남도 창원시", "경상남도 진주시", "경상남도 통영시", "경상남도 사천시", "경상남도 김해시", "경상남도 밀양시", "경상남도 거제시", "경상남도 양산시", "경상남도 의령군", "경상남도 함안군", "경상남도 창녕군", "경상남도 고성군", "경상남도 남해군", "경상남도 하동군", "경상남도 산청군", "경상남도 함양군", "경상남도 거창군", "경상남도 합천군",
     "제주특별자치도 제주시", "제주특별자치도 서귀포시"
 ]
+def get_data_from_gsheet():
+    auth_json = os.environ.get('GOOGLE_AUTH_JSON')
+    
+    if auth_json is None:
+        st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다. 로컬 테스트 시에는 JSON 파일을 직접 참조하도록 코드를 수정하거나 환경 변수를 등록하세요.")
+        return pd.DataFrame()
 
+    try:
+        creds_dict = json.loads(auth_json)
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        sh = client.open("나라장터_용역계약내역")
+        ws = sh.get_worksheet(0)
+        return pd.DataFrame(ws.get_all_records())
+    except Exception as e:
+        st.error(f"❌ 시트 로드 중 오류: {e}")
+        return pd.DataFrame()
 def calculate_dates(row):
     try:
         # 날짜 및 기간 데이터 추출
