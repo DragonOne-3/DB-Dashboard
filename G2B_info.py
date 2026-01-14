@@ -122,28 +122,28 @@ try:
 
     if not df.empty:
         # 지자체 필터링 (FULL_DISTRICT_LIST 226개는 상단에 정의되어 있다고 가정)
-        df = df[df['가공_수요기관'].apply(lambda x: is_pure_district(x, FULL_DISTRICT_LIST))]
+        df = df[df['★가공_수요기관'].apply(lambda x: is_pure_district(x, FULL_DISTRICT_LIST))]
 
         # 계산 로직 적용 (계약기간 컬럼 기반)
-        df[['가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
+        df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
 
-        # 최신 데이터 1건 정렬 (가공_수요기관별)
+        # 최신 데이터 1건 정렬 (★가공_수요기관별)
         df['temp_date'] = pd.to_datetime(df['계약일자'], errors='coerce')
-        df = df.sort_values(by=['가공_수요기관', 'temp_date'], ascending=[True, False])
-        df = df.drop_duplicates(subset=['가공_수요기관'], keep='first')
+        df = df.sort_values(by=['★가공_수요기관', 'temp_date'], ascending=[True, False])
+        df = df.drop_duplicates(subset=['★가공_수요기관'], keep='first')
 
         # 컬럼 정리 및 표출
         display_cols = [
-            '가공_수요기관', '가공_계약명', '가공_업체명', '가공_계약금액', 
-            '계약일자', '착수일자', '가공_계약만료일', '남은기간', '계약상세정보URL'
+            '★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', 
+            '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL'
         ]
         
         # 실제 시트에 있는 컬럼만 필터링해서 보여줌
-        existing_cols = [c for c in display_cols if c in df.columns or c in ['가공_계약만료일', '남은기간']]
+        existing_cols = [c for c in display_cols if c in df.columns or c in ['★가공_계약만료일', '남은기간']]
         final_df = df[existing_cols].copy()
         
         # 한글 제목으로 변경
-        final_df.columns = [c.replace('가공_', '') for c in final_df.columns]
+        final_df.columns = [c.replace('★가공_', '') for c in final_df.columns]
         final_df.columns = [c.replace('계약상세정보URL', 'URL') for c in final_df.columns]
 
         st.dataframe(
