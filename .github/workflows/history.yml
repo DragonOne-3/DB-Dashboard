@@ -1,0 +1,37 @@
+name: Historical Data Collector
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_year:
+        description: '수집 시작 연도 (예: 2021)'
+        required: true
+        default: '2021'
+      end_year:
+        description: '수집 종료 연도 (예: 2025)'
+        required: true
+        default: '2025'
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install gspread oauth2client requests
+
+      - name: Run History Collector
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          START_YEAR: ${{ github.event.inputs.start_year }}
+          END_YEAR: ${{ github.event.inputs.end_year }}
+        run: python history_collector.py
