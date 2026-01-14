@@ -42,7 +42,7 @@ def main():
     target_str = target_dt.strftime("%Y%m%d")
     display_str = target_dt.strftime("%Y-%m-%d")
     
-    keywords = ['CCTV', '통합관제', '주차관리', '영상감시장치', '영상정보처리기기']
+    keywords = ['CCTV', '통합관제', '주차관리', '영상감시장치', '영상정보처리기기','국방','부대','작전','경계']
     new_rows = []
 
     # 2. 키워드별 수집
