@@ -72,6 +72,59 @@ def fetch_data(kw, d_str):
     except: pass
     return []
 
+def fetch_and_generate_servc_html():
+    """어제 날짜 기준 용역 계약 내역 수집 및 HTML 표 생성"""
+    api_key = os.environ.get('DATA_GO_KR_API_KEY')
+    api_url = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
+    
+    # 조회 날짜 설정 (어제)
+    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+    target_date_str = yesterday.strftime("%Y%m%d")
+    display_date_str = yesterday.strftime("%Y-%m-%d")
+    
+    keywords = ['통합관제', 'CCTV', '영상감시장치']
+    collected_data = []
+
+    for kw in keywords:
+        params = {
+            'serviceKey': api_key,
+            'pageNo': '1',
+            'numOfRows': '999',
+            'inqryDiv': '1',
+            'type': 'xml',
+            'inqryBgnDate': target_date_str,
+            'inqryEndDate': target_date_str,
+            'cntrctNm': kw
+        }
+        try:
+            res = requests.get(api_url, params=params, timeout=30)
+            if res.status_code == 200:
+                root = ET.fromstring(res.content)
+                items = root.findall('.//item')
+                for item in items:
+                    collected_data.append({
+                        'demand': item.findtext('dminsttList', '-'),
+                        'name': item.findtext('cntrctNm', '-'),
+                        'corp': item.findtext('corpList', '-'),
+                        'amount': int(item.findtext('totCntrctAmt', '0'))
+                    })
+        except Exception as e:
+            print(f"❌ 용역 API 에러 ({kw}): {e}")
+
+    unique_data = {f"{d['demand']}_{d['name']}": d for d in collected_data}.values()
+
+    html = f"<div style='margin-top: 20px;'><h4 style='color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 5px;'>🏛️ 나라장터 용역 계약 내역 ({display_date_str} 체결분)</h4>"
+    if not unique_data:
+        html += f"<p style='color: #666;'>- {display_date_str}에 체결된 해당 키워드 계약 내역이 없습니다.</p></div>"
+        return html
+
+    html += "<table border='1' style='border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #ddd;'><tr style='background-color: #f8f9fa; text-align: center;'><th style='padding: 8px;'>수요기관명</th><th style='padding: 8px;'>계약명</th><th style='padding: 8px;'>업체명</th><th style='padding: 8px;'>계약금액</th></tr>"
+    for row in unique_data:
+        bg_style = "style='background-color: #FFF9C4;'" if "이노뎁" in row['corp'] else ""
+        html += f"<tr {bg_style}><td style='padding: 8px;'>{row['demand']}</td><td style='padding: 8px;'>{row['name']}</td><td style='padding: 8px;'>{row['corp']}</td><td style='padding: 8px; text-align: right;'>{row['amount']:,}원</td></tr>"
+    html += "</table></div><br>"
+    return html
+
 def main():
     if not MY_DIRECT_KEY or not AUTH_JSON_STR:
         print("❌ 환경변수 설정 확인 필요"); return
@@ -168,6 +221,24 @@ def main():
                 f.write("EOF\n")
         
         print(f"✅ 메일 데이터 구성 완료 (전달 날짜: {d_str})")
+# 신규 용역 내역 HTML 생성
+    servc_html = fetch_and_generate_servc_html()
+
+    if "GITHUB_OUTPUT" in os.environ:
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+            f.write(f"collect_date={d_str}\n")
+            f.write(f"collect_count={len(final_data)}\n")
+            
+            # 기존 학교/이노뎁 정보 (멀티라인)
+            f.write("school_info<<EOF\n")
+            for line in summary_lines:
+                f.write(f"{line}\n")
+            f.write("EOF\n")
+            
+            # [추가] 용역 계약 정보 (멀티라인)
+            f.write("servc_info<<EOF\n")
+            f.write(f"{servc_html}\n")
+            f.write("EOF\n")
 
 
 
