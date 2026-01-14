@@ -40,16 +40,31 @@ jobs:
           subject: "🤖 [조달 DATA] 특정품목 납품 DATA ${{ steps.run_script.outputs.collect_date }} 수집 결과"
           to: mhy9680@innodep.com
           from: GitHub Actions Bot
-          body: |
-            조달청 특정품목 납품내역 데이터 자동 수집 시스템 작업 리포트입니다.
-            
-            - 수집 날짜: ${{ steps.run_script.outputs.collect_date }}
-            - 총 저장 건수: ${{ steps.run_script.outputs.collect_count }}건
-            - 상태: ${{ job.status }}
-            
-            ${{ steps.run_script.outputs.school_info }}
-            
-            상세 로그 확인:
-            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          
-            데이터가 구글 시트에 정상적으로 업데이트되었습니다.
+          # body 대신 html_body를 사용하여 표 형식을 지원하게 합니다.
+          html_body: |
+            <div style="font-family: 'Malgun Gothic', sans-serif; line-height: 1.6;">
+              <h3>🏛️ 조달청 데이터 자동 수집 리포트</h3>
+              <ul>
+                <li><b>수집 날짜:</b> ${{ steps.run_script.outputs.collect_date }}</li>
+                <li><b>총 저장 건수:</b> ${{ steps.run_script.outputs.collect_count }}건</li>
+                <li><b>상태:</b> ${{ job.status }}</li>
+              </ul>
+              
+              <hr style="border: 0.5px solid #eee;">
+              
+              <div style="background-color: #f9f9f9; padding: 10px; border-radius: 5px; white-space: pre-wrap;">
+                ${{ steps.run_script.outputs.school_info }}
+              </div>
+              
+              <br>
+              
+              ${{ steps.run_script.outputs.servc_info }}
+              
+              <hr style="border: 0.5px solid #eee;">
+              <p style="font-size: 12px; color: #888;">
+                상세 로그 확인: <br>
+                <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">
+                  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                </a>
+              </p>
+            </div>
