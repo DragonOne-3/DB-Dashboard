@@ -4,9 +4,8 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # 1. 설정 정보
-MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY') # 환경변수 사용 권장
+MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
-FOLDER_ID = "15bNYr38hSxYw5wh_P6TH--MI1CfQ9-M1" # 파일을 모아둘 구글 드라이브 폴더 ID
 
 # 국문 헤더 (총 39개 필드)
 HEADER_KOR = [
@@ -69,22 +68,25 @@ def fetch_all_pages_data(keyword, start_date, end_date):
             break
     return all_data
 
-def get_or_create_sheet(client, year, month):
-    """연도/분기별 파일 생성 및 월별 탭 생성"""
+def get_shared_sheet(client, year, month):
+    """미리 생성되어 공유된 파일 열기 및 월별 탭 생성"""
     quarter = (month - 1) // 3 + 1
     file_name = f"조달청_납품내역_{year}_{quarter}분기"
     sheet_name = f"{year}_{month}월"
     
     try:
+        # 1. 파일 열기 (사용자가 미리 생성하고 서비스 계정을 초대한 상태여야 함)
         sh = client.open(file_name)
-    except:
-        sh = client.create(file_name, folder_id=FOLDER_ID)
-        print(f"🆕 새 파일 생성됨: {file_name}")
+    except gspread.SpreadsheetNotFound:
+        print(f"❌ [에러] '{file_name}' 파일을 찾을 수 없습니다. 파일을 생성하고 서비스 계정을 초대했는지 확인하세요.")
+        return None
     
+    # 2. 월별 탭(워크시트) 확인 및 생성
     try:
         ws = sh.worksheet(sheet_name)
-    except:
-        ws = sh.add_worksheet(title=sheet_name, rows="10000", cols="44")
+    except gspread.WorksheetNotFound:
+        # 탭이 없으면 새로 생성하고 헤더 추가
+        ws = sh.add_worksheet(title=sheet_name, rows="1000", cols="44")
         ws.append_row(HEADER_KOR)
         print(f"  └ 📑 새 탭 생성됨: {sheet_name}")
     return ws
@@ -94,14 +96,11 @@ def main():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
 
-    # 2021년부터 2025년까지 반복
-    # [주의] API 한도 때문에 연도별로 나눠서 실행하는 것을 추천 (예: range(2021, 2022))
     start_year = int(os.environ.get('START_YEAR', 2021))
     end_year = int(os.environ.get('END_YEAR', 2025))
 
     for yr in range(start_year, end_year + 1):
         for month in range(1, 13):
-            # 시작일/종료일 계산
             s_date = f"{yr}{month:02d}01"
             if month == 12:
                 e_date = f"{yr}1231"
@@ -109,14 +108,17 @@ def main():
                 e_date = (datetime.date(yr, month + 1, 1) - datetime.timedelta(days=1)).strftime("%Y%m%d")
             
             print(f"📅 [{yr}년 {month}월] 수집 시작...")
-            ws = get_or_create_sheet(client, yr, month)
             
+            ws = get_shared_sheet(client, yr, month)
+            if ws is None: 
+                continue # 파일을 못 찾으면 다음 달로 건너뜀
+
             for kw in keywords:
                 data = fetch_all_pages_data(kw, s_date, e_date)
                 if data:
                     ws.append_rows(data)
                     print(f"   ✅ {kw}: {len(data)}건 저장 완료")
-                time.sleep(0.3) # 키워드 간 간격
+                time.sleep(0.3)
 
 if __name__ == "__main__":
     main()
