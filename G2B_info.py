@@ -8,7 +8,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
 
-# --- 1. 226개 광역+기초 통합 리스트 (표준 지자체 명칭) ---
+# --- 1. 226개 광역+기초 통합 리스트 ---
 FULL_DISTRICT_LIST = [
     "서울특별시 종로구", "서울특별시 중구", "서울특별시 용산구", "서울특별시 성동구", "서울특별시 광진구", "서울특별시 동대문구", "서울특별시 중랑구", "서울특별시 성북구", "서울특별시 강북구", "서울특별시 도봉구", "서울특별시 노원구", "서울특별시 은평구", "서울특별시 서대문구", "서울특별시 마포구", "서울특별시 양천구", "서울특별시 강서구", "서울특별시 구로구", "서울특별시 금천구", "서울특별시 영등포구", "서울특별시 동작구", "서울특별시 관악구", "서울특별시 서초구", "서울특별시 강남구", "서울특별시 송파구", "서울특별시 강동구",
     "부산광역시 중구", "부산광역시 서구", "부산광역시 동구", "부산광역시 영도구", "부산광역시 부산진구", "부산광역시 동래구", "부산광역시 남구", "부산광역시 북구", "부산광역시 해운대구", "부산광역시 사하구", "부산광역시 금정구", "부산광역시 강서구", "부산광역시 연제구", "부산광역시 수영구", "부산광역시 사상구", "부산광역시 기장군",
@@ -55,7 +55,6 @@ def is_pure_district(agency_name, district_list):
         '읍', '면', '동', '박물관', '사업단', '관리소', '휴양림', '미술관', '체육시설', '상하수도'
     ]
     agency_name = str(agency_name).strip()
-    
     for dist in district_list:
         if dist in agency_name:
             if any(key in agency_name for key in exclude_keywords):
@@ -93,31 +92,29 @@ def calculate_logic(row):
             base_date = cntrct_date if (this_days == total_days and this_days > 0) else start_date
             if base_date and total_days > 0:
                 final_expire_dt = base_date + relativedelta(days=total_days)
-            else:
-                return "정보부족", "정보부족"
+            else: return "정보부족", "정보부족"
 
         today = datetime.now()
         expire_str = final_expire_dt.strftime('%Y-%m-%d')
-        if final_expire_dt < today:
-            remain_str = "만료됨"
+        if final_expire_dt < today: remain_str = "만료됨"
         else:
             diff = relativedelta(final_expire_dt, today)
             months = diff.years * 12 + diff.months
             remain_str = f"{months}개월 {diff.days}일"
         return expire_str, remain_str
-    except:
-        return "계산불가", "오류"
+    except: return "계산불가", "오류"
 
 # --- 5. 스트림릿 메인 ---
 st.set_page_config(layout="wide")
-st.title("🏛️ 전국 지자체별 유지관리 계약 현황")
+st.title("🏛️ 전국 지자체별 유지관리/통합관제 계약 현황")
 
 try:
     df = get_data_from_gsheet()
 
     if not df.empty:
-        # 1. 유지보수 필터
+        # 1. 필터링: 계약명에 "유지" 그리고 "통합관제" 포함된 것만
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
+        df = df[df['★가공_계약명'].str.contains("통합관제", na=False)]
 
         # 2. 본청 필터링
         df = df[df['★가공_수요기관'].apply(lambda x: is_pure_district(x, FULL_DISTRICT_LIST))]
@@ -130,22 +127,24 @@ try:
         df = df.sort_values(by=['★가공_수요기관', 'temp_date'], ascending=[True, False])
         df = df.drop_duplicates(subset=['★가공_수요기관'], keep='first')
 
-        # 5. 금액 숫자 변환 (중요: 천단위 콤마 서식을 위해 숫자로 변환)
-        def clean_amount(val):
+        # 5. 금액 숫자 변환 (중요: 천단위 콤마 서식을 위해 데이터 타입을 int로 강제 변환)
+        def convert_to_int(val):
             try:
-                return int(re.sub(r'[^0-9]', '', str(val)))
+                # 숫자 외 문자 제거 후 정수 변환
+                num_str = re.sub(r'[^0-9]', '', str(val))
+                return int(num_str) if num_str else 0
             except:
                 return 0
-        df['★가공_계약금액'] = df['★가공_계약금액'].apply(clean_amount)
+        
+        df['★가공_계약금액'] = df['★가공_계약금액'].apply(convert_to_int)
 
         # 6. 상단 요약 통계 (광역자치단체별 개수)
-        # 수요기관명에서 첫 단어(광역) 추출
         df['광역단위'] = df['★가공_수요기관'].apply(lambda x: str(x).split()[0])
         summary = df.groupby('광역단위').size().reset_index(name='데이터 개수')
         
-        st.subheader("📊 광역자치단체별 현황")
-        # 가로로 길게 보여주기 위해 컬럼 활용
-        cols = st.columns(len(summary))
+        st.subheader("📊 지역별 분석 현황")
+        # 데이터가 있는 광역단체만 표시
+        cols = st.columns(max(len(summary), 1))
         for i, row in summary.iterrows():
             cols[i].metric(row['광역단위'], f"{row['데이터 개수']}건")
 
@@ -163,7 +162,8 @@ try:
         final_df.columns = [c.replace('★가공_', '') for c in final_df.columns]
         final_df.columns = [c.replace('계약상세정보URL', 'URL') for c in final_df.columns]
 
-        # 8. 표 출력 (천 단위 콤마 서식: {:,})
+        # 8. 표 출력 (천 단위 콤마 서식: format="#,###")
+        # height=800으로 설정하여 스크롤 가능하게 함
         st.dataframe(
             final_df,
             column_config={
@@ -175,7 +175,7 @@ try:
             height=800
         )
     else:
-        st.warning("표출할 데이터가 없습니다.")
+        st.warning("표출할 데이터가 없습니다. (계약명에 '유지' 및 '통합관제'가 포함되어 있는지 확인하세요)")
 
 except Exception as e:
     st.error(f"대시보드 실행 중 오류 발생: {e}")
