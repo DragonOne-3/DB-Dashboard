@@ -39,12 +39,13 @@ def fetch_g2b_data_by_period(start_date, end_date):
                 'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': start_date, 'inqryEndDate': end_date, 'cntrctNm': kw
             }
             try:
-                # 타임아웃을 60초로 늘리고 재시도 로직 추가
-                res = requests.get(API_URL, params=params, timeout=60)
+                # 타임아웃을 충분히 주고, 스트리밍 방식으로 데이터를 받지 않도록 처리
+                res = requests.get(API_URL, params=params, timeout=90)
                 
-                if not res.text.strip().startswith('<?xml'):
-                    # 데이터가 잘려서 들어오는 경우 대비
-                    print(f"      ⚠️ {kw}: 응답이 불완전함. (내용 일부: {res.text[:50]}...)")
+                # XML이 불완전하게 끝나는지 체크 (가장 마지막 태그 확인)
+                content = res.text.strip()
+                if not content.endswith('</response>'):
+                    print(f"      ⚠️ {kw}: 데이터 잘림 발생(페이지 {page_no}). 기간을 더 좁혀야 할 수 있습니다.")
                     break
                     
                 root = ET.fromstring(res.content)
@@ -55,7 +56,6 @@ def fetch_g2b_data_by_period(start_date, end_date):
                     raw_dict = {child.tag: child.text for child in item}
                     cntrct_nm = raw_dict.get('cntrctNm', '')
                     
-                    # 데이터 가공
                     demand = clean_name(raw_dict.get('dminsttList', ''), 2)
                     corp = clean_name(raw_dict.get('corpList', ''), 3)
                     c_date = raw_dict.get('cntrctDate') or raw_dict.get('cntrctCnclsDate') or '00000000'
@@ -84,10 +84,17 @@ def fetch_g2b_data_by_period(start_date, end_date):
                     processed_dict.update(raw_dict)
                     period_rows.append(processed_dict)
                 
-                total_count = int(root.find('.//totalCount').text)
-                if page_no * 999 >= total_count: break
+                total_count_node = root.find('.//totalCount')
+                if total_count_node is not None:
+                    total_count = int(total_count_node.text)
+                    if page_no * 999 >= total_count: break
+                else: break
+                
                 page_no += 1
-                time.sleep(0.5) # 서버 부하 방지 간격 확대
+                time.sleep(1) # 서버 부하 방지
+            except ET.ParseError:
+                print(f"      ❌ {kw}: XML 파싱 에러 (데이터가 도중에 끊김)")
+                break
             except Exception as e:
                 print(f"      ❌ 오류: {e}")
                 break
@@ -100,18 +107,15 @@ def main():
         sh = client.open("나라장터_용역계약내역")
         ws = sh.get_worksheet(0)
         
-        # --- 기간을 1개월 단위로 쪼개기 ---
+        # --- 기간을 '7일' 단위로 쪼개기 ---
         start_date = datetime(2024, 1, 1)
         end_date = datetime.now() - timedelta(days=1)
         
         current_date = start_date
         while current_date <= end_date:
             chunk_start = current_date.strftime("%Y%m%d")
-            # 이번 달의 마지막 날 계산
-            if current_date.month == 12:
-                chunk_end_dt = datetime(current_date.year, 12, 31)
-            else:
-                chunk_end_dt = datetime(current_date.year, current_date.month + 1, 1) - timedelta(days=1)
+            # 7일 후 날짜 계산
+            chunk_end_dt = current_date + timedelta(days=6)
             
             if chunk_end_dt > end_date:
                 chunk_end_dt = end_date
@@ -129,13 +133,10 @@ def main():
                 else:
                     ws.append_rows(df.values.tolist())
                 print(f"   ✅ {len(df)}건 시트 저장 완료.")
-                time.sleep(2) # 구글 API 할당량 관리
+                time.sleep(3) # 구글 시트 API 할당량 관리 (매우 중요)
             
-            # 다음 달로 이동
-            if current_date.month == 12:
-                current_date = datetime(current_date.year + 1, 1, 1)
-            else:
-                current_date = datetime(current_date.year, current_date.month + 1, 1)
+            # 다음 구간(7일 후)으로 이동
+            current_date = chunk_end_dt + timedelta(days=1)
 
         print("🎊 모든 작업이 완료되었습니다.")
 
