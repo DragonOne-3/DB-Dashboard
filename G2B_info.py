@@ -149,13 +149,13 @@ try:
         
         final_df.columns = [c.replace('★가공_', '') for c in final_df.columns]
         final_df.columns = [c.replace('계약상세정보URL', 'URL') for c in final_df.columns]
-        st.column_config.NumberColumn = "{:,}".format(st.column_config.NumberColumn)
+        
         # 8. 표 출력 (천 단위 콤마 서식: ,d)
         st.dataframe(
             final_df,
             column_config={
                 "URL": st.column_config.LinkColumn("상세정보"),
-                "계약금액": st.column_config.NumberColumn("계약금액(원)"),
+                "계약금액": st.column_config.NumberColumn("계약금액(원)",format="localized"),
             },
             use_container_width=True,
             hide_index=True,
