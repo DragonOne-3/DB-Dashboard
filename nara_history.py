@@ -116,12 +116,12 @@ def fetch_g2b_data_by_period(start_date, end_date):
 
 def main():
     try:
+        print("🔗 구글 시트 연결 시도 중...")
         client = get_gspread_client()
+        # 시트 파일명이 정확한지 확인 (띄어쓰기 주의)
         sh = client.open("나라장터_용역계약내역")
         ws = sh.get_worksheet(0)
         
-        # --- 기간 분할 로직 (1년 단위로 리스트 생성) ---
-        # 2024년 전체, 2025년 전체, 2026년 현재까지
         date_chunks = [
             ("20240101", "20241231"),
             ("20250101", "20251231"),
@@ -129,26 +129,33 @@ def main():
         ]
         
         for start, end in date_chunks:
-            print(f"🚀 {start} ~ {end} 기간 데이터 수집 시작...")
+            print(f"🚀 {start} ~ {end} 데이터 수집 시작...")
             data_list = fetch_g2b_data_by_period(start, end)
             
             if data_list:
                 df = pd.DataFrame(data_list).fillna('')
                 existing_values = ws.get_all_values()
                 
+                # 리스트 변환 시 안전하게 처리
+                rows_to_append = df.values.tolist()
+                
                 if not existing_values:
-                    ws.update([df.columns.values.tolist()] + df.values.tolist())
+                    ws.update([df.columns.values.tolist()] + rows_to_append)
                 else:
-                    ws.append_rows(df.values.tolist())
-                print(f"✅ {start}~{end} 기간 {len(df)}건 저장 완료.\n")
-                time.sleep(1) # 시트 API 과부하 방지
+                    ws.append_rows(rows_to_append)
+                print(f"✅ {start}~{end} 저장 완료 ({len(df)}건)")
+                time.sleep(1.5) 
             else:
-                print(f"ℹ️ {start}~{end} 기간 데이터 없음.\n")
+                print(f"ℹ️ {start}~{end} 기간 데이터가 없습니다.")
 
-        print("🎊 모든 기간 데이터 축적이 완료되었습니다.")
-
+    except gspread.exceptions.SpreadsheetNotFound:
+        print("❌ 오류: '나라장터_용역계약내역' 시트를 찾을 수 없습니다. 이름을 확인하세요.")
+    except gspread.exceptions.APIError as e:
+        print(f"❌ 구글 시트 API 오류: {e}")
     except Exception as e:
-        print(f"❌ 시스템 오류: {e}")
+        print("❌ 시스템 상세 오류 내역:")
+        # 이 부분이 Response [200] 대신 실제 에러 원인을 찍어줍니다.
+        traceback.print_exc() 
 
 if __name__ == "__main__":
     main()
