@@ -46,75 +46,101 @@ def get_data_from_gsheet():
     except Exception as e:
         st.error(f"❌ 시트 로드 중 오류: {e}")
         return pd.DataFrame()
-def calculate_dates(row):
+def calculate_remain_period(row):
+    """오늘 날짜 기준으로 계약 만료일까지 남은 기간 계산"""
     try:
-        # 날짜 및 기간 데이터 추출
-        c_date_raw = str(row.get('cntrctDate', ''))[:8]
-        s_date_raw = str(row.get('wbgnDate', ''))[:8]
-        prd = str(row.get('cntrctPrd', ''))
+        # 1. 만료일 가져오기 (시트의 '계약만료일' 컬럼 사용)
+        expire_raw = str(row.get('계약만료일', ''))
+        # 2. 날짜 형식 추출 (YYYY-MM-DD 또는 YYYYMMDD 등)
+        expire_date_str = re.sub(r'[^0-9]', '', expire_raw)
         
-        c_date = pd.to_datetime(c_date_raw, errors='coerce')
-        s_date = pd.to_datetime(s_date_raw, errors='coerce')
-
-        expire_date = None
-        # 1. 만료일(prd)이 이미 날짜(8자리 숫자)인 경우
-        if len(prd) >= 8 and prd.isdigit():
-            expire_date = pd.to_datetime(prd[:8], errors='coerce')
-        # 2. 만료일이 일수(N일) 형태인 경우 계산
-        elif prd:
-            days_val = int(re.sub(r'[^0-9]', '', prd))
-            thtm = row.get('thtmCntrctAmt', 0)
-            ttal = row.get('totCntrctAmt', 0)
-            # 조건: 금차와 총차가 같으면 계약일 기준, 다르면 착수일 기준
-            base_date = c_date if thtm == ttal else s_date
-            if pd.notnull(base_date):
-                expire_date = base_date + pd.Timedelta(days=days_val)
-        
-        if pd.isnull(expire_date): return None, "정보없음"
-
-        # 3. 남은 기간 계산
+        if len(expire_date_str) < 8:
+            return "정보부족"
+            
+        expire_date = datetime.strptime(expire_date_str[:8], "%Y%m%d")
         today = datetime.now()
-        diff = relativedelta(expire_date, today)
-        if expire_date < today: return expire_date.strftime('%Y-%m-%d'), "만료됨"
         
-        return expire_date.strftime('%Y-%m-%d'), f"{diff.years*12 + diff.months}개월 {diff.days}일"
-    except: return None, "계산불가"
+        if expire_date < today:
+            return "만료됨"
+            
+        # 3. M개월 D일 계산
+        diff = relativedelta(expire_date, today)
+        months = diff.years * 12 + diff.months
+        return f"{months}개월 {diff.days}일"
+    except:
+        return "계산불가"
 
-# --- 스트림릿 메인 ---
-st.set_page_config(layout="wide", page_title="지자체 용역현황")
-st.title("🏛️ 전국 기초자치단체 용역 계약 모니터링")
-
-try:
-    # 데이터 로드
+def load_data():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(auth_json), ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
-    ws = gspread.authorize(creds).open("나라장터_용역계약내역").get_worksheet(0)
-    df = pd.DataFrame(ws.get_all_records())
+    if not auth_json:
+        st.error("Secrets에 GOOGLE_AUTH_JSON 설정이 필요합니다.")
+        return pd.DataFrame()
 
-    # 1. 필터링: 광역+기초 명칭이 포함된 지자체만
-    df = df[df['★가공_수요기관'].apply(lambda x: any(d in x for d in FULL_DISTRICT_LIST))]
+    try:
+        creds_dict = json.loads(auth_json)
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        
+        sh = client.open("나라장터_용역계약내역")
+        ws = sh.get_worksheet(0)
+        
+        # 데이터 로드 (첫 줄을 제목으로 인식)
+        data = ws.get_all_records()
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"데이터 로드 오류: {e}")
+        return pd.DataFrame()
 
-    # 2. 날짜 및 잔여 기간 계산
-    df[['계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_dates(r)), axis=1)
+# --- 화면 구성 ---
+st.set_page_config(layout="wide", page_title="지자체 계약정보")
+st.title("🏛️ 전국 기초자치단체 용역 계약 현황")
 
-    # 3. 기관별 가장 최근 계약건(cntrctDate 기준)만 유지
-    df['cntrctDate_dt'] = pd.to_datetime(df['cntrctDate'].astype(str).str[:8], errors='coerce')
-    df = df.sort_values(by=['★가공_수요기관', 'cntrctDate_dt'], ascending=[True, False])
-    df = df.drop_duplicates(subset=['★가공_수요기관'], keep='first')
+df = load_data()
 
-    # 4. 표출 데이터 구성
-    display_df = df[[
-        '★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액',
-        '★가공_계약일', '★가공_착수일', '계약만료일', '남은기간', 'cntrctDtlInfoUrl'
-    ]].copy()
-    display_df.columns = ['수요기관', '계약명', '업체명', '계약금액(원)', '계약일자', '착수일자', '계약만료일', '남은기간', '상세URL']
+if not df.empty:
+    try:
+        # 1. 기초자치단체 필터링 (광역+기초 명칭 포함 여부)
+        # 시트의 컬럼명이 '수요기관'이라고 가정합니다. (아까 바꾸신 이름 확인)
+        target_col = '수요기관' if '수요기관' in df.columns else '★가공_수요기관'
+        
+        df = df[df[target_col].apply(lambda x: any(dist in str(x) for dist in FULL_DISTRICT_LIST))]
 
-    # 5. 표출 (수요기관 기준 정렬 및 정렬 기능 지원)
-    st.dataframe(
-        display_df,
-        column_config={"상세URL": st.column_config.LinkColumn("링크")},
-        use_container_width=True, hide_index=True
-    )
+        # 2. 남은 기간 실시간 계산
+        df['남은기간'] = df.apply(calculate_remain_period, axis=1)
 
-except Exception as e:
-    st.error(f"데이터 로드 오류: {e}")
+        # 3. 동일 지자체 내 최근 계약일자 데이터만 남기기
+        # 시트의 컬럼명이 '계약일자'라고 가정합니다.
+        date_col = '계약일자' if '계약일자' in df.columns else '★가공_계약일'
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        
+        df = df.sort_values(by=[target_col, date_col], ascending=[True, False])
+        df = df.drop_duplicates(subset=[target_col], keep='first')
+
+        # 4. 최종 표출 데이터 정리 (요청하신 순서)
+        # 컬럼명이 시트와 정확히 일치해야 합니다.
+        display_cols = [
+            target_col, '계약명', '업체명', '계약금액', 
+            date_col, '착수일자', '계약만료일', '남은기간', '상세URL'
+        ]
+        
+        # 시트에 존재하지 않는 컬럼이 있을 경우를 대비한 안전 처리
+        final_cols = [c for c in display_cols if c in df.columns or c == '남은기간']
+        result_df = df[final_cols].copy()
+
+        # 5. 테이블 출력 (각 항목 정렬 가능)
+        st.dataframe(
+            result_df,
+            column_config={
+                "상세URL": st.column_config.LinkColumn("계약상세정보URL"),
+                "계약금액": st.column_config.NumberColumn(format="%d원"),
+                date_col: st.column_config.DateColumn("계약일자")
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+
+    except Exception as e:
+        st.error(f"데이터 처리 중 오류: {e}")
+else:
+    st.info("데이터를 불러오는 중이거나 시트가 비어있습니다.")
