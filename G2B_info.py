@@ -7,9 +7,9 @@ import os
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
-import io  # 다운로드 버퍼 생성을 위해 필요
+import io
 
-# --- 1. 226개 광역+기초 통합 리스트 (중략) ---
+# --- 1. 226개 광역+기초 통합 리스트 ---
 FULL_DISTRICT_LIST = [
     "서울특별시 종로구", "서울특별시 중구", "서울특별시 용산구", "서울특별시 성동구", "서울특별시 광진구", "서울특별시 동대문구", "서울특별시 중랑구", "서울특별시 성북구", "서울특별시 강북구", "서울특별시 도봉구", "서울특별시 노원구", "서울특별시 은평구", "서울특별시 서대문구", "서울특별시 마포구", "서울특별시 양천구", "서울특별시 강서구", "서울특별시 구로구", "서울특별시 금천구", "서울특별시 영등포구", "서울특별시 동작구", "서울특별시 관악구", "서울특별시 서초구", "서울특별시 강남구", "서울특별시 송파구", "서울특별시 강동구",
     "부산광역시 중구", "부산광역시 서구", "부산광역시 동구", "부산광역시 영도구", "부산광역시 부산진구", "부산광역시 동래구", "부산광역시 남구", "부산광역시 북구", "부산광역시 해운대구", "부산광역시 사하구", "부산광역시 금정구", "부산광역시 강서구", "부산광역시 연제구", "부산광역시 수영구", "부산광역시 사상구", "부산광역시 기장군",
@@ -30,7 +30,7 @@ FULL_DISTRICT_LIST = [
     "제주특별자치도 제주시", "제주특별자치도 서귀포시"
 ]
 
-# --- 2~4 함수 부분 (기존과 동일) ---
+# --- 2~4 함수 부분 ---
 def get_data_from_gsheet():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
     if auth_json is None:
@@ -100,6 +100,7 @@ st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
 try:
     df = get_data_from_gsheet()
     if not df.empty:
+        # 데이터 전처리
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
         df = df[df['★가공_계약명'].str.contains("통합관제", na=False)]
         df = df[df['★가공_수요기관'].apply(lambda x: is_pure_district(x, FULL_DISTRICT_LIST))]
@@ -108,35 +109,41 @@ try:
         df = df.sort_values(by=['★가공_수요기관', 'temp_date'], ascending=[True, False])
         df = df.drop_duplicates(subset=['★가공_수요기관'], keep='first')
         df['★가공_계약금액'] = pd.to_numeric(df['★가공_계약금액'], errors='coerce').fillna(0).astype(int)
-
-        # 상단 요약
         df['광역단위'] = df['★가공_수요기관'].apply(lambda x: str(x).split()[0])
-        summary = df.groupby('광역단위').size().reset_index(name='개수')
-        st.subheader("📊 광역자치단체별 분석 현황")
-        summary_cols = st.columns(len(summary) if len(summary) > 0 else 1)
-        for idx, row in summary.iterrows():
-            summary_cols[idx].metric(row['광역단위'], f"{row['개수']}건")
-        st.divider()
 
-        # 데이터 최종 정리
+        # --- 상단 필터 UI (전국 + 광역자치단체) ---
+        st.subheader("📍 지역별 필터 선택")
+        region_list = ["전국"] + sorted(df['광역단위'].unique().tolist())
+        
+        # 버튼 스타일의 필터 (Radio 활용)
+        selected_region = st.radio("지역을 선택하세요:", region_list, horizontal=True)
+
+        # 필터링 적용
+        if selected_region == "전국":
+            filtered_df = df.copy()
+        else:
+            filtered_df = df[df['광역단위'] == selected_region].copy()
+
+        # 요약 통계 출력 (필터링된 결과 기준)
+        st.divider()
+        st.write(f"### 📊 {selected_region} 분석 현황 (총 {len(filtered_df)}건)")
+        
+        # 데이터 정리
         display_cols = ['★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL']
-        existing_cols = [c for c in display_cols if c in df.columns or c in ['★가공_계약만료일', '남은기간']]
-        final_df = df[existing_cols].copy()
+        existing_cols = [c for c in display_cols if c in filtered_df.columns or c in ['★가공_계약만료일', '남은기간']]
+        final_df = filtered_df[existing_cols].copy()
         final_df.columns = [c.replace('★가공_', '') for c in final_df.columns]
         final_df.columns = [c.replace('계약상세정보URL', 'URL') for c in final_df.columns]
 
-
-        
-    # --- 📥 CSV 다운로드 버튼 (라이브러리 추가 설치 불필요) ---
-        # 한글 깨짐 방지를 위해 utf-8-sig 인코딩 사용
+        # --- 📥 CSV 다운로드 버튼 ---
         csv_data = final_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         
         col1, col2 = st.columns([0.8, 0.2])
         with col2:
             st.download_button(
-                label="📥 데이터 다운로드(CSV)",
+                label=f"📥 {selected_region} 데이터 다운로드(CSV)",
                 data=csv_data,
-                file_name=f"계약현황_{datetime.now().strftime('%Y%m%d')}.csv",
+                file_name=f"계약현황_{selected_region}_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv"
             )
 
