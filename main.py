@@ -73,11 +73,10 @@ def fetch_data(kw, d_str):
     return []
 
 def fetch_and_generate_servc_html():
-    """어제 날짜 기준 용역 계약 내역 수집 및 HTML 표 생성"""
+    """어제 날짜 기준 용역 계약 내역 수집 및 데이터 정제"""
     api_key = os.environ.get('DATA_GO_KR_API_KEY')
     api_url = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     
-    # 조회 날짜 설정 (어제)
     yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
     target_date_str = yesterday.strftime("%Y%m%d")
     display_date_str = yesterday.strftime("%Y-%m-%d")
@@ -88,12 +87,8 @@ def fetch_and_generate_servc_html():
     for kw in keywords:
         params = {
             'serviceKey': api_key,
-            'pageNo': '1',
-            'numOfRows': '999',
-            'inqryDiv': '1',
-            'type': 'xml',
-            'inqryBgnDate': target_date_str,
-            'inqryEndDate': target_date_str,
+            'pageNo': '1', 'numOfRows': '999', 'inqryDiv': '1',
+            'type': 'xml', 'inqryBgnDate': target_date_str, 'inqryEndDate': target_date_str,
             'cntrctNm': kw
         }
         try:
@@ -102,10 +97,24 @@ def fetch_and_generate_servc_html():
                 root = ET.fromstring(res.content)
                 items = root.findall('.//item')
                 for item in items:
+                    # --- 데이터 정제 로직 ---
+                    raw_demand = item.findtext('dminsttList', '-')
+                    raw_corp = item.findtext('corpList', '-')
+                    
+                    # 2. 수요기관명 추출 (두번째 ^ 와 세번째 ^ 사이)
+                    # 예: [1^3590000^광주광역시 동구^...] -> 광주광역시 동구
+                    demand_match = re.search(r'[^^\s]+\^[^^\s]+\^([^^\^]+)', raw_demand)
+                    clean_demand = demand_match.group(1) if demand_match else raw_demand
+                    
+                    # 3. 업체명 추출 (세번째 ^ 와 네번째 ^ 사이)
+                    # 예: [1^주계약업체^단독^아마노코리아(주)^...] -> 아마노코리아(주)
+                    corp_match = re.search(r'[^^\s]+\^[^^\s]+\^[^^\s]+\^([^^\^]+)', raw_corp)
+                    clean_corp = corp_match.group(1) if corp_match else raw_corp
+
                     collected_data.append({
-                        'demand': item.findtext('dminsttList', '-'),
+                        'demand': clean_demand,
                         'name': item.findtext('cntrctNm', '-'),
-                        'corp': item.findtext('corpList', '-'),
+                        'corp': clean_corp,
                         'amount': int(item.findtext('totCntrctAmt', '0'))
                     })
         except Exception as e:
