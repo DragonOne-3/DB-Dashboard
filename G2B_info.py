@@ -46,101 +46,111 @@ def get_data_from_gsheet():
     except Exception as e:
         st.error(f"❌ 시트 로드 중 오류: {e}")
         return pd.DataFrame()
-def calculate_remain_period(row):
-    """오늘 날짜 기준으로 계약 만료일까지 남은 기간 계산"""
+# --- 1. 지자체 본청 필터링 함수 (센터, 보건소 등 제외) ---
+def is_pure_district(agency_name, district_list):
+    exclude_keywords = ['센터', '보건소', '소장', '사업소', '의회', '도서관', '공원', '본부', '학교', '연구소']
+    agency_name = str(agency_name)
+    for dist in district_list:
+        if dist in agency_name:
+            if any(key in agency_name for key in exclude_keywords):
+                return False
+            return True
+    return False
+
+def parse_date(date_val):
+    if not date_val: return None
+    clean_val = re.sub(r'[^0-9]', '', str(date_val))
+    if len(clean_val) >= 8:
+        try:
+            return datetime.strptime(clean_val[:8], "%Y%m%d")
+        except: return None
+    return None
+
+def calculate_logic(row):
+    """계약기간 내 금차/총차 일수를 비교하여 만료일 계산"""
     try:
-        # 1. 만료일 가져오기 (시트의 '계약만료일' 컬럼 사용)
-        expire_raw = str(row.get('계약만료일', ''))
-        # 2. 날짜 형식 추출 (YYYY-MM-DD 또는 YYYYMMDD 등)
-        expire_date_str = re.sub(r'[^0-9]', '', expire_raw)
+        cntrct_date = parse_date(row.get('계약일자'))
+        start_date = parse_date(row.get('착수일자'))
+        period_raw = str(row.get('계약기간', '')) # 시트의 계약기간 컬럼 (금차/총차 섞인 곳)
+
+        # 1. '금차'와 '총차' 뒤의 숫자 추출
+        # 예: "금차:300일, 총차:700일" -> 금차 300, 총차 700 추출
+        this_match = re.search(r'금차\s*[:\s]*(\d+)', period_raw)
+        total_match = re.search(r'총차\s*[:\s]*(\d+)', period_raw) or re.search(r'총용역\s*[:\s]*(\d+)', period_raw)
         
-        if len(expire_date_str) < 8:
-            return "정보부족"
+        this_days = int(this_match.group(1)) if this_match else 0
+        total_days = int(total_match.group(1)) if total_match else 0
+        
+        # 만약 텍스트 형식이 아니라 그냥 숫자만(YYYYMMDD) 적혀 있는 경우 처리
+        if not this_days and len(re.sub(r'[^0-9]', '', period_raw)) >= 8:
+            final_expire_dt = parse_date(period_raw)
+        else:
+            # 2. 로직 적용: 금차 == 총차 -> 계약일 기준 / 다르면 -> 착수일 기준
+            # 기준일에 '총차' 일수를 더함
+            base_date = cntrct_date if (this_days == total_days and this_days > 0) else start_date
             
-        expire_date = datetime.strptime(expire_date_str[:8], "%Y%m%d")
+            if base_date and total_days > 0:
+                final_expire_dt = base_date + relativedelta(days=total_days)
+            else:
+                return "정보부족", "정보부족"
+
+        # 3. 남은 기간 계산
         today = datetime.now()
+        expire_str = final_expire_dt.strftime('%Y-%m-%d')
         
-        if expire_date < today:
-            return "만료됨"
+        if final_expire_dt < today:
+            remain_str = "만료됨"
+        else:
+            diff = relativedelta(final_expire_dt, today)
+            months = diff.years * 12 + diff.months
+            remain_str = f"{months}개월 {diff.days}일"
             
-        # 3. M개월 D일 계산
-        diff = relativedelta(expire_date, today)
-        months = diff.years * 12 + diff.months
-        return f"{months}개월 {diff.days}일"
-    except:
-        return "계산불가"
-
-def load_data():
-    auth_json = os.environ.get('GOOGLE_AUTH_JSON')
-    if not auth_json:
-        st.error("Secrets에 GOOGLE_AUTH_JSON 설정이 필요합니다.")
-        return pd.DataFrame()
-
-    try:
-        creds_dict = json.loads(auth_json)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        
-        sh = client.open("나라장터_용역계약내역")
-        ws = sh.get_worksheet(0)
-        
-        # 데이터 로드 (첫 줄을 제목으로 인식)
-        data = ws.get_all_records()
-        return pd.DataFrame(data)
+        return expire_str, remain_str
     except Exception as e:
-        st.error(f"데이터 로드 오류: {e}")
-        return pd.DataFrame()
+        return "계산불가", f"오류"
 
-# --- 화면 구성 ---
-st.set_page_config(layout="wide", page_title="지자체 계약정보")
-st.title("🏛️ 전국 기초자치단체 용역 계약 현황")
+# --- 메인 실행 ---
+st.set_page_config(layout="wide")
+st.title("🏛️ 전국 지자체별 최신 용역 계약 현황")
 
-df = load_data()
+try:
+    auth_json = os.environ.get('GOOGLE_AUTH_JSON')
+    creds_dict = json.loads(auth_json)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
+    ws = gspread.authorize(creds).open("나라장터_용역계약내역").get_worksheet(0)
+    df = pd.DataFrame(ws.get_all_records())
 
-if not df.empty:
-    try:
-        # 1. 기초자치단체 필터링 (광역+기초 명칭 포함 여부)
-        # 시트의 컬럼명이 '수요기관'이라고 가정합니다. (아까 바꾸신 이름 확인)
-        target_col = '수요기관' if '수요기관' in df.columns else '★가공_수요기관'
-        
-        df = df[df[target_col].apply(lambda x: any(dist in str(x) for dist in FULL_DISTRICT_LIST))]
+    if not df.empty:
+        # 지자체 필터링 (FULL_DISTRICT_LIST 226개는 상단에 정의되어 있다고 가정)
+        df = df[df['가공_수요기관'].apply(lambda x: is_pure_district(x, FULL_DISTRICT_LIST))]
 
-        # 2. 남은 기간 실시간 계산
-        df['남은기간'] = df.apply(calculate_remain_period, axis=1)
+        # 계산 로직 적용 (계약기간 컬럼 기반)
+        df[['가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
 
-        # 3. 동일 지자체 내 최근 계약일자 데이터만 남기기
-        # 시트의 컬럼명이 '계약일자'라고 가정합니다.
-        date_col = '계약일자' if '계약일자' in df.columns else '★가공_계약일'
-        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-        
-        df = df.sort_values(by=[target_col, date_col], ascending=[True, False])
-        df = df.drop_duplicates(subset=[target_col], keep='first')
+        # 최신 데이터 1건 정렬 (가공_수요기관별)
+        df['temp_date'] = pd.to_datetime(df['계약일자'], errors='coerce')
+        df = df.sort_values(by=['가공_수요기관', 'temp_date'], ascending=[True, False])
+        df = df.drop_duplicates(subset=['가공_수요기관'], keep='first')
 
-        # 4. 최종 표출 데이터 정리 (요청하신 순서)
-        # 컬럼명이 시트와 정확히 일치해야 합니다.
+        # 컬럼 정리 및 표출
         display_cols = [
-            target_col, '계약명', '업체명', '계약금액', 
-            date_col, '착수일자', '계약만료일', '남은기간', '상세URL'
+            '가공_수요기관', '가공_계약명', '가공_업체명', '가공_계약금액', 
+            '계약일자', '착수일자', '가공_계약만료일', '남은기간', '계약상세정보URL'
         ]
         
-        # 시트에 존재하지 않는 컬럼이 있을 경우를 대비한 안전 처리
-        final_cols = [c for c in display_cols if c in df.columns or c == '남은기간']
-        result_df = df[final_cols].copy()
+        # 실제 시트에 있는 컬럼만 필터링해서 보여줌
+        existing_cols = [c for c in display_cols if c in df.columns or c in ['가공_계약만료일', '남은기간']]
+        final_df = df[existing_cols].copy()
+        
+        # 한글 제목으로 변경
+        final_df.columns = [c.replace('가공_', '') for c in final_df.columns]
+        final_df.columns = [c.replace('계약상세정보URL', 'URL') for c in final_df.columns]
 
-        # 5. 테이블 출력 (각 항목 정렬 가능)
         st.dataframe(
-            result_df,
-            column_config={
-                "상세URL": st.column_config.LinkColumn("계약상세정보URL"),
-                "계약금액": st.column_config.NumberColumn(format="%d원"),
-                date_col: st.column_config.DateColumn("계약일자")
-            },
+            final_df,
+            column_config={"URL": st.column_config.LinkColumn("상세정보")},
             use_container_width=True,
             hide_index=True
         )
-
-    except Exception as e:
-        st.error(f"데이터 처리 중 오류: {e}")
-else:
-    st.info("데이터를 불러오는 중이거나 시트가 비어있습니다.")
+except Exception as e:
+    st.error(f"데이터 로드 실패: {e}")
