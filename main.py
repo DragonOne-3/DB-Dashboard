@@ -70,7 +70,7 @@ def fetch_and_generate_servc_html(target_dt):
     target_date_str = target_dt.strftime("%Y%m%d")
     display_date_str = target_dt.strftime("%Y-%m-%d")
     
-    keywords_servc = ['통합관제', 'CCTV', '영상감시장치']
+    keywords_servc = ['통합관제', 'CCTV', '영상감시장치','국방','경계','작전','부대','육군','공군','해군','무인']
     collected_data = []
 
     for kw in keywords_servc:
