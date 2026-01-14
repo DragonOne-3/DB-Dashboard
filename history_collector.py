@@ -6,7 +6,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # 1. 설정 정보
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY') # 환경변수 사용 권장
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
-FOLDER_ID = "여기에_폴더_ID를_넣으세요" # 파일을 모아둘 구글 드라이브 폴더 ID
+FOLDER_ID = "15bNYr38hSxYw5wh_P6TH--MI1CfQ9-M1" # 파일을 모아둘 구글 드라이브 폴더 ID
 
 # 국문 헤더 (총 39개 필드)
 HEADER_KOR = [
