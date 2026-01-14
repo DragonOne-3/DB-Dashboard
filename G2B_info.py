@@ -1,158 +1,103 @@
 import streamlit as st
-import requests
-import xml.etree.ElementTree as ET
 import pandas as pd
-from datetime import datetime, timedelta
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
 import os
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import re
-import time
 
-# --- 1. 설정 및 API 정보 ---
-API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
-API_URL = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
+# --- 226개 광역+기초 통합 리스트 (중복 이름 구분용) ---
+FULL_DISTRICT_LIST = [
+    "서울특별시 종로구", "서울특별시 중구", "서울특별시 용산구", "서울특별시 성동구", "서울특별시 광진구", "서울특별시 동대문구", "서울특별시 중랑구", "서울특별시 성북구", "서울특별시 강북구", "서울특별시 도봉구", "서울특별시 노원구", "서울특별시 은평구", "서울특별시 서대문구", "서울특별시 마포구", "서울특별시 양천구", "서울특별시 강서구", "서울특별시 구로구", "서울특별시 금천구", "서울특별시 영등포구", "서울특별시 동작구", "서울특별시 관악구", "서울특별시 서초구", "서울특별시 강남구", "서울특별시 송파구", "서울특별시 강동구",
+    "부산광역시 중구", "부산광역시 서구", "부산광역시 동구", "부산광역시 영도구", "부산광역시 부산진구", "부산광역시 동래구", "부산광역시 남구", "부산광역시 북구", "부산광역시 해운대구", "부산광역시 사하구", "부산광역시 금정구", "부산광역시 강서구", "부산광역시 연제구", "부산광역시 수영구", "부산광역시 사상구", "부산광역시 기장군",
+    "대구광역시 중구", "대구광역시 동구", "대구광역시 서구", "대구광역시 남구", "대구광역시 북구", "대구광역시 수성구", "대구광역시 달서구", "대구광역시 달성군", "대구광역시 군위군",
+    "인천광역시 중구", "인천광역시 동구", "인천광역시 미추홀구", "인천광역시 연수구", "인천광역시 남동구", "인천광역시 부평구", "인천광역시 계양구", "인천광역시 서구", "인천광역시 강화군", "인천광역시 옹진군",
+    "광주광역시 동구", "광주광역시 서구", "광주광역시 남구", "광주광역시 북구", "광주광역시 광산구",
+    "대전광역시 동구", "대전광역시 중구", "대전광역시 서구", "대전광역시 유성구", "대전광역시 대덕구",
+    "울산광역시 중구", "울산광역시 남구", "울산광역시 동구", "울산광역시 북구", "울산광역시 울주군",
+    "세종특별자치시",
+    "경기도 수원시", "경기도 성남시", "경기도 의정부시", "경기도 안양시", "경기도 부천시", "경기도 광명시", "경기도 평택시", "경기도 동두천시", "경기도 안산시", "경기도 고양시", "경기도 과천시", "경기도 구리시", "경기도 남양주시", "경기도 오산시", "경기도 시흥시", "경기도 군포시", "경기도 의왕시", "경기도 하남시", "경기도 용인시", "경기도 파주시", "경기도 이천시", "경기도 안성시", "경기도 김포시", "경기도 화성시", "경기도 광주시", "경기도 양주시", "경기도 포천시", "경기도 여주시", "경기도 연천군", "경기도 가평군", "경기도 양평군",
+    "강원특별자치도 춘천시", "강원특별자치도 원주시", "강원특별자치도 강릉시", "강원특별자치도 동해시", "강원특별자치도 태백시", "강원특별자치도 속초시", "강원특별자치도 삼척시", "강원특별자치도 홍천군", "강원특별자치도 횡성군", "강원특별자치도 영월군", "강원특별자치도 평창군", "강원특별자치도 정선군", "강원특별자치도 철원군", "강원특별자치도 화천군", "강원특별자치도 양구군", "강원특별자치도 인제군", "강원특별자치도 고성군", "강원특별자치도 양양군",
+    "충청북도 청주시", "충청북도 충주시", "충청북도 제천시", "충청북도 보은군", "충청북도 옥천군", "충청북도 영동군", "충청북도 증평군", "충청북도 진천군", "충청북도 괴산군", "충청북도 음성군", "충청북도 단양군",
+    "충청남도 천안시", "충청남도 공주시", "충청남도 보령시", "충청남도 아산시", "충청남도 서산시", "충청남도 논산시", "충청남도 계룡시", "충청남도 당진시", "충청남도 금산군", "충청남도 부여군", "충청남도 서천군", "충청남도 청양군", "충청남도 홍성군", "충청남도 예산군", "충청남도 태안군",
+    "전북특별자치도 전주시", "전북특별자치도 군산시", "전북특별자치도 익산시", "전북특별자치도 정읍시", "전북특별자치도 남원시", "전북특별자치도 김제시", "전북특별자치도 완주군", "전북특별자치도 진안군", "전북특별자치도 무주군", "전북특별자치도 장수군", "전북특별자치도 임실군", "전북특별자치도 순창군", "전북특별자치도 고창군", "전북특별자치도 부안군",
+    "전라남도 목포시", "전라남도 여수시", "전라남도 순천시", "전라남도 나주시", "전라남도 광양시", "전라남도 담양군", "전라남도 곡성군", "전라남도 구례군", "전라남도 고흥군", "전라남도 보성군", "전라남도 화순군", "전라남도 장흥군", "전라남도 강진군", "전라남도 해남군", "전라남도 영암군", "전라남도 무안군", "전라남도 함평군", "전라남도 영광군", "전라남도 장성군", "전라남도 완도군", "전라남도 진도군", "전라남도 신안군",
+    "경상북도 포항시", "경상북도 경주시", "경상북도 김천시", "경상북도 안동시", "경상북도 구미시", "경상북도 영주시", "경상북도 상주시", "경상북도 문경시", "경상북도 경산시", "경상북도 의성군", "경상북도 청송군", "경상북도 영양군", "경상북도 영덕군", "경상북도 청도군", "경상북도 고령군", "경상북도 성주군", "경상북도 칠곡군", "경상북도 예천군", "경상북도 봉화군", "경상북도 울진군", "경상북도 울릉군",
+    "경상남도 창원시", "경상남도 진주시", "경상남도 통영시", "경상남도 사천시", "경상남도 김해시", "경상남도 밀양시", "경상남도 거제시", "경상남도 양산시", "경상남도 의령군", "경상남도 함안군", "경상남도 창녕군", "경상남도 고성군", "경상남도 남해군", "경상남도 하동군", "경상남도 산청군", "경상남도 함양군", "경상남도 거창군", "경상남도 합천군",
+    "제주특별자치도 제주시", "제주특별자치도 서귀포시"
+]
 
-st.set_page_config(page_title="용역 유지보수 내역 조회", layout="wide")
-
-def clean_name(raw_text, index):
-    if not raw_text or '^' not in raw_text:
-        return raw_text
-    parts = raw_text.replace('[', '').replace(']', '').split('^')
-    return parts[index] if len(parts) > index else raw_text
-
-def fetch_api_data(start_date, end_date, keyword):
-    rows = []
-    page_no = 1
-    
-    while True:
-        params = {
-            'serviceKey': API_KEY,
-            'pageNo': str(page_no),
-            'numOfRows': '999',
-            'inqryDiv': '1', 
-            'type': 'xml',
-            'inqryBgnDate': start_date,
-            'inqryEndDate': end_date,
-            'cntrctNm': keyword
-        }
-        try:
-            res = requests.get(API_URL, params=params, timeout=30)
-            
-            # 1. HTTP 상태 코드 확인 (404, 500 등)
-            if res.status_code != 200:
-                st.error(f"❌ HTTP 오류 발생: 상태 코드 {res.status_code}")
-                st.expander("상세 응답 내용 보기").code(res.text)
-                break
-
-            # 2. XML 형식 확인 (가장 흔한 오류: HTML 에러 페이지가 올 때)
-            content = res.text.strip()
-            if not content.startswith('<?xml') and not content.startswith('<response'):
-                st.error(f"⚠️ API가 XML이 아닌 데이터를 반환했습니다. (키워드: {keyword})")
-                st.expander("실제 서버 응답 메시지 확인").code(content)
-                break
-                
-            root = ET.fromstring(res.content)
-            
-            # 3. 공공데이터포털 자체 에러 코드 확인 (인증키, 트래픽 초과 등)
-            result_code_el = root.find('.//resultCode')
-            if result_code_el is not None and result_code_el.text != '00':
-                msg = root.find('.//resultMsg').text if root.find('.//resultMsg') is not None else "알 수 없는 에러"
-                st.warning(f"🔔 API 서버 메시지: {msg} (코드: {result_code_el.text})")
-                break
-
-            items = root.findall('.//item')
-            if not items:
-                break
-            
-            for item in items:
-                cntrct_nm = item.findtext('cntrctNm', '')
-                if '유지' in cntrct_nm.replace(" ", ""):
-                    demand = clean_name(item.findtext('dminsttList', ''), 2)
-                    corp = clean_name(item.findtext('corpList', ''), 3)
-                    c_date = item.findtext('cntrctDate') or item.findtext('cntrctCnclsDate') or ''
-                    e_date = item.findtext('ttalScmpltDate', '')
-                    amt = int(item.findtext('totCntrctAmt', '0'))
-                    
-                    # 만료일 계산
-                    final_end_date = "-"
-                    if e_date and c_date:
-                        try:
-                            if '일' in e_date:
-                                days = int(re.sub(r'[^0-9]', '', e_date))
-                                start_dt = datetime.strptime(c_date[:8], "%Y%m%d")
-                                final_end_date = (start_dt + timedelta(days=days)).strftime("%Y-%m-%d")
-                            else:
-                                final_end_date = datetime.strptime(e_date[:8], "%Y%m%d").strftime("%Y-%m-%d")
-                        except: final_end_date = e_date
-
-                    rows.append({
-                        '계약일자': c_date[:8],
-                        '수요기관명': demand,
-                        '계약명': cntrct_nm,
-                        '업체명': corp,
-                        '계약금액': amt,
-                        '계약만료일': final_end_date
-                    })
-            
-            total_count_el = root.find('.//totalCount')
-            if total_count_el is not None:
-                if page_no * 999 >= int(total_count_el.text):
-                    break
-            else:
-                break
-            page_no += 1
-            time.sleep(0.3) # API 제한 방지
-
-        except ET.ParseError as e:
-            st.error(f"❌ XML 해석 실패 (Parse Error): {e}")
-            st.expander("해석에 실패한 원본 텍스트 확인").code(res.text)
-            break
-        except Exception as e:
-            st.error(f"❌ 실행 중 오류 발생: {str(e)}")
-            break
-            
-    return rows
-
-def main_fetch_logic():
-    now = datetime.now()
-    yesterday = (now - timedelta(days=1))
-    
-    # 기간 분할 (1년 단위)
-    date_ranges = [
-        (datetime(now.year - 1, 1, 1).strftime("%Y%m%d"), datetime(now.year - 1, 12, 31).strftime("%Y%m%d")),
-        (datetime(now.year, 1, 1).strftime("%Y%m%d"), yesterday.strftime("%Y%m%d"))
-    ]
-    
-    keywords = ['통합관제', 'CCTV']
-    all_data = []
-    
-    status_slot = st.empty()
-    
-    for start, end in date_ranges:
-        for kw in keywords:
-            status_slot.info(f"⏳ 데이터 수집 중: {start}~{end} | 키워드: {kw}")
-            data = fetch_api_data(start, end, kw)
-            all_data.extend(data)
-            
-    status_slot.empty()
-    return pd.DataFrame(all_data)
-
-# --- UI ---
-st.title("🏛️ 나라장터 유지보수 계약 통합 조회")
-
-if st.button("🚀 최신 데이터 불러오기"):
-    # API 키 존재 여부 먼저 확인
-    if not API_KEY:
-        st.error("❌ API 키가 설정되지 않았습니다. Streamlit Secrets 설정을 확인하세요.")
-    else:
-        df = main_fetch_logic()
+def calculate_dates(row):
+    try:
+        # 날짜 및 기간 데이터 추출
+        c_date_raw = str(row.get('cntrctDate', ''))[:8]
+        s_date_raw = str(row.get('wbgnDate', ''))[:8]
+        prd = str(row.get('cntrctPrd', ''))
         
-        if not df.empty:
-            df = df.sort_values(by='계약일자', ascending=True)
-            df = df.drop_duplicates(subset=['수요기관명'], keep='last')
-            df['계약일자'] = pd.to_datetime(df['계약일자'], format='%Y%m%d', errors='coerce').dt.strftime('%Y-%m-%d')
-            df = df.sort_values(by='계약일자', ascending=False)
+        c_date = pd.to_datetime(c_date_raw, errors='coerce')
+        s_date = pd.to_datetime(s_date_raw, errors='coerce')
 
-            st.success(f"✅ 조회가 완료되었습니다. (총 {len(df)}건)")
-            st.dataframe(df.style.format({'계약금액': '{:,}원'}), use_container_width=True, height=600)
-        else:
-            st.warning("⚠️ 검색 결과가 없습니다. 위에 표시된 오류 내역이 없다면 해당 조건의 데이터가 실제로 없는 것입니다.")
+        expire_date = None
+        # 1. 만료일(prd)이 이미 날짜(8자리 숫자)인 경우
+        if len(prd) >= 8 and prd.isdigit():
+            expire_date = pd.to_datetime(prd[:8], errors='coerce')
+        # 2. 만료일이 일수(N일) 형태인 경우 계산
+        elif prd:
+            days_val = int(re.sub(r'[^0-9]', '', prd))
+            thtm = row.get('thtmCntrctAmt', 0)
+            ttal = row.get('totCntrctAmt', 0)
+            # 조건: 금차와 총차가 같으면 계약일 기준, 다르면 착수일 기준
+            base_date = c_date if thtm == ttal else s_date
+            if pd.notnull(base_date):
+                expire_date = base_date + pd.Timedelta(days=days_val)
+        
+        if pd.isnull(expire_date): return None, "정보없음"
+
+        # 3. 남은 기간 계산
+        today = datetime.now()
+        diff = relativedelta(expire_date, today)
+        if expire_date < today: return expire_date.strftime('%Y-%m-%d'), "만료됨"
+        
+        return expire_date.strftime('%Y-%m-%d'), f"{diff.years*12 + diff.months}개월 {diff.days}일"
+    except: return None, "계산불가"
+
+# --- 스트림릿 메인 ---
+st.set_page_config(layout="wide", page_title="지자체 용역현황")
+st.title("🏛️ 전국 기초자치단체 용역 계약 모니터링")
+
+try:
+    # 데이터 로드
+    auth_json = os.environ.get('GOOGLE_AUTH_JSON')
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(auth_json), ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
+    ws = gspread.authorize(creds).open("나라장터_용역계약내역").get_worksheet(0)
+    df = pd.DataFrame(ws.get_all_records())
+
+    # 1. 필터링: 광역+기초 명칭이 포함된 지자체만
+    df = df[df['★가공_수요기관'].apply(lambda x: any(d in x for d in FULL_DISTRICT_LIST))]
+
+    # 2. 날짜 및 잔여 기간 계산
+    df[['계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_dates(r)), axis=1)
+
+    # 3. 기관별 가장 최근 계약건(cntrctDate 기준)만 유지
+    df['cntrctDate_dt'] = pd.to_datetime(df['cntrctDate'].astype(str).str[:8], errors='coerce')
+    df = df.sort_values(by=['★가공_수요기관', 'cntrctDate_dt'], ascending=[True, False])
+    df = df.drop_duplicates(subset=['★가공_수요기관'], keep='first')
+
+    # 4. 표출 데이터 구성
+    display_df = df[[
+        '★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액',
+        '★가공_계약일', '★가공_착수일', '계약만료일', '남은기간', 'cntrctDtlInfoUrl'
+    ]].copy()
+    display_df.columns = ['수요기관', '계약명', '업체명', '계약금액(원)', '계약일자', '착수일자', '계약만료일', '남은기간', '상세URL']
+
+    # 5. 표출 (수요기관 기준 정렬 및 정렬 기능 지원)
+    st.dataframe(
+        display_df,
+        column_config={"상세URL": st.column_config.LinkColumn("링크")},
+        use_container_width=True, hide_index=True
+    )
+
+except Exception as e:
+    st.error(f"데이터 로드 오류: {e}")
