@@ -7,7 +7,7 @@ import os
 import re
 
 API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
-API_URL = '	https://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
+API_URL = 'https://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
 
 st.set_page_config(page_title="용역 유지보수 내역 조회", layout="wide")
 
