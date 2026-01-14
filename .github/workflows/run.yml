@@ -38,7 +38,7 @@ jobs:
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
           subject: "🤖 [조달 DATA] 특정품목 납품 DATA ${{ steps.run_script.outputs.collect_date }} 수집 결과"
-          to: mhy9680@innodep.com
+          to: mhy9680@innodep.com, jinseok8809@innodep.com
           from: GitHub Actions Bot
           # body 대신 html_body를 사용하여 표 형식을 지원하게 합니다.
           html_body: |
