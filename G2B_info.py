@@ -155,7 +155,7 @@ try:
             final_df,
             column_config={
                 "URL": st.column_config.LinkColumn("상세정보"),
-                "계약금액": st.column_config.NumberColumn("계약금액(원)", format="%d"),
+                "계약금액": st.column_config.NumberColumn("계약금액(원)", format="#,##0"),
             },
             use_container_width=True,
             hide_index=True,
