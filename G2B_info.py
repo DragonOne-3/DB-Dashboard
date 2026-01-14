@@ -7,8 +7,9 @@ import os
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
+import io  # 다운로드 버퍼 생성을 위해 필요
 
-# --- 1. 226개 광역+기초 통합 리스트 (표준 지자체 명칭) ---
+# --- 1. 226개 광역+기초 통합 리스트 (중략) ---
 FULL_DISTRICT_LIST = [
     "서울특별시 종로구", "서울특별시 중구", "서울특별시 용산구", "서울특별시 성동구", "서울특별시 광진구", "서울특별시 동대문구", "서울특별시 중랑구", "서울특별시 성북구", "서울특별시 강북구", "서울특별시 도봉구", "서울특별시 노원구", "서울특별시 은평구", "서울특별시 서대문구", "서울특별시 마포구", "서울특별시 양천구", "서울특별시 강서구", "서울특별시 구로구", "서울특별시 금천구", "서울특별시 영등포구", "서울특별시 동작구", "서울특별시 관악구", "서울특별시 서초구", "서울특별시 강남구", "서울특별시 송파구", "서울특별시 강동구",
     "부산광역시 중구", "부산광역시 서구", "부산광역시 동구", "부산광역시 영도구", "부산광역시 부산진구", "부산광역시 동래구", "부산광역시 남구", "부산광역시 북구", "부산광역시 해운대구", "부산광역시 사하구", "부산광역시 금정구", "부산광역시 강서구", "부산광역시 연제구", "부산광역시 수영구", "부산광역시 사상구", "부산광역시 기장군",
@@ -29,13 +30,12 @@ FULL_DISTRICT_LIST = [
     "제주특별자치도 제주시", "제주특별자치도 서귀포시"
 ]
 
-# --- 2. 데이터 로드 함수 ---
+# --- 2~4 함수 부분 (기존과 동일) ---
 def get_data_from_gsheet():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
     if auth_json is None:
         st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
         return pd.DataFrame()
-
     try:
         creds_dict = json.loads(auth_json)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -48,25 +48,17 @@ def get_data_from_gsheet():
         st.error(f"❌ 시트 로드 중 오류: {e}")
         return pd.DataFrame()
 
-# --- 3. 지자체 본청 필터링 함수 (산하기관 및 읍면동 제외) ---
 def is_pure_district(agency_name, district_list):
-    exclude_keywords = [
-        '센터', '보건소', '소장', '사업소', '의회', '도서관', '공원', '본부', '학교', '연구소', 
-        '읍', '면', '동', '박물관', '사업단', '관리소', '휴양림', '미술관', '체육시설', '상하수도'
-    ]
+    exclude_keywords = ['센터', '보건소', '소장', '사업소', '의회', '도서관', '공원', '본부', '학교', '연구소', '읍', '면', '동', '박물관', '사업단', '관리소', '휴양림', '미술관', '체육시설', '상하수도']
     agency_name = str(agency_name).strip()
-    
     for dist in district_list:
         if dist in agency_name:
-            if any(key in agency_name for key in exclude_keywords):
-                return False
+            if any(key in agency_name for key in exclude_keywords): return False
             remain_name = agency_name.replace(dist, "").strip()
-            if len(remain_name) > 3:
-                return False
+            if len(remain_name) > 3: return False
             return True
     return False
 
-# --- 4. 날짜 파싱 및 계산 로직 ---
 def parse_date(date_val):
     if not date_val: return None
     clean_val = re.sub(r'[^0-9]', '', str(date_val))
@@ -80,13 +72,10 @@ def calculate_logic(row):
         cntrct_date = parse_date(row.get('계약일자'))
         start_date = parse_date(row.get('착수일자'))
         period_raw = str(row.get('계약기간', ''))
-
         this_match = re.search(r'금차\s*[:\s]*(\d+)', period_raw)
         total_match = re.search(r'총차\s*[:\s]*(\d+)', period_raw) or re.search(r'총용역\s*[:\s]*(\d+)', period_raw)
-        
         this_days = int(this_match.group(1)) if this_match else 0
         total_days = int(total_match.group(1)) if total_match else 0
-        
         if not this_days and len(re.sub(r'[^0-9]', '', period_raw)) >= 8:
             final_expire_dt = parse_date(period_raw)
         else:
@@ -94,7 +83,6 @@ def calculate_logic(row):
             if base_date and total_days > 0:
                 final_expire_dt = base_date + relativedelta(days=total_days)
             else: return "정보부족", "정보부족"
-
         today = datetime.now()
         expire_str = final_expire_dt.strftime('%Y-%m-%d')
         if final_expire_dt < today: remain_str = "만료됨"
@@ -111,51 +99,55 @@ st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
 
 try:
     df = get_data_from_gsheet()
-
     if not df.empty:
-        # 1. 필터링: 계약명에 "유지" 및 "통합관제" 포함
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
         df = df[df['★가공_계약명'].str.contains("통합관제", na=False)]
-
-        # 2. 본청 필터링
         df = df[df['★가공_수요기관'].apply(lambda x: is_pure_district(x, FULL_DISTRICT_LIST))]
-
-        # 3. 날짜 계산
         df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
-
-        # 4. 최신 데이터 1건 유지
         df['temp_date'] = pd.to_datetime(df['계약일자'], errors='coerce')
         df = df.sort_values(by=['★가공_수요기관', 'temp_date'], ascending=[True, False])
         df = df.drop_duplicates(subset=['★가공_수요기관'], keep='first')
-
-        # 5. 금액 데이터 강제 숫자 변환 (엑셀 설정과 별개로 코드에서 안전장치)
         df['★가공_계약금액'] = pd.to_numeric(df['★가공_계약금액'], errors='coerce').fillna(0).astype(int)
 
-        # 6. 상단 요약 통계 (광역별 건수)
+        # 상단 요약
         df['광역단위'] = df['★가공_수요기관'].apply(lambda x: str(x).split()[0])
         summary = df.groupby('광역단위').size().reset_index(name='개수')
-        
         st.subheader("📊 광역자치단체별 분석 현황")
         summary_cols = st.columns(len(summary) if len(summary) > 0 else 1)
         for idx, row in summary.iterrows():
             summary_cols[idx].metric(row['광역단위'], f"{row['개수']}건")
-
         st.divider()
 
-        # 7. 컬럼 정리 및 이름 변경
+        # 데이터 최종 정리
         display_cols = ['★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL']
         existing_cols = [c for c in display_cols if c in df.columns or c in ['★가공_계약만료일', '남은기간']]
         final_df = df[existing_cols].copy()
-        
         final_df.columns = [c.replace('★가공_', '') for c in final_df.columns]
         final_df.columns = [c.replace('계약상세정보URL', 'URL') for c in final_df.columns]
+
+        # --- 📥 엑셀 다운로드 버튼 추가 ---
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            final_df.to_excel(writer, index=False, sheet_name='Sheet1')
+            # 엑셀 시트 자동 너비 조절이나 서식 지정이 필요하면 여기에 추가 가능
         
-        # 8. 표 출력 (천 단위 콤마 서식: ,d)
+        excel_data = output.getvalue()
+        
+        col1, col2 = st.columns([0.8, 0.2])
+        with col2:
+            st.download_button(
+                label="📥 엑셀(.xlsx) 다운로드",
+                data=excel_data,
+                file_name=f"계약현황_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        # 8. 표 출력
         st.dataframe(
             final_df,
             column_config={
                 "URL": st.column_config.LinkColumn("상세정보"),
-                "계약금액": st.column_config.NumberColumn("계약금액(원)",format="localized"),
+                "계약금액": st.column_config.NumberColumn("계약금액(원)", format="localized"),
             },
             use_container_width=True,
             hide_index=True,
@@ -163,6 +155,5 @@ try:
         )
     else:
         st.warning("표출할 데이터가 없습니다.")
-
 except Exception as e:
     st.error(f"오류 발생: {e}")
