@@ -2,3 +2,5 @@ requests
 pandas
 gspread
 oauth2client
+xlsxwriter
+streamlit
