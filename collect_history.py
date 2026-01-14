@@ -17,10 +17,22 @@ def get_or_create_sheet(client, year, month):
     quarter = (month - 1) // 3 + 1
     file_name = f"조달청_납품내역_{year}_{quarter}분기"
     sheet_name = f"{year}_{month}월"
+    
+    # 📂 미리 공유한 폴더의 ID를 입력하세요
+    FOLDER_ID = "15bNYr38hSxYw5wh_P6TH--MI1CfQ9-M1"
+
     try:
+        # 파일 열기 시도
         sh = client.open(file_name)
     except gspread.SpreadsheetNotFound:
-        sh = client.create(file_name)
+        # 파일이 없을 경우 특정 폴더 안에 생성
+        # folder_id를 지정하면 해당 폴더 안에 생성됩니다.
+        sh = client.create(file_name, folder_id=FOLDER_ID)
+        print(f"🆕 폴더 내 새 파일 생성: {file_name}")
+        
+        # (옵션) 사용자님 계정으로도 즉시 공유 (파일을 바로 볼 수 있게 함)
+        # sh.share('사용자님의@gmail.com', perm_type='user', role='writer')
+    
     try:
         ws = sh.worksheet(sheet_name)
     except gspread.WorksheetNotFound:
