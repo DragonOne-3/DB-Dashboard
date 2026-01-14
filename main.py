@@ -72,8 +72,11 @@ def fetch_data(kw, d_str):
     except: pass
     return []
 
+import datetime
+import re
+
 def fetch_and_generate_servc_html():
-    """어제자 용역 계약 내역 수집 및 기관/업체명 정제"""
+    """어제자 용역 계약 내역 수집 및 데이터 정제 (날짜 계산 포함)"""
     api_key = os.environ.get('DATA_GO_KR_API_KEY')
     api_url = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     
@@ -86,8 +89,7 @@ def fetch_and_generate_servc_html():
 
     for kw in keywords:
         params = {
-            'serviceKey': api_key,
-            'pageNo': '1', 'numOfRows': '999', 'inqryDiv': '1',
+            'serviceKey': api_key, 'pageNo': '1', 'numOfRows': '999', 'inqryDiv': '1',
             'type': 'xml', 'inqryBgnDate': target_date_str, 'inqryEndDate': target_date_str,
             'cntrctNm': kw
         }
@@ -100,27 +102,48 @@ def fetch_and_generate_servc_html():
                     # 데이터 로우 가져오기
                     raw_demand = item.findtext('dminsttList', '-')
                     raw_corp = item.findtext('corpList', '-')
+                    cntrct_date_raw = item.findtext('cntrctDate', '') # 계약일자
+                    end_date_raw = item.findtext('ttalScmpltDate', '') # 총완수일자 (계약만료일)
                     
-                    # 2. 수요기관명 정제 ([1^코드^기관명^...] 에서 3번째 항목)
-                    # ^ 로 자른 후 인덱스 2번(0, 1, 2) 선택
+                    # 1. 수요기관명 및 업체명 정제
                     demand_parts = raw_demand.replace('[', '').replace(']', '').split('^')
                     clean_demand = demand_parts[2] if len(demand_parts) > 2 else raw_demand
                     
-                    # 3. 업체명 정제 ([1^구분^구분^업체명^...] 에서 4번째 항목)
-                    # ^ 로 자른 후 인덱스 3번(0, 1, 2, 3) 선택
                     corp_parts = raw_corp.replace('[', '').replace(']', '').split('^')
                     clean_corp = corp_parts[3] if len(corp_parts) > 3 else raw_corp
+
+                    # 2. 계약일자 포맷팅 (YYYY-MM-DD)
+                    clean_cntrct_date = "-"
+                    if cntrct_date_raw:
+                        try:
+                            clean_cntrct_date = datetime.datetime.strptime(cntrct_date_raw, "%Y%m%d").strftime("%Y-%m-%d")
+                        except: clean_cntrct_date = cntrct_date_raw
+
+                    # 3. 계약만료일 계산 로직
+                    final_end_date = "-"
+                    if end_date_raw and cntrct_date_raw:
+                        if '일' in end_date_raw: # '365일' 형식인 경우
+                            try:
+                                days = int(re.sub(r'[^0-9]', '', end_date_raw))
+                                start_dt = datetime.datetime.strptime(cntrct_date_raw, "%Y%m%d")
+                                final_end_date = (start_dt + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+                            except: final_end_date = end_date_raw
+                        else: # '20261231' 형식인 경우
+                            try:
+                                final_end_date = datetime.datetime.strptime(end_date_raw, "%Y%m%d").strftime("%Y-%m-%d")
+                            except: final_end_date = end_date_raw
 
                     collected_data.append({
                         'demand': clean_demand,
                         'name': item.findtext('cntrctNm', '-'),
                         'corp': clean_corp,
-                        'amount': int(item.findtext('totCntrctAmt', '0'))
+                        'amount': int(item.findtext('totCntrctAmt', '0')),
+                        'date': clean_cntrct_date,
+                        'end_date': final_end_date
                     })
         except Exception as e:
             print(f"❌ 용역 API 에러 ({kw}): {e}")
 
-    # 중복 제거
     unique_data = {f"{d['demand']}_{d['name']}": d for d in collected_data}.values()
 
     html = f"<div style='margin-top: 20px;'><h4 style='color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 5px;'>🏛️ 나라장터 용역 계약 내역 ({display_date_str} 체결분)</h4>"
@@ -128,10 +151,29 @@ def fetch_and_generate_servc_html():
         html += f"<p style='color: #666;'>- {display_date_str}에 체결된 해당 키워드 계약 내역이 없습니다.</p></div>"
         return html
 
-    html += "<table border='1' style='border-collapse: collapse; width: 100%; font-size: 12px; border: 1px solid #ddd;'><tr style='background-color: #f8f9fa; text-align: center;'><th style='padding: 8px;'>수요기관명</th><th style='padding: 8px;'>계약명</th><th style='padding: 8px;'>업체명</th><th style='padding: 8px;'>계약금액</th></tr>"
+    html += """
+    <table border='1' style='border-collapse: collapse; width: 100%; font-size: 11px; border: 1px solid #ddd;'>
+        <tr style='background-color: #f8f9fa; text-align: center;'>
+            <th style='padding: 5px;'>계약일자</th>
+            <th style='padding: 5px;'>수요기관명</th>
+            <th style='padding: 5px;'>계약명</th>
+            <th style='padding: 5px;'>업체명</th>
+            <th style='padding: 5px;'>계약금액</th>
+            <th style='padding: 5px;'>계약만료일</th>
+        </tr>
+    """
     for row in unique_data:
         bg_style = "style='background-color: #FFF9C4;'" if "이노뎁" in row['corp'] else ""
-        html += f"<tr {bg_style}><td style='padding: 8px;'>{row['demand']}</td><td style='padding: 8px;'>{row['name']}</td><td style='padding: 8px;'>{row['corp']}</td><td style='padding: 8px; text-align: right;'>{row['amount']:,}원</td></tr>"
+        html += f"""
+        <tr {bg_style}>
+            <td style='padding: 5px; text-align: center;'>{row['date']}</td>
+            <td style='padding: 5px;'>{row['demand']}</td>
+            <td style='padding: 5px;'>{row['name']}</td>
+            <td style='padding: 5px;'>{row['corp']}</td>
+            <td style='padding: 5px; text-align: right;'>{row['amount']:,}원</td>
+            <td style='padding: 5px; text-align: center;'>{row['end_date']}</td>
+        </tr>
+        """
     html += "</table></div><br>"
     return html
 
@@ -225,20 +267,18 @@ def main():
 
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-                # 1. 수집 날짜와 건수
                 f.write(f"collect_date={d_str}\n")
                 f.write(f"collect_count={len(final_data)}\n")
                 
-                # 2. 학교/이노뎁 정보 (기존 summary_lines 리스트 활용)
+                # 1. 학교 및 이노뎁 실적 (강제 줄바꿈 처리)
                 f.write("school_info<<EOF\n")
                 if 'summary_lines' in locals():
                     for line in summary_lines:
-                        f.write(f"{line}\n")
-                else:
-                    f.write("데이터 분석 결과가 없습니다.\n")
+                        # 줄 끝에 <br> 태그를 명시적으로 붙여서 HTML 메일에서의 줄바꿈 보장
+                        f.write(f"{line}<br>\n")
                 f.write("EOF\n")
                 
-                # 3. 용역 계약 정보 (HTML 표)
+                # 2. 용역 계약 정보 (HTML 표)
                 f.write("servc_info<<EOF\n")
                 f.write(f"{servc_html}\n")
                 f.write("EOF\n")
