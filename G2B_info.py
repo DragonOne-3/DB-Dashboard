@@ -125,21 +125,19 @@ try:
         final_df.columns = [c.replace('★가공_', '') for c in final_df.columns]
         final_df.columns = [c.replace('계약상세정보URL', 'URL') for c in final_df.columns]
 
-        # --- 📥 엑셀 다운로드 버튼 추가 ---
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            final_df.to_excel(writer, index=False, sheet_name='Sheet1')
-            # 엑셀 시트 자동 너비 조절이나 서식 지정이 필요하면 여기에 추가 가능
+
         
-        excel_data = output.getvalue()
+    # --- 📥 CSV 다운로드 버튼 (라이브러리 추가 설치 불필요) ---
+        # 한글 깨짐 방지를 위해 utf-8-sig 인코딩 사용
+        csv_data = final_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         
         col1, col2 = st.columns([0.8, 0.2])
         with col2:
             st.download_button(
-                label="📥 엑셀(.xlsx) 다운로드",
-                data=excel_data,
-                file_name=f"계약현황_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                label="📥 데이터 다운로드(CSV)",
+                data=csv_data,
+                file_name=f"계약현황_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
             )
 
         # 8. 표 출력
