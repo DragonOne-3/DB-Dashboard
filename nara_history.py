@@ -90,12 +90,12 @@ def main():
         ws = sh.get_worksheet(0)
         
         keywords = ['CCTV', '통합관제', '주차관리', '영상감시장치', '영상정보처리기기']
-        start_date = datetime(2024, 1, 1)
+        start_date = datetime(2025, 5, 1)
         end_date = datetime.now() - timedelta(days=1)
         
         # 제목줄 체크
         if not ws.acell('A1').value:
-            sample = fetch_single_keyword(keywords[0], "20240101", "20240101")
+            sample = fetch_single_keyword(keywords[0], "20250501", "20250501")
             if sample: ws.update('A1', [list(sample[0].keys())])
 
         current_date = start_date
