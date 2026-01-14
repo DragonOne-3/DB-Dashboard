@@ -73,7 +73,7 @@ def fetch_data(kw, d_str):
     return []
 
 def fetch_and_generate_servc_html():
-    """어제 날짜 기준 용역 계약 내역 수집 및 데이터 정제"""
+    """어제자 용역 계약 내역 수집 및 기관/업체명 정제"""
     api_key = os.environ.get('DATA_GO_KR_API_KEY')
     api_url = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     
@@ -97,19 +97,19 @@ def fetch_and_generate_servc_html():
                 root = ET.fromstring(res.content)
                 items = root.findall('.//item')
                 for item in items:
-                    # --- 데이터 정제 로직 ---
+                    # 데이터 로우 가져오기
                     raw_demand = item.findtext('dminsttList', '-')
                     raw_corp = item.findtext('corpList', '-')
                     
-                    # 2. 수요기관명 추출 (두번째 ^ 와 세번째 ^ 사이)
-                    # 예: [1^3590000^광주광역시 동구^...] -> 광주광역시 동구
-                    demand_match = re.search(r'[^^\s]+\^[^^\s]+\^([^^\^]+)', raw_demand)
-                    clean_demand = demand_match.group(1) if demand_match else raw_demand
+                    # 2. 수요기관명 정제 ([1^코드^기관명^...] 에서 3번째 항목)
+                    # ^ 로 자른 후 인덱스 2번(0, 1, 2) 선택
+                    demand_parts = raw_demand.replace('[', '').replace(']', '').split('^')
+                    clean_demand = demand_parts[2] if len(demand_parts) > 2 else raw_demand
                     
-                    # 3. 업체명 추출 (세번째 ^ 와 네번째 ^ 사이)
-                    # 예: [1^주계약업체^단독^아마노코리아(주)^...] -> 아마노코리아(주)
-                    corp_match = re.search(r'[^^\s]+\^[^^\s]+\^[^^\s]+\^([^^\^]+)', raw_corp)
-                    clean_corp = corp_match.group(1) if corp_match else raw_corp
+                    # 3. 업체명 정제 ([1^구분^구분^업체명^...] 에서 4번째 항목)
+                    # ^ 로 자른 후 인덱스 3번(0, 1, 2, 3) 선택
+                    corp_parts = raw_corp.replace('[', '').replace(']', '').split('^')
+                    clean_corp = corp_parts[3] if len(corp_parts) > 3 else raw_corp
 
                     collected_data.append({
                         'demand': clean_demand,
@@ -120,6 +120,7 @@ def fetch_and_generate_servc_html():
         except Exception as e:
             print(f"❌ 용역 API 에러 ({kw}): {e}")
 
+    # 중복 제거
     unique_data = {f"{d['demand']}_{d['name']}": d for d in collected_data}.values()
 
     html = f"<div style='margin-top: 20px;'><h4 style='color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 5px;'>🏛️ 나라장터 용역 계약 내역 ({display_date_str} 체결분)</h4>"
@@ -219,25 +220,25 @@ def main():
             summary_lines.append(" 0건")
 
         # --- GitHub Actions 변수 전달 (가장 안전한 방식) ---
+        # 용역 데이터 HTML 생성 (함수 호출)
+        servc_html = fetch_and_generate_servc_html()
+
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+                # 1. 수집 날짜와 건수
                 f.write(f"collect_date={d_str}\n")
                 f.write(f"collect_count={len(final_data)}\n")
                 
-                # 1. 학교 및 이노뎁 실적 줄바꿈 처리
+                # 2. 학교/이노뎁 정보 (기존 summary_lines 리스트 활용)
                 f.write("school_info<<EOF\n")
-                # 각 항목별로 확실하게 줄바꿈(\n)을 넣어 가독성 확보
-                f.write(f"⭐ 오늘자 학교 지능형 CCTV 납품 현황: {len(school_data)}건\n\n")
-                f.write("🏢 오늘자 이노뎁 실적:\n")
-                if inno_data:
-                    for d in inno_data:
-                        f.write(f"- {d['demand_instt_nm']}: {d['amt']:,}원\n")
-                    f.write(f"\n💰 총합계: {total_inno_amt:,}원\n")
+                if 'summary_lines' in locals():
+                    for line in summary_lines:
+                        f.write(f"{line}\n")
                 else:
-                    f.write("- 실적 없음\n")
+                    f.write("데이터 분석 결과가 없습니다.\n")
                 f.write("EOF\n")
                 
-                # 2. 용역 계약 정보 (HTML)
+                # 3. 용역 계약 정보 (HTML 표)
                 f.write("servc_info<<EOF\n")
                 f.write(f"{servc_html}\n")
                 f.write("EOF\n")
