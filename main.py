@@ -224,30 +224,23 @@ def main():
                 f.write(f"collect_date={d_str}\n")
                 f.write(f"collect_count={len(final_data)}\n")
                 
+                # 1. 학교 및 이노뎁 실적 줄바꿈 처리
                 f.write("school_info<<EOF\n")
-                for line in summary_lines:
-                    f.write(f"{line}\n")
+                # 각 항목별로 확실하게 줄바꿈(\n)을 넣어 가독성 확보
+                f.write(f"⭐ 오늘자 학교 지능형 CCTV 납품 현황: {len(school_data)}건\n\n")
+                f.write("🏢 오늘자 이노뎁 실적:\n")
+                if inno_data:
+                    for d in inno_data:
+                        f.write(f"- {d['demand_instt_nm']}: {d['amt']:,}원\n")
+                    f.write(f"\n💰 총합계: {total_inno_amt:,}원\n")
+                else:
+                    f.write("- 실적 없음\n")
                 f.write("EOF\n")
-        
-        print(f"✅ 메일 데이터 구성 완료 (전달 날짜: {d_str})")
-# 신규 용역 내역 HTML 생성
-    servc_html = fetch_and_generate_servc_html()
-
-    if "GITHUB_OUTPUT" in os.environ:
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-            f.write(f"collect_date={d_str}\n")
-            f.write(f"collect_count={len(final_data)}\n")
-            
-            # 기존 학교/이노뎁 정보 (멀티라인)
-            f.write("school_info<<EOF\n")
-            for line in summary_lines:
-                f.write(f"{line}\n")
-            f.write("EOF\n")
-            
-            # [추가] 용역 계약 정보 (멀티라인)
-            f.write("servc_info<<EOF\n")
-            f.write(f"{servc_html}\n")
-            f.write("EOF\n")
+                
+                # 2. 용역 계약 정보 (HTML)
+                f.write("servc_info<<EOF\n")
+                f.write(f"{servc_html}\n")
+                f.write("EOF\n")
 
 
 
