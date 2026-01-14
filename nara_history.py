@@ -40,11 +40,36 @@ def fetch_g2b_data_by_period(start_date, end_date):
             }
             try:
                 res = requests.get(API_URL, params=params, timeout=30)
-                if not res.text.strip().startswith('<?xml'): break
-                    
+                
+                # 오류 원인 파악을 위한 체크 추가
+                if res.status_code != 200:
+                    print(f"❌ API 연결 실패: {res.status_code}")
+                    break
+
+                # XML 내용이 비었는지 확인
+                if not res.text or not res.text.strip():
+                    print(f"⚠️ {kw}: 응답 본문이 비어 있습니다.")
+                    break
+
+                if not res.text.strip().startswith('<?xml'):
+                    print(f"⚠️ {kw}: XML 형식이 아닙니다. 응답내용: {res.text[:100]}")
+                    break
+                
+                # 파싱 시도
                 root = ET.fromstring(res.content)
+                
+                # 결과 코드 확인 (00이 아니면 에러)
+                result_code = root.find('.//resultCode')
+                if result_code is not None and result_code.text != '00':
+                    msg = root.find('.//resultMsg').text if root.find('.//resultMsg') is not None else "알 수 없는 에러"
+                    print(f"❌ API 서버 에러: {msg} (코드: {result_code.text})")
+                    break
+
                 items = root.findall('.//item')
-                if not items: break
+                if not items:
+                    break
+                
+                # ... (이하 수집 로직 동일) ...
                 
                 for item in items:
                     raw_dict = {child.tag: child.text for child in item}
