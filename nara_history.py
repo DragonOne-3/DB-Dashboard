@@ -7,13 +7,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 import os
 import json
 import time
-import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- 설정 ---
 API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 API_URL = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
-MAX_WORKERS = 5 
 
 def get_gs_client():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
@@ -22,70 +19,81 @@ def get_gs_client():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
 
-def clean_name(raw_text, index):
-    if not raw_text or '^' not in raw_text: return raw_text
-    parts = raw_text.replace('[', '').replace(']', '').split('^')
-    return parts[index] if len(parts) > index else raw_text
-
-def fetch_kw_data(kw, start, end):
-    rows = []
-    params = {
-        'serviceKey': API_KEY, 'pageNo': '1', 'numOfRows': '999',
-        'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': start, 'inqryEndDate': end, 'cntrctNm': kw
-    }
-    try:
-        res = requests.get(API_URL, params=params, timeout=60)
-        if not res.text.strip().endswith('</response>'): return []
-        root = ET.fromstring(res.content)
-        for item in root.findall('.//item'):
-            raw = {child.tag: child.text for child in item}
-            c_date = raw.get('cntrctDate') or raw.get('cntrctCnclsDate') or ''
-            processed = {
-                '★가공_계약일': f"{c_date[:4]}-{c_date[4:6]}-{c_date[6:8]}" if len(c_date)>=8 else "-",
-                '★가공_착수일': raw.get('stDate', '-'),
-                '★가공_만료일': raw.get('ttalScmpltDate') or raw.get('thtmScmpltDate') or '-',
-                '★가공_수요기관': raw.get('dminsttList', ''),
-                '★가공_계약명': raw.get('cntrctNm', ''),
-                '★가공_업체명': raw.get('corpList', ''),
-                '★가공_계약금액': int(raw.get('totCntrctAmt', 0))
-            }
-            processed.update(raw)
-            rows.append(processed)
-    except: pass
-    return rows
-
 def main():
-    sh = get_gs_client().open("나라장터_용역계약내역")
-    ws = sh.get_worksheet(0)
-    
-    # 🚨 시작일을 2025년 5월 1일로 고정하여 복구 시작
-    start_dt = datetime(2025, 5, 1)
-    end_dt = datetime.now() - timedelta(days=1)
-    
-    keywords = ['CCTV', '통합관제', '주차관리', '영상감시장치', '영상정보처리기기']
-    
-    curr = start_dt
-    while curr <= end_dt:
-        # 기간을 3일 단위로 쪼개어 서버 부하 및 끊김 방지
-        c_start = curr.strftime("%Y%m%d")
-        c_end_dt = curr + timedelta(days=2)
-        if c_end_dt > end_dt: c_end_dt = end_dt
-        c_end = c_end_dt.strftime("%Y%m%d")
+    try:
+        client = get_gs_client()
+        sh = client.open("나라장터_용역계약내역")
+        ws = sh.get_worksheet(0)
         
-        print(f"🚀 복구 중: {c_start} ~ {c_end} ...")
+        # 5월 1일부터 오늘까지
+        start_dt = datetime(2025, 5, 1)
+        end_dt = datetime.now()
         
-        period_data = []
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = [executor.submit(fetch_kw_data, kw, c_start, c_end) for kw in keywords]
-            for f in as_completed(futures):
-                period_data.extend(f.result())
+        keywords = ['CCTV', '통합관제', '주차관리', '영상감시장치', '영상정보처리기기']
         
-        if period_data:
-            ws.append_rows(pd.DataFrame(period_data).values.tolist(), value_input_option='RAW')
-            print(f"   ✅ {len(period_data)}건 시트 추가 완료")
-            time.sleep(2)
-        
-        curr = c_end_dt + timedelta(days=1)
+        curr = start_dt
+        while curr <= end_dt:
+            date_str = curr.strftime("%Y%m%d")
+            print(f"\n📅 [조회 날짜: {date_str}] 수집 시도 중...")
+            
+            day_data = []
+            for kw in keywords:
+                # 아까 성공했을 때와 동일한 파라미터 구성
+                params = {
+                    'serviceKey': API_KEY,
+                    'pageNo': '1',
+                    'numOfRows': '999',
+                    'inqryDiv': '1',
+                    'type': 'xml',
+                    'inqryBgnDate': date_str,
+                    'inqryEndDate': date_str,
+                    'cntrctNm': kw
+                }
+                
+                try:
+                    res = requests.get(API_URL, params=params, timeout=30)
+                    root = ET.fromstring(res.content)
+                    
+                    # 검색된 총 건수 확인
+                    total_node = root.find('.//totalCount')
+                    total_count = int(total_node.text) if total_node is not None else 0
+                    
+                    if total_count > 0:
+                        print(f"   ✅ '{kw}' 키워드: {total_count}건 발견!")
+                        items = root.findall('.//item')
+                        for item in items:
+                            raw = {child.tag: child.text for child in item}
+                            # 가공 데이터 생성
+                            processed = {
+                                '★가공_계약일': f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}",
+                                '★가공_수요기관': raw.get('dminsttList', '').split('^')[-1].replace(']', '') if '^' in raw.get('dminsttList', '') else raw.get('dminsttList', ''),
+                                '★가공_계약명': raw.get('cntrctNm', ''),
+                                '★가공_업체명': raw.get('corpList', '').split('^')[-1].replace(']', '') if '^' in raw.get('corpList', '') else raw.get('corpList', ''),
+                                '★가공_계약금액': int(raw.get('totCntrctAmt', 0)) if raw.get('totCntrctAmt') else 0
+                            }
+                            processed.update(raw)
+                            day_data.append(processed)
+                    else:
+                        # 데이터가 없을 때 로그
+                        pass 
+                except Exception as e:
+                    print(f"   ❌ '{kw}' 조회 중 오류: {e}")
+                
+                time.sleep(0.1) # 키워드 간 짧은 대기
+
+            # 하루치 모아서 시트에 기록
+            if day_data:
+                df = pd.DataFrame(day_data).fillna('')
+                ws.append_rows(df.values.tolist(), value_input_option='RAW')
+                print(f"   💰 {date_str} 데이터 {len(day_data)}건 시트 저장 완료!")
+            else:
+                print(f"   ⚠️ {date_str}에는 검색된 데이터가 없습니다.")
+            
+            curr += timedelta(days=1)
+            time.sleep(1) # 구글 시트 쓰기 제한 방지
+
+    except Exception as e:
+        print(f"🔥 치명적 오류 발생: {e}")
 
 if __name__ == "__main__":
     main()
