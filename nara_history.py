@@ -55,13 +55,12 @@ def fetch_g2b_data_by_period(start_date, end_date):
                 for item in items:
                     raw_dict = {child.tag: child.text for child in item}
                     
-                    # 1. 날짜 추출 (계약일, 착수일, 만료일)
+                    # 날짜 데이터 추출
                     raw_c_date = raw_dict.get('cntrctDate') or raw_dict.get('cntrctCnclsDate') or ''
                     raw_s_date = raw_dict.get('stDate', '') 
-                    # 만료일 우선순위: 총완수일자(ttalScmpltDate) > 금차완수일자(thtmScmpltDate)
                     raw_e_date = raw_dict.get('ttalScmpltDate') or raw_dict.get('thtmScmpltDate') or ''
                     
-                    # 2. 만료일 계산 (N일 형식인 경우 계약일 기준 합산)
+                    # 만료일 계산
                     fmt_e_date = "-"
                     if raw_e_date:
                         if '일' in raw_e_date and raw_c_date:
@@ -73,7 +72,7 @@ def fetch_g2b_data_by_period(start_date, end_date):
                         else:
                             fmt_e_date = format_date(raw_e_date)
 
-                    # 3. 가공 필드 생성
+                    # 가공 필드 생성
                     processed_dict = {
                         '★가공_계약일': format_date(raw_c_date),
                         '★가공_착수일': format_date(raw_s_date),
@@ -93,28 +92,35 @@ def fetch_g2b_data_by_period(start_date, end_date):
     return period_rows
 
 def remove_duplicates(ws):
-    """시트 전체 데이터를 읽어 중복을 제거함"""
-    print("🧹 모든 수집 완료. 중복 데이터 제거 중...")
+    """지정한 4개 항목(계약번호, 수요기관, 업체명, 계약명)이 모두 일치하면 중복 제거"""
+    print("🧹 데이터 정제 시작 (중복 제거 중...)")
     all_data = ws.get_all_records()
     if not all_data: return
     
     df = pd.DataFrame(all_data)
-    # 계약번호(cntrctNo)와 수요기관이 중복되면 하나만 남김
-    if 'cntrctNo' in df.columns:
-        original_len = len(df)
-        df = df.drop_duplicates(subset=['cntrctNo', '★가공_수요기관'], keep='first')
+    
+    # 중복 기준 설정: 계약번호, 가공_수요기관, 가공_업체명, 가공_계약명
+    duplicate_columns = ['cntrctNo', '★가공_수요기관', '★가공_업체명', '★가공_계약명']
+    
+    # 존재하는 컬럼만 기준으로 삼기 (오류 방지)
+    valid_cols = [c for c in duplicate_columns if c in df.columns]
+    
+    if valid_cols:
+        before_cnt = len(df)
+        # 모든 기준이 일치하는 경우 첫 번째 행만 남김
+        df = df.drop_duplicates(subset=valid_cols, keep='first')
+        after_cnt = len(df)
         
-        if len(df) < original_len:
+        if after_cnt < before_cnt:
             ws.clear()
-            # 데이터프레임을 다시 리스트로 변환하여 업데이트 (헤더 포함)
+            # 헤더와 데이터를 다시 쓰기
             ws.update([df.columns.values.tolist()] + df.values.tolist(), value_input_option='RAW')
-            print(f"✅ 중복 제거 완료: {original_len} -> {len(df)}건")
+            print(f"✅ 중복 제거 완료: {before_cnt}건 -> {after_cnt}건")
         else:
-            print("ℹ️ 중복된 데이터가 없습니다.")
+            print("ℹ️ 중복된 데이터가 발견되지 않았습니다.")
 
 def main():
     try:
-        print("🔗 구글 시트 연결 시도...")
         client = get_gspread_client()
         sh = client.open("나라장터_용역계약내역")
         ws = sh.get_worksheet(0)
@@ -127,7 +133,7 @@ def main():
             if sample:
                 ws.update('A1', [list(sample[0].keys())])
         
-        # 2. 기간별 수집
+        # 2. 기간별 수집 (7일 단위)
         start_date = datetime(2024, 1, 1)
         end_date = datetime.now() - timedelta(days=1)
         curr = start_date
@@ -148,7 +154,7 @@ def main():
                 time.sleep(3)
             curr = c_end_dt + timedelta(days=1)
 
-        # 3. 마지막 단계: 중복 제거 실행
+        # 3. 마지막 단계: 강화된 중복 제거 실행
         remove_duplicates(ws)
         print("🎊 모든 작업이 성공적으로 완료되었습니다.")
 
