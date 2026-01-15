@@ -49,7 +49,7 @@ def get_data_from_gsheet():
         return pd.DataFrame()
 
 def is_pure_district(agency_name, district_list):
-    exclude_keywords = ['센터', '보건소', '소장', '사업소', '의회', '도서관', '공원', '본부', '학교', '연구소', '읍', '면', '동', '박물관', '사업단', '관리소', '휴양림', '미술관', '체육시설', '상하수도']
+    exclude_keywords = ['보건소', '소장', '사업소', '의회', '도서관', '공원', '본부', '학교', '연구소', '읍', '면', '동', '박물관', '사업단', '관리소', '휴양림', '미술관', '체육시설', '상하수도']
     agency_name = str(agency_name).strip()
     for dist in district_list:
         if dist in agency_name:
@@ -102,7 +102,7 @@ try:
     if not df.empty:
         # 데이터 전처리
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
-        df = df[df['★가공_계약명'].str.contains("통합관제", na=False)]
+        df = df[df['★가공_계약명'].str.contains("통합관제센터", na=False)]
         df = df[df['★가공_수요기관'].apply(lambda x: is_pure_district(x, FULL_DISTRICT_LIST))]
         df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
         df['temp_date'] = pd.to_datetime(df['계약일자'], errors='coerce')
