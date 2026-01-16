@@ -19,4 +19,4 @@ jobs:
         env:
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
-        run: python collector.py
+        run: python nara_history.py
