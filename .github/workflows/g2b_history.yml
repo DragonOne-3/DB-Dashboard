@@ -1,4 +1,4 @@
-name: G2B Data Daily Collection
+name: G2B Data Daily Collection222
 
 on:
   schedule:
