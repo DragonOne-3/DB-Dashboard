@@ -12,9 +12,9 @@ from pytimekr import pytimekr  # 공휴일 체크를 위해 추가
 # --- 설정 ---
 API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 API_URL = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
-
+"""
 def get_target_date():
-    """한국 시간 기준, 주말 및 공휴일을 제외한 최근 평일 계산"""
+    
     now = datetime.utcnow() + timedelta(hours=9)
     target = now - timedelta(days=1)
     
@@ -24,7 +24,7 @@ def get_target_date():
         target -= timedelta(days=1)
         
     return target
-
+"""
 def get_gs_client():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
     creds_dict = json.loads(auth_json)
@@ -35,8 +35,8 @@ def get_gs_client():
 def main():
     # 1. 수집 대상 날짜 계산
     #target_dt = get_target_date()
-    target_str = "2025-01-01"
-    display_str = "2025-06-30"
+    #target_str = "2025-01-01"
+    #display_str = "2025-06-30"
     
     # 키워드 리스트: '방위' 추가
     keywords = ['CCTV', '통합관제', '주차관리', '영상감시장치', '영상정보처리기기', '국방', '부대', '작전', '경계', '방위']
@@ -47,7 +47,7 @@ def main():
         params = {
             'serviceKey': API_KEY, 'pageNo': '1', 'numOfRows': '999',
             'inqryDiv': '1', 'type': 'xml', 
-            'inqryBgnDate': target_str, 'inqryEndDate': display_str, 
+            'inqryBgnDate': '2025-01-01', 'inqryEndDate': '2025-06-03', 
             'cntrctNm': kw
         }
         try:
