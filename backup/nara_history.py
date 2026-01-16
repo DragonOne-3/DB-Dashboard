@@ -9,11 +9,25 @@ from dateutil.relativedelta import relativedelta
 import re
 import io
 
-# --- 1. 226개 광역+기초 통합 리스트 ---
+# --- 1. 226개 광역+기초 통합 리스트 (기존 그대로 유지) ---
 FULL_DISTRICT_LIST = [
-    "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시",
-    "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도",
-    "인제군", "홍천군", "횡성군", "영월군", "평창군", "정선군", "철원군", "화천군", "양구군", "고성군", "양양군"
+    "서울특별시", "서울특별시 종로구", "서울특별시 중구", "서울특별시 용산구", "서울특별시 성동구", "서울특별시 광진구", "서울특별시 동대문구", "서울특별시 중랑구", "서울특별시 성북구", "서울특별시 강북구", "서울특별시 도봉구", "서울특별시 노원구", "서울특별시 은평구", "서울특별시 서대문구", "서울특별시 마포구", "서울특별시 양천구", "서울특별시 강서구", "서울특별시 구로구", "서울특별시 금천구", "서울특별시 영등포구", "서울특별시 동작구", "서울특별시 관악구", "서울특별시 서초구", "서울특별시 강남구", "서울특별시 송파구", "서울특별시 강동구",
+    "부산광역시", "부산광역시 중구", "부산광역시 서구", "부산광역시 동구", "부산광역시 영도구", "부산광역시 부산진구", "부산광역시 동래구", "부산광역시 남구", "부산광역시 북구", "부산광역시 해운대구", "부산광역시 사하구", "부산광역시 금정구", "부산광역시 강서구", "부산광역시 연제구", "부산광역시 수영구", "부산광역시 사상구", "부산광역시 기장군",
+    "대구광역시", "대구광역시 중구", "대구광역시 동구", "대구광역시 서구", "대구광역시 남구", "대구광역시 북구", "대구광역시 수성구", "대구광역시 달서구", "대구광역시 달성군", "대구광역시 군위군",
+    "인천광역시", "인천광역시 중구", "인천광역시 동구", "인천광역시 미추홀구", "인천광역시 연수구", "인천광역시 남동구", "인천광역시 부평구", "인천광역시 계양구", "인천광역시 서구", "인천광역시 강화군", "인천광역시 옹진군",
+    "광주광역시", "광주광역시 동구", "광주광역시 서구", "광주광역시 남구", "광주광역시 북구", "광주광역시 광산구",
+    "대전광역시", "대전광역시 동구", "대전광역시 중구", "대전광역시 서구", "대전광역시 유성구", "대전광역시 대덕구",
+    "울산광역시", "울산광역시 중구", "울산광역시 남구", "울산광역시 동구", "울산광역시 북구", "울산광역시 울주군",
+    "세종특별자치시",
+    "경기도 수원시", "경기도 성남시", "경기도 의정부시", "경기도 안양시", "경기도 부천시", "경기도 광명시", "경기도 평택시", "경기도 동두천시", "경기도 안산시", "경기도 고양시", "경기도 과천시", "경기도 구리시", "경기도 남양주시", "경기도 오산시", "경기도 시흥시", "경기도 군포시", "경기도 의왕시", "경기도 하남시", "경기도 용인시", "경기도 파주시", "경기도 이천시", "경기도 안성시", "경기도 김포시", "경기도 화성시", "경기도 광주시", "경기도 양주시", "경기도 포천시", "경기도 여주시", "경기도 연천군", "경기도 가평군", "경기도 양평군",
+    "강원특별자치도 춘천시", "강원특별자치도 원주시", "강원특별자치도 강릉시", "강원특별자치도 동해시", "강원특별자치도 태백시", "강원특별자치도 속초시", "강원특별자치도 삼척시", "강원특별자치도 홍천군", "강원특별자치도 횡성군", "강원특별자치도 영월군", "강원특별자치도 평창군", "강원특별자치도 정선군", "강원특별자치도 철원군", "강원특별자치도 화천군", "강원특별자치도 양구군", "강원특별자치도 인제군", "강원특별자치도 고성군", "강원특별자치도 양양군","강원특별자치도 원주시 도시정보센터",
+    "충청북도 청주시", "충청북도 충주시", "충청북도 제천시", "충청북도 보은군", "충청북도 옥천군", "충청북도 영동군", "충청북도 증평군", "충청북도 진천군", "충청북도 괴산군", "충청북도 음성군", "충청북도 단양군",
+    "충청남도 천안시", "충청남도 공주시", "충청남도 보령시", "충청남도 아산시", "충청남도 서산시", "충청남도 논산시", "충청남도 계룡시", "충청남도 당진시", "충청남도 금산군", "충청남도 부여군", "충청남도 서천군", "충청남도 청양군", "충청남도 홍성군", "충청남도 예산군", "충청남도 태안군",
+    "전북특별자치도 전주시", "전북특별자치도 군산시", "전북특별자치도 익산시", "전북특별자치도 정읍시", "전북특별자치도 남원시", "전북특별자치도 김제시", "전북특별자치도 완주군", "전북특별자치도 진안군", "전북특별자치도 무주군", "전북특별자치도 장수군", "전북특별자치도 임실군", "전북특별자치도 순창군", "전북특별자치도 고창군", "전북특별자치도 부안군",
+    "전라남도 목포시", "전라남도 여수시", "전라남도 순천시", "전라남도 나주시", "전라남도 광양시", "전라남도 담양군", "전라남도 곡성군", "전라남도 구례군", "전라남도 고흥군", "전라남도 보성군", "전라남도 화순군", "전라남도 장흥군", "전라남도 강진군", "전라남도 해남군", "전라남도 영암군", "전라남도 무안군", "전라남도 함평군", "전라남도 영광군", "전라남도 장성군", "전라남도 완도군", "전라남도 진도군", "전라남도 신안군",
+    "경상북도 포항시", "경상북도 경주시", "경상북도 김천시", "경상북도 안동시", "경상북도 구미시", "경상북도 영주시", "경상북도 상주시", "경상북도 문경시", "경상북도 경산시", "경상북도 의성군", "경상북도 청송군", "경상북도 영양군", "경상북도 영덕군", "경상북도 청도군", "경상북도 고령군", "경상북도 성주군", "경상북도 칠곡군", "경상북도 예천군", "경상북도 봉화군", "경상북도 울진군", "경상북도 울릉군",
+    "경상남도 창원시", "경상남도 진주시", "경상남도 통영시", "경상남도 사천시", "경상남도 김해시", "경상남도 밀양시", "경상남도 거제시", "경상남도 양산시", "경상남도 의령군", "경상남도 함안군", "경상남도 창녕군", "경상남도 고성군", "경상남도 남해군", "경상남도 하동군", "경상남도 산청군", "경상남도 함양군", "경상남도 거창군", "경상남도 합천군",
+    "제주특별자치도", "제주특별자치도 제주시", "제주특별자치도 서귀포시"
 ]
 
 METRO_LIST = ["전국", "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도"]
@@ -86,11 +100,10 @@ st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
 try:
     df = get_data_from_gsheet()
     if not df.empty:
-        # 1. 필터링 로직 강화 (START WITH 대신 '포함' 여부로 확인)
+        # 1. 기관명 필터링 (기존 방식 복원)
         def filter_agency(agency_name):
             agency_name = str(agency_name).strip()
-            # FULL_DISTRICT_LIST의 단어가 기관명에 들어있는지 확인
-            return any(dist in agency_name for dist in FULL_DISTRICT_LIST)
+            return any(agency_name.startswith(dist) for dist in FULL_DISTRICT_LIST)
 
         df = df[df['★가공_수요기관'].apply(filter_agency)]
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
@@ -108,25 +121,24 @@ try:
 
         df['contract_group_key'] = df['★가공_계약명'].apply(clean_contract_name)
 
-        # 4. 데이터 분리 및 중복 제거
-        # 진행중인 데이터
-        active_df = df[df['남은기간'] != "만료됨"].copy()
-        active_df = active_df.sort_values('temp_date', ascending=False).drop_duplicates(['★가공_수요기관', 'contract_group_key', '★가공_업체명'])
+        # 4. 데이터 분리 및 중복 제거 로직 강화
+        # [수정] 정렬할 때 연도가 2026인 데이터를 우선순위로 두기 위해 temp_date 내림차순 적용
+        df = df.sort_values(by=['★가공_수요기관', 'contract_group_key', '★가공_업체명', 'temp_date'], ascending=[True, True, True, False])
 
-        # 만료된 데이터 (2025년 이전 포함 전체)
-        expired_df = df[df['남은기간'] == "만료됨"].copy()
-        expired_df = expired_df.sort_values('temp_date', ascending=False)
-
-        # 5. [인제군 보완 로직] 진행 중인 계약이 없는 모든 기관에 대해 보완
-        # 현재 화면에 나올 기관 리스트
-        all_target_agencies = df['★가공_수요기관'].unique()
+        # 기관별로 진행 중인 계약이 있는지 체크하기 위해 분리
+        active_mask = (df['남은기간'] != "만료됨")
+        active_df = df[active_mask].drop_duplicates(['★가공_수요기관', 'contract_group_key', '★가공_업체명'])
+        
+        # 만료된 데이터
+        expired_all_df = df[~active_mask].copy()
+        
+        # [핵심 보완] 유효한(진행 중인) 계약이 없는 기관의 리스트를 추출
         agencies_with_active = active_df['★가공_수요기관'].unique()
-        
-        # 유효 계약이 없는 기관들
-        missing_agencies = [ag for ag in all_target_agencies if ag not in agencies_with_active]
-        
-        # 유효 계약이 없는 기관의 만료 데이터 중 가장 최신 것들만 추출
-        fallback_df = expired_df[expired_df['★가공_수요기관'].isin(missing_agencies)].copy()
+        all_target_agencies = df['★가공_수요기관'].unique()
+        agencies_needing_fallback = [ag for ag in all_target_agencies if ag not in agencies_with_active]
+
+        # 유효 계약이 없는 기관은 만료 데이터 중 가장 최신 건을 가져옴
+        fallback_df = expired_all_df[expired_all_df['★가공_수요기관'].isin(agencies_needing_fallback)].copy()
         fallback_df = fallback_df.drop_duplicates(['★가공_수요기관'], keep='first')
         
         def format_expired_label(date_str):
@@ -135,14 +147,14 @@ try:
         
         fallback_df['남은기간'] = fallback_df['★가공_계약만료일'].apply(format_expired_label)
 
-        # 6. 최종 데이터 병합
+        # 5. 최종 데이터 합치기
         final_processed_df = pd.concat([active_df, fallback_df], ignore_index=True)
 
-        # 7. 광역단위 설정
+        # 6. 광역단위 설정
         def get_metro_name(agency):
             agency_str = str(agency)
             for metro in METRO_LIST[1:]:
-                if metro in agency_str: return metro
+                if agency_str.startswith(metro): return metro
             return "기타"
         
         final_processed_df['광역단위'] = final_processed_df['★가공_수요기관'].apply(get_metro_name)
@@ -156,10 +168,20 @@ try:
         st.divider()
         st.write(f"### 📊 {selected_region} 분석 현황 (총 {len(display_df)}건)")
         
+        # 컬럼 정리
         cols = ['★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL']
         final_out = display_df[cols].copy()
         final_out.columns = [c.replace('★가공_', '') for c in final_out.columns]
         final_out.columns = [c.replace('계약상세정보URL', 'URL') for c in final_out.columns]
+
+        # 다운로드 버튼 (표 위)
+        csv = final_out.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button(
+            label=f"📥 {selected_region} 데이터 다운로드(CSV)",
+            data=csv,
+            file_name=f"현황_{selected_region}_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv"
+        )
 
         st.dataframe(
             final_out,
@@ -169,9 +191,6 @@ try:
             },
             use_container_width=True, hide_index=True, height=800
         )
-
-        csv = final_out.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button("📥 데이터 다운로드", csv, f"현황_{selected_region}.csv", "text/csv")
 
     else:
         st.warning("데이터가 없습니다.")
