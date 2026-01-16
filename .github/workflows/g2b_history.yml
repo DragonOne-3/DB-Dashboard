@@ -1,4 +1,4 @@
-name: Run Data Collector
+name: g2b history
 
 on:
   workflow_dispatch: # 수동 실행 버튼을 만듭니다
