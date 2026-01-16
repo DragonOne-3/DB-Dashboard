@@ -100,7 +100,7 @@ st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
 try:
     df = get_data_from_gsheet()
     if not df.empty:
-        # 1. 기관명 필터링 (기존 방식 복원)
+        # 1. 기관명 필터링 (기존 startswith 방식 유지)
         def filter_agency(agency_name):
             agency_name = str(agency_name).strip()
             return any(agency_name.startswith(dist) for dist in FULL_DISTRICT_LIST)
@@ -121,23 +121,22 @@ try:
 
         df['contract_group_key'] = df['★가공_계약명'].apply(clean_contract_name)
 
-        # 4. 데이터 분리 및 중복 제거 로직 강화
-        # [수정] 정렬할 때 연도가 2026인 데이터를 우선순위로 두기 위해 temp_date 내림차순 적용
+        # 4. 데이터 분리 및 중복 제거
+        # [수정] 2026년 데이터를 가장 상단에 배치하기 위해 정렬 강화
         df = df.sort_values(by=['★가공_수요기관', 'contract_group_key', '★가공_업체명', 'temp_date'], ascending=[True, True, True, False])
 
-        # 기관별로 진행 중인 계약이 있는지 체크하기 위해 분리
-        active_mask = (df['남은기간'] != "만료됨")
-        active_df = df[active_mask].drop_duplicates(['★가공_수요기관', 'contract_group_key', '★가공_업체명'])
+        # 현재 진행 중인 데이터
+        active_df = df[df['남은기간'] != "만료됨"].drop_duplicates(['★가공_수요기관', 'contract_group_key', '★가공_업체명'], keep='first')
         
-        # 만료된 데이터
-        expired_all_df = df[~active_mask].copy()
-        
-        # [핵심 보완] 유효한(진행 중인) 계약이 없는 기관의 리스트를 추출
-        agencies_with_active = active_df['★가공_수요기관'].unique()
-        all_target_agencies = df['★가공_수요기관'].unique()
-        agencies_needing_fallback = [ag for ag in all_target_agencies if ag not in agencies_with_active]
+        # 만료된 전체 데이터
+        expired_all_df = df[df['남은기간'] == "만료됨"].copy()
 
-        # 유효 계약이 없는 기관은 만료 데이터 중 가장 최신 건을 가져옴
+        # [핵심 보완] 유효 계약이 없는 기관 구제 로직
+        agencies_with_active = active_df['★가공_수요기관'].unique()
+        all_possible_agencies = df['★가공_수요기관'].unique()
+        agencies_needing_fallback = [ag for ag in all_possible_agencies if ag not in agencies_with_active]
+
+        # 인제군 등 유효 계약이 없는 기관의 경우, 만료 데이터 중 가장 최신 건을 추출
         fallback_df = expired_all_df[expired_all_df['★가공_수요기관'].isin(agencies_needing_fallback)].copy()
         fallback_df = fallback_df.drop_duplicates(['★가공_수요기관'], keep='first')
         
@@ -147,7 +146,7 @@ try:
         
         fallback_df['남은기간'] = fallback_df['★가공_계약만료일'].apply(format_expired_label)
 
-        # 5. 최종 데이터 합치기
+        # 5. 데이터 최종 병합
         final_processed_df = pd.concat([active_df, fallback_df], ignore_index=True)
 
         # 6. 광역단위 설정
@@ -160,21 +159,21 @@ try:
         final_processed_df['광역단위'] = final_processed_df['★가공_수요기관'].apply(get_metro_name)
         final_processed_df['★가공_계약금액'] = pd.to_numeric(final_processed_df['★가공_계약금액'], errors='coerce').fillna(0).astype(int)
 
-        # --- UI 출력 ---
+        # --- UI 상단 필터 ---
         st.subheader("📍 지역별 필터 선택")
         selected_region = st.radio("광역시도를 선택하세요:", METRO_LIST, horizontal=True)
         display_df = final_processed_df.copy() if selected_region == "전국" else final_processed_df[final_processed_df['광역단위'] == selected_region].copy()
 
         st.divider()
-        st.write(f"### 📊 {selected_region} 분석 현황 (총 {len(display_df)}건)")
         
-        # 컬럼 정리
-        cols = ['★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL']
-        final_out = display_df[cols].copy()
+        # --- [수정] 데이터 다운로드 버튼 위치 고정 (표 바로 위) ---
+        cols_to_show = ['★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL']
+        final_out = display_df[cols_to_show].copy()
         final_out.columns = [c.replace('★가공_', '') for c in final_out.columns]
         final_out.columns = [c.replace('계약상세정보URL', 'URL') for c in final_out.columns]
 
-        # 다운로드 버튼 (표 위)
+        st.write(f"### 📊 {selected_region} 분석 현황 (총 {len(final_out)}건)")
+        
         csv = final_out.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button(
             label=f"📥 {selected_region} 데이터 다운로드(CSV)",
@@ -183,6 +182,7 @@ try:
             mime="text/csv"
         )
 
+        # 데이터 표 출력
         st.dataframe(
             final_out,
             column_config={
