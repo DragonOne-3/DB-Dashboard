@@ -7,24 +7,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 import os
 import json
 import time
-from pytimekr import pytimekr  # 공휴일 체크를 위해 추가
 
 # --- 설정 ---
 API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 API_URL = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
-"""
-def get_target_date():
-    
-    now = datetime.utcnow() + timedelta(hours=9)
-    target = now - timedelta(days=1)
-    
-    holidays = pytimekr.holidays(year=target.year)
-    
-    while target.weekday() >= 5 or target.date() in holidays:
-        target -= timedelta(days=1)
-        
-    return target
-"""
+
 def get_gs_client():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
     creds_dict = json.loads(auth_json)
@@ -33,21 +20,25 @@ def get_gs_client():
     return gspread.authorize(creds)
 
 def main():
-    # 1. 수집 대상 날짜 계산
-    #target_dt = get_target_date()
-    #target_str = "2025-01-01"
-    #display_str = "2025-06-30"
+    # 1. 수집 대상 날짜 및 키워드 설정
+    # 현재 날짜 기준으로 종료일 설정 (2025-01-01부터 오늘까지 일괄 수집)
+    bgn_date = "20250101"
+    end_date = datetime.now().strftime("%Y%m%d")
+    display_str = f"{bgn_date}~{end_date}"
     
-    # 키워드 리스트: '방위' 추가
     keywords = ['국방', '부대', '작전', '경계', '방위', '군사', '무인화', '사령부', '군대']
     all_fetched_rows = []
 
     # 2. 키워드별 수집
     for kw in keywords:
         params = {
-            'serviceKey': API_KEY, 'pageNo': '1', 'numOfRows': '999',
-            'inqryDiv': '1', 'type': 'xml', 
-            'inqryBgnDate': '20250101', 'inqryEndDate': '20250603', 
+            'serviceKey': API_KEY, 
+            'pageNo': '1', 
+            'numOfRows': '999',
+            'inqryDiv': '1', 
+            'type': 'xml', 
+            'inqryBgnDate': bgn_date, 
+            'inqryEndDate': end_date, 
             'cntrctNm': kw
         }
         try:
@@ -67,7 +58,7 @@ def main():
                     clean_corp = corp_parts[3] if len(corp_parts) > 3 else raw_corp
 
                     processed = {
-                        '★가공_계약일': '',
+                        '★가공_계약일': raw.get('cntrctDate', ''),
                         '★가공_착수일': raw.get('stDate', '-'),
                         '★가공_만료일': raw.get('ttalScmpltDate') or raw.get('thtmScmpltDate') or '-',
                         '★가공_수요기관': clean_demand,
@@ -86,7 +77,7 @@ def main():
     if all_fetched_rows:
         df = pd.DataFrame(all_fetched_rows)
         
-        # 계약번호(cntrctNo)가 있다면 중복 제거 (없을 경우 전체 컬럼 기준)
+        # 계약번호(cntrctNo) 기준 중복 제거
         if 'cntrctNo' in df.columns:
             df = df.drop_duplicates(subset=['cntrctNo'])
         else:
@@ -97,6 +88,7 @@ def main():
             sh = get_gs_client().open("나라장터_용역계약내역")
             ws = sh.get_worksheet(0)
             
+            # 리스트로 변환하여 시트 하단에 추가
             ws.append_rows(df.values.tolist(), value_input_option='RAW')
             print(f"✅ {display_str} 데이터 {len(df)}건(중복제외) 추가 완료")
         except Exception as e:
