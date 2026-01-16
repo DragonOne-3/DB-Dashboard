@@ -67,7 +67,7 @@ def main():
                     clean_corp = corp_parts[3] if len(corp_parts) > 3 else raw_corp
 
                     processed = {
-                        '★가공_계약일': display_str,
+                        '★가공_계약일': '',
                         '★가공_착수일': raw.get('stDate', '-'),
                         '★가공_만료일': raw.get('ttalScmpltDate') or raw.get('thtmScmpltDate') or '-',
                         '★가공_수요기관': clean_demand,
@@ -98,7 +98,7 @@ def main():
             ws = sh.get_worksheet(0)
             
             ws.append_rows(df.values.tolist(), value_input_option='RAW')
-            print(f"✅ {display_str} 데이터 {len(df)}건(중복제외) 추가 완료")
+            print(f"✅ 'a' 데이터 {len(df)}건(중복제외) 추가 완료")
         except Exception as e:
             print(f"❌ 시트 저장 중 오류: {e}")
     else:
