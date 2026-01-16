@@ -4,13 +4,14 @@ import pandas as pd
 from datetime import datetime, timedelta
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import json
 import os
+import json
 import time
 
-# --- 설정 ---
+# --- 환경 설정 ---
+# 공공데이터포털에서 받은 Decoding 또는 Encoding 키 둘 중 하나를 시도해보세요.
 API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
-# 안정성을 위해 XML 기반 API 엔드포인트 사용
+# 용역계약 목록 조회 API (XML 엔드포인트)
 API_URL = 'http://apis.data.go.kr/1230000/Service_7/getServcCntrctInfoService01'
 
 def get_gs_client():
@@ -21,87 +22,97 @@ def get_gs_client():
     return gspread.authorize(creds)
 
 def main():
-    start_dt = datetime(2025, 1, 1)
-    end_dt = datetime.now()
+    # 1. 날짜 설정 (2025년 1월 1일 ~ 현재)
+    # API가 허용하는 최대 조회 기간인 1년 단위로 요청 횟수를 최소화합니다.
+    start_str = "20250101"
+    end_str = datetime.now().strftime("%Y%m%d")
     
+    # [사용자 요청 키워드]
     contract_keywords = ['작전', '경계', '무인화', '국방', '군사', '부대']
     all_fetched_rows = []
-    
-    current_start = start_dt
-    while current_start < end_dt:
-        current_end = current_start + timedelta(days=90)
-        if current_end > end_dt:
-            current_end = end_dt
-            
-        s_str = current_start.strftime("%Y%m%d")
-        e_str = current_end.strftime("%Y%m%d")
-        
-        print(f"📅 구간 조회 중: {s_str} ~ {e_str}")
-        
-        # 구간별 수집
-        for page in range(1, 11): 
-            params = {
-                'serviceKey': API_KEY,
-                'type': 'xml', # XML 형식이 나라장터 API에서 더 안정적입니다
-                'numOfRows': '999',
-                'pageNo': str(page),
-                'inqryBgnDt': s_str,
-                'inqryEndDt': e_str,
-                'inqryDiv': '1'
-            }
-            
-            try:
-                res = requests.get(API_URL, params=params, timeout=60)
-                if res.status_code != 200:
-                    print(f"⚠️ API 서버 응답 이상 (Status: {res.status_code})")
-                    break
-                
-                # XML 파싱
-                root = ET.fromstring(res.content)
-                items = root.findall('.//item')
-                
-                if not items:
-                    break
-                    
-                for item in items:
-                    # XML 태그에서 데이터 추출
-                    cntrct_name = item.findtext('cntrctNm', '')
-                    
-                    if any(kw in cntrct_name for kw in contract_keywords) and '상수도' not in cntrct_name:
-                        processed = [
-                            item.findtext('orderInsttNm', ''),
-                            cntrct_name,
-                            item.findtext('mainEntrpsNm', '-'),
-                            int(item.findtext('cntrctAmt', '0')),
-                            item.findtext('cntrctDate', ''),
-                            item.findtext('strtDate', '-'),
-                            item.findtext('cntrctPrdNm', '-'),
-                            item.findtext('totScmpltDate', '') or item.findtext('endDate', ''),
-                            f"https://www.g2b.go.kr:8067/co/common/moveCntrctDetail.do?cntrctNo={item.findtext('cntrctNo')}&cntrctOrdNo={item.findtext('cntrctOrdNo', '00')}"
-                        ]
-                        all_fetched_rows.append(processed)
-                
-                time.sleep(1.0) # 서버 부하 방지를 위해 대기 시간 증가
-            except Exception as e:
-                print(f"❌ {s_str} 구간 {page}페이지 오류: {e}")
-                continue # 오류 발생 시 중단하지 않고 다음 페이지/구간 시도
-        
-        current_start = current_end + timedelta(days=1)
 
-    # 데이터 저장
+    print(f"🚀 수집 시작: {start_str} ~ {end_str}")
+
+    # 2. API 호출 (XML 방식)
+    # 999건씩 10페이지까지 총 1만건을 훑습니다.
+    for page in range(1, 11):
+        params = {
+            'serviceKey': API_KEY,
+            'type': 'xml', # JSON 에러 방지를 위해 XML 사용
+            'numOfRows': '999',
+            'pageNo': str(page),
+            'inqryBgnDt': start_str,
+            'inqryEndDt': end_str,
+            'inqryDiv': '1' # 계약일자 기준
+        }
+        
+        # 봇 차단을 막기 위한 브라우저 흉내 헤더
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+
+        try:
+            print(f"📡 {page}페이지 요청 중...")
+            response = requests.get(API_URL, params=params, headers=headers, timeout=60)
+            
+            # 응답이 비어있는지 확인
+            if not response.content.strip():
+                print(f"⚠️ {page}페이지 응답 내용이 비어있습니다. 종료합니다.")
+                break
+
+            # XML 파싱 시작
+            root = ET.fromstring(response.content)
+            
+            # API 에러 코드 체크
+            result_code = root.findtext('.//resultCode', '')
+            if result_code != '00':
+                print(f"❌ API 에러 발생! 코드: {result_code}, 메시지: {root.findtext('.//resultMsg')}")
+                break
+
+            items = root.findall('.//item')
+            if not items:
+                print(f"ℹ️ {page}페이지에 더 이상 데이터가 없습니다.")
+                break
+
+            for item in items:
+                cntrct_nm = item.findtext('cntrctNm', '')
+                
+                # 키워드 필터링 (계약명에 키워드 포함 & 상수도 제외)
+                if any(kw in cntrct_nm for kw in contract_keywords) and '상수도' not in cntrct_nm:
+                    row = [
+                        item.findtext('orderInsttNm', ''), # 수요기관
+                        cntrct_nm,                         # 계약명
+                        item.findtext('mainEntrpsNm', '-'),# 업체명
+                        int(item.findtext('cntrctAmt', '0')), # 금액
+                        item.findtext('cntrctDate', ''),    # 계약일
+                        item.findtext('strtDate', '-'),     # 착수일
+                        item.findtext('cntrctPrdNm', '-'),  # 기간
+                        item.findtext('totScmpltDate', '') or item.findtext('endDate', ''), # 만료일
+                        f"https://www.g2b.go.kr:8067/co/common/moveCntrctDetail.do?cntrctNo={item.findtext('cntrctNo')}&cntrctOrdNo={item.findtext('cntrctOrdNo', '00')}"
+                    ]
+                    all_fetched_rows.append(row)
+
+            time.sleep(1.0) # 서버 부하 방지
+
+        except Exception as e:
+            print(f"❌ {page}페이지 처리 중 치명적 오류: {e}")
+            break
+
+    # 3. 구글 시트 저장
     if all_fetched_rows:
         df = pd.DataFrame(all_fetched_rows)
-        unique_rows = df.drop_duplicates().values.tolist()
+        unique_list = df.drop_duplicates().values.tolist()
         
         try:
-            sh = get_gs_client().open("나라장터_용역계약내역")
+            client = get_gs_client()
+            sh = client.open("나라장터_용역계약내역")
             ws = sh.get_worksheet(0)
-            ws.append_rows(unique_rows, value_input_option='USER_ENTERED')
-            print(f"✨ 최종 완료! {len(unique_rows)}건 추가됨.")
+            ws.append_rows(unique_list, value_input_option='USER_ENTERED')
+            print(f"✨ 성공! 총 {len(unique_list)}건의 데이터를 시트에 축적했습니다.")
         except Exception as e:
             print(f"❌ 시트 저장 오류: {e}")
     else:
-        print("ℹ️ 수집된 데이터가 없습니다. 키워드나 API 상태를 확인하세요.")
+        print("ℹ️ 조건에 맞는 데이터가 한 건도 없습니다. 키워드를 확인해주세요.")
 
 if __name__ == "__main__":
     main()
