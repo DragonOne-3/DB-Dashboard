@@ -1,5 +1,4 @@
 import requests
-import xml.etree.ElementTree as ET
 import pandas as pd
 from datetime import datetime, timedelta
 import gspread
@@ -10,7 +9,7 @@ import time
 
 # --- 설정 ---
 API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
-API_URL = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
+API_URL = 'http://apis.data.go.kr/1230000/Service_7/getServcCntrctInfoService01'
 
 def get_gs_client():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
@@ -20,87 +19,88 @@ def get_gs_client():
     return gspread.authorize(creds)
 
 def main():
-    # 1. 수집 기간 설정 (2025년 1월 1일 ~ 현재)
-    start_date = "20250101"
-    end_date = datetime.now().strftime("%Y%m%d")
+    # 1. 수집 기간 설정 (2025-01-01 ~ 현재)
+    start_dt = datetime(2025, 1, 1)
+    end_dt = datetime.now()
     
-    # [사용자 요청] 계약명 기준 키워드만 사용
+    # [사용자 지정 키워드]
     contract_keywords = ['작전', '경계', '무인화', '국방', '군사', '부대']
     
     all_fetched_rows = []
-    print(f"🚀 계약명 키워드 기준 수집 시작: {start_date} ~ {end_date}")
-
-    # 2. 키워드별 수집 진행
-    for kw in contract_keywords:
-        params = {
-            'serviceKey': API_KEY, 'pageNo': '1', 'numOfRows': '999',
-            'inqryDiv': '1', 'type': 'xml', 
-            'inqryBgnDate': start_date, 'inqryEndDate': end_date, 
-            'cntrctNm': kw # 계약명 검색 파라미터
-        }
+    
+    # 2. 날짜를 3개월 단위로 쪼개기
+    current_start = start_dt
+    while current_start < end_dt:
+        # 3개월 뒤 계산 (약 90일)
+        current_end = current_start + timedelta(days=90)
+        if current_end > end_dt:
+            current_end = end_dt
+            
+        s_str = current_start.strftime("%Y%m%d")
+        e_str = current_end.strftime("%Y%m%d")
         
-        try:
-            res = requests.get(API_URL, params=params, timeout=60)
-            if res.status_code == 200:
-                root = ET.fromstring(res.content)
-                items = root.findall('.//item')
-                print(f"📡 키워드 [{kw}] 검색 결과: {len(items)}건 발견")
+        print(f"📅 구간 수집 시작: {s_str} ~ {e_str}")
+        
+        # 해당 구간에서 페이지별로 수집
+        for page in range(1, 11): # 구간별 최대 약 1만건까지 확인
+            params = {
+                'serviceKey': API_KEY,
+                'type': 'json',
+                'numOfRows': '999',
+                'pageNo': str(page),
+                'inqryBgnDt': s_str,
+                'inqryEndDt': e_str,
+                'inqryDiv': '1'
+            }
+            
+            try:
+                res = requests.get(API_URL, params=params, timeout=60)
+                res_data = res.json()
+                items = res_data.get('response', {}).get('body', {}).get('items', [])
                 
+                if not items:
+                    break
+                    
                 for item in items:
-                    raw = {child.tag: child.text for child in item}
+                    cntrct_name = item.get('cntrctNm', '')
                     
-                    cntrct_name = raw.get('cntrctNm', '')
-                    
-                    # 상수도 제외 로직 유지
-                    if '상수도' in cntrct_name:
-                        continue
+                    # 키워드 필터링 (상수도 제외 및 사용자 키워드 포함)
+                    if any(kw in cntrct_name for kw in contract_keywords) and '상수도' not in cntrct_name:
+                        processed = [
+                            item.get('orderInsttNm', ''), # ★가공_수요기관
+                            cntrct_name,                   # ★가공_계약명
+                            item.get('mainEntrpsNm', '-'), # ★가공_업체명
+                            int(item.get('cntrctAmt', 0)), # ★가공_계약금액
+                            item.get('cntrctDate', ''),    # 계약일자
+                            item.get('strtDate', '-'),     # 착수일자
+                            item.get('cntrctPrdNm', '-'),  # 계약기간
+                            item.get('totScmpltDate', '') or item.get('endDate', ''), # 총완수일자
+                            f"https://www.g2b.go.kr:8067/co/common/moveCntrctDetail.do?cntrctNo={item.get('cntrctNo')}&cntrctOrdNo={item.get('cntrctOrdNo', '00')}"
+                        ]
+                        all_fetched_rows.append(processed)
+                
+                time.sleep(0.5) # API 매너 타임
+            except Exception as e:
+                print(f"❌ {s_str} 구간 처리 중 오류: {e}")
+                break
+        
+        # 다음 구간으로 이동 (이전 끝 날짜의 다음 날부터)
+        current_start = current_end + timedelta(days=1)
 
-                    # 수요기관명 정제
-                    raw_demand = raw.get('dminsttList', '')
-                    demand_parts = raw_demand.replace('[', '').replace(']', '').split('^')
-                    clean_demand = demand_parts[2] if len(demand_parts) > 2 else raw_demand
-                    
-                    # 업체명 정제
-                    raw_corp = raw.get('corpList', '')
-                    corp_parts = raw_corp.replace('[', '').replace(']', '').split('^')
-                    clean_corp = corp_parts[3] if len(corp_parts) > 3 else raw_corp
-
-                    processed = {
-                        '★가공_수요기관': clean_demand,
-                        '★가공_계약명': cntrct_name,
-                        '★가공_업체명': clean_corp,
-                        '★가공_계약금액': int(raw.get('totCntrctAmt', 0)),
-                        '계약일자': raw.get('cntrctDate', ''),
-                        '착수일자': raw.get('stDate', ''),
-                        '계약기간': raw.get('cntrctPrdNm', ''),
-                        '총완수일자': raw.get('ttalScmpltDate') or raw.get('thtmScmpltDate') or '',
-                        '계약상세정보URL': f"https://www.g2b.go.kr:8067/co/common/moveCntrctDetail.do?cntrctNo={raw.get('cntrctNo')}&cntrctOrdNo={raw.get('cntrctOrdNo')}"
-                    }
-                    all_fetched_rows.append(processed)
-            
-            # API 호출 간격 조절
-            time.sleep(1)
-            
-        except Exception as e:
-            print(f"❌ {kw} 수집 중 오류: {e}")
-
-    # 3. 데이터 중복 제거 및 구글 시트 전송
+    # 3. 데이터 중복 제거 및 구글 시트 저장
     if all_fetched_rows:
-        df = pd.DataFrame(all_fetched_rows)
-        # 중복 제거
-        df = df.drop_duplicates(subset=['★가공_수요기관', '★가공_계약명', '★가공_업체명'])
-
+        # 중복 제거 (리스트를 튜플로 변환하여 set으로 중복 체크 후 다시 리스트로)
+        unique_rows = list(map(list, set(map(tuple, all_fetched_rows))))
+        
         try:
             sh = get_gs_client().open("나라장터_용역계약내역")
             ws = sh.get_worksheet(0)
-            
-            # 시트에 추가
-            ws.append_rows(df.values.tolist(), value_input_option='USER_ENTERED')
-            print(f"✨ 성공! 계약명 기준 데이터 총 {len(df)}건 추가 완료")
+            ws.append_rows(unique_rows, value_input_option='USER_ENTERED')
+            print(f"✨ 전체 수집 완료! 총 {len(unique_rows)}건의 데이터가 추가되었습니다.")
         except Exception as e:
-            print(f"❌ 시트 저장 오류: {e}")
+            print(f"❌ 시트 저장 중 오류: {e}")
     else:
-        print("ℹ️ 해당 기간 내 계약명 키워드에 맞는 데이터가 여전히 없습니다.")
+        print("ℹ️ 수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
     main()
