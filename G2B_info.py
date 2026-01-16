@@ -119,6 +119,8 @@ try:
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
         df = df[df['★가공_계약명'].str.contains("통합관제|통합|CCTV", na=False)]
         df = df[~df['★가공_계약명'].str.contains("상수도", na=False)]
+        df = df[~df['★가공_계약명'].str.contains("청사", na=False)]
+        
 
         # 3. 날짜 계산 및 데이터 정렬
         df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
