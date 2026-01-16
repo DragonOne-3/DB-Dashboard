@@ -47,7 +47,7 @@ def main():
         params = {
             'serviceKey': API_KEY, 'pageNo': '1', 'numOfRows': '999',
             'inqryDiv': '1', 'type': 'xml', 
-            'inqryBgnDate': '2025-01-01', 'inqryEndDate': '2025-06-03', 
+            'inqryBgnDate': '20250101', 'inqryEndDate': '20250603', 
             'cntrctNm': kw
         }
         try:
