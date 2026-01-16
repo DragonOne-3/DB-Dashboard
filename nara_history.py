@@ -81,7 +81,7 @@ def main():
             print(f"❌ {kw} 수집 중 오류: {e}")
             continue
         time.sleep(0.5)
-
+"""
     # 3. 데이터 중복 제거 및 필터링
     if all_fetched_rows:
         df = pd.DataFrame(all_fetched_rows)
@@ -91,7 +91,7 @@ def main():
             df = df.drop_duplicates(subset=['cntrctNo'])
         else:
             df = df.drop_duplicates()
-
+"""
         # 4. 구글 시트 저장
         try:
             sh = get_gs_client().open("나라장터_용역계약내역")
