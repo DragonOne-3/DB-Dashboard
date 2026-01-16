@@ -30,7 +30,7 @@ FULL_DISTRICT_LIST = [
     "제주특별자치도", "제주특별자치도 제주시", "제주특별자치도 서귀포시"
 ]
 
-METRO_LIST = ["전국", "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도"]
+METRO_LIST = ["전국",  "강원특별자치도", "경기도", "경상남도", "경상북도", "광주광역시", "대구광역시", "대전광역시", "세종특별자치시", "울산광역시", "인천광역시", "전라남도", "전북특별자치도", "제주특별자치도", "충청남도", "충청북도","부산광역시","서울특별시"]
 
 def get_data_from_gsheet():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
@@ -62,26 +62,43 @@ def calculate_logic(row):
         cntrct_date = parse_date(row.get('계약일자'))
         start_date = parse_date(row.get('착수일자'))
         period_raw = str(row.get('계약기간', ''))
-        this_match = re.search(r'금차\s*[:\s]*(\d+)', period_raw)
-        total_match = re.search(r'총차\s*[:\s]*(\d+)', period_raw) or re.search(r'총용역\s*[:\s]*(\d+)', period_raw)
-        this_days = int(this_match.group(1)) if this_match else 0
-        total_days = int(total_match.group(1)) if total_match else 0
-        if not this_days and len(re.sub(r'[^0-9]', '', period_raw)) >= 8:
-            final_expire_dt = parse_date(period_raw)
-        else:
-            base_date = cntrct_date if (this_days == total_days and this_days > 0) else start_date
-            if base_date and total_days > 0:
+        total_finish_date = parse_date(row.get('총완수일자')) # AQ1열 명칭 가정
+        
+        final_expire_dt = None
+
+        # 1순위: 계약기간 텍스트 내 총차/총용역 일수 계산
+        total_match = re.search(r'(총차|총용역|총)\s*[:\s]*(\d+)', period_raw)
+        total_days = int(total_match.group(2)) if total_match else 0
+        
+        if total_days > 0:
+            base_date = start_date if start_date else cntrct_date
+            if base_date:
                 final_expire_dt = base_date + relativedelta(days=total_days)
-            else: return "정보부족", "정보부족"
+
+        # 2순위: 위 결과가 없고 총완수일자 데이터가 있는 경우
+        if not final_expire_dt and total_finish_date:
+            final_expire_dt = total_finish_date
+
+        # 3순위: 계약기간 내 날짜형식 숫자 추출
+        if not final_expire_dt:
+            date_in_period = re.sub(r'[^0-9]', '', period_raw)
+            if len(date_in_period) >= 8:
+                final_expire_dt = parse_date(date_in_period[:8])
+
+        if not final_expire_dt:
+            return "정보부족", "정보부족"
+
         today = datetime.now()
         expire_str = final_expire_dt.strftime('%Y-%m-%d')
-        if final_expire_dt < today: remain_str = "만료됨"
+        if final_expire_dt < today:
+            return expire_str, "만료됨"
         else:
             diff = relativedelta(final_expire_dt, today)
             months = diff.years * 12 + diff.months
             remain_str = f"{months}개월 {diff.days}일"
-        return expire_str, remain_str
-    except: return "계산불가", "오류"
+            return expire_str, remain_str
+    except:
+        return "계산불가", "오류"
 
 st.set_page_config(layout="wide")
 st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
@@ -98,34 +115,29 @@ try:
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
         df = df[df['★가공_계약명'].str.contains("통합관제", na=False)]
 
-        # 2. 계약 기간 및 만료 여부 계산
+        # 2. 계약 기간 및 만료 여부 계산 (정보부족 방지를 위해 AQ1열 활용)
         df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
         
-        # [신규 추가] 만료된 데이터 삭제
+        # 만료된 데이터 삭제
         df = df[df['남은기간'] != "만료됨"]
 
-        # 3. 중복 제거를 위한 텍스트 정교화
-        # [수정] 차수(1차, 2차 등)와 연도 숫자를 모두 제거하여 동일 사업군으로 묶음
+        # 3. 중복 제거 로직 (최종 차수 유지)
         def clean_contract_name_advanced(name):
             if pd.isna(name): return ""
             name = str(name).replace(" ", "")
-            # 차수 구분 제거 (1차, 2차, 1차분, 2차분 등)
             name = re.sub(r'\d+차분?', '', name)
-            # 연도 숫자 제거
             name = re.sub(r'\d+', '', name)
             return name
 
         df['contract_group_key'] = df['★가공_계약명'].apply(clean_contract_name_advanced)
         df['temp_date'] = pd.to_datetime(df['계약일자'], errors='coerce')
 
-        # 정렬: 기관명, 그룹키, 업체명, 날짜(최신순)
         df = df.sort_values(by=['★가공_수요기관', 'contract_group_key', '★가공_업체명', 'temp_date'], 
                            ascending=[True, True, True, False])
 
-        # [신규 추가] 동일 사업군 내에서 최종 차수(가장 최신 날짜)만 유지
         df = df.drop_duplicates(subset=['★가공_수요기관', 'contract_group_key', '★가공_업체명'], keep='first')
 
-        # 4. 후처리
+        # 4. 후처리 및 광역단위 설정
         df['★가공_계약금액'] = pd.to_numeric(df['★가공_계약금액'], errors='coerce').fillna(0).astype(int)
         
         def get_metro_name(agency):
