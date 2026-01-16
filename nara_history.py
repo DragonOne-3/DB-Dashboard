@@ -93,14 +93,14 @@ def main():
             df = df.drop_duplicates()
 
         # 4. 구글 시트 저장
-            try:
-                sh = get_gs_client().open("나라장터_용역계약내역")
-                ws = sh.get_worksheet(0)
-                
-                ws.append_rows(df.values.tolist(), value_input_option='RAW')
-                print(f"✅ 'a' 데이터 {len(df)}건(중복제외) 추가 완료")
-            except Exception as e:
-                print(f"❌ 시트 저장 중 오류: {e}")
+        try:
+            sh = get_gs_client().open("나라장터_용역계약내역")
+            ws = sh.get_worksheet(0)
+            
+            ws.append_rows(df.values.tolist(), value_input_option='RAW')
+            print(f"✅ 'a' 데이터 {len(df)}건(중복제외) 추가 완료")
+        except Exception as e:
+            print(f"❌ 시트 저장 중 오류: {e}")
     else:
         print(f"ℹ️ {display_str}에 해당하는 수집 데이터가 없습니다.")
 
