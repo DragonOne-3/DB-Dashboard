@@ -8,7 +8,7 @@ import os
 import json
 import time
 
-# --- 설정 (기존과 동일) ---
+# --- 설정 (사용자님 원본과 동일) ---
 API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 API_URL = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
 
@@ -20,7 +20,7 @@ def get_gs_client():
     return gspread.authorize(creds)
 
 def main():
-    # 1. 수집 대상 기간 설정 (2025년 1월 1일 ~ 오늘)
+    # 1. 수집 기간 설정: 2025년 1월 1일부터 오늘까지
     start_dt = datetime(2025, 1, 1)
     end_dt = datetime.now()
     
@@ -28,32 +28,30 @@ def main():
     keywords = ['국방', '부대', '작전', '경계', '방위', '군사', '무인화', '사령부', '군대']
     all_fetched_rows = []
 
-    # 2. 날짜별 순회 수집 (기존 코드의 루프화)
+    # 날짜별로 순회 (사용자님 성공 로직 방식)
     current_dt = start_dt
     while current_dt <= end_dt:
         target_str = current_dt.strftime("%Y%m%d")
         display_str = current_dt.strftime("%Y-%m-%d")
-        print(f"📡 {display_str} 데이터 조회 중...")
+        
+        print(f"📡 {display_str} 수집 시도 중...")
 
         for kw in keywords:
             params = {
-                'serviceKey': API_KEY, 
-                'pageNo': '1', 
-                'numOfRows': '999',
-                'inqryDiv': '1', 
-                'type': 'xml',  # 기존 코드와 동일한 XML 방식
-                'inqryBgnDate': target_str, 
-                'inqryEndDate': target_str, 
+                'serviceKey': API_KEY, 'pageNo': '1', 'numOfRows': '999',
+                'inqryDiv': '1', 'type': 'xml', 
+                'inqryBgnDate': target_str, 'inqryEndDate': target_str, 
                 'cntrctNm': kw
             }
             try:
+                # [성공 로직 그대로]
                 res = requests.get(API_URL, params=params, timeout=60)
                 if res.status_code == 200:
                     root = ET.fromstring(res.content)
                     for item in root.findall('.//item'):
                         raw = {child.tag: child.text for child in item}
                         
-                        # 수요기관 및 업체명 정제 (사용자님 로직 100% 동일)
+                        # 수요기관 및 업체명 정제 (사용자님 로직 100% 일치)
                         raw_demand = raw.get('dminsttList', '')
                         demand_parts = raw_demand.replace('[', '').replace(']', '').split('^')
                         clean_demand = demand_parts[2] if len(demand_parts) > 2 else raw_demand
@@ -74,35 +72,30 @@ def main():
                         processed.update(raw)
                         all_fetched_rows.append(processed)
             except Exception as e:
-                # 에러 발생 시 로그만 찍고 다음으로 넘어감
                 print(f"❌ {display_str} [{kw}] 오류: {e}")
                 continue
         
-        # 날짜 변경 및 서버 부하 방지용 짧은 휴식
+        # 날짜 하나 끝나면 이동
         current_dt += timedelta(days=1)
         time.sleep(0.1)
 
-    # 3. 데이터 중복 제거 및 시트 저장
+    # 3. 데이터 중복 제거 및 저장 (사용자님 로직 그대로)
     if all_fetched_rows:
         df = pd.DataFrame(all_fetched_rows)
-        # 중복 제거 (계약번호 기준)
         if 'cntrctNo' in df.columns:
             df = df.drop_duplicates(subset=['cntrctNo'])
         else:
             df = df.drop_duplicates()
 
         try:
-            client = get_gs_client()
-            sh = client.open("나라장터_용역계약내역")
+            sh = get_gs_client().open("나라장터_용역계약내역")
             ws = sh.get_worksheet(0)
-            
-            # 리스트로 변환하여 시트 하단에 추가
             ws.append_rows(df.values.tolist(), value_input_option='RAW')
-            print(f"✅ 2025년 데이터 총 {len(df)}건 수집 및 시트 축적 완료!")
+            print(f"✅ 총 {len(df)}건 추가 완료!")
         except Exception as e:
-            print(f"❌ 시트 저장 오류: {e}")
+            print(f"❌ 저장 오류: {e}")
     else:
-        print(f"ℹ️ {start_dt.strftime('%Y%m%d')} ~ {end_dt.strftime('%Y%m%d')} 사이 데이터가 없습니다.")
+        print("ℹ️ 데이터 없음")
 
 if __name__ == "__main__":
     main()
