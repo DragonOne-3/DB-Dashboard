@@ -1,4 +1,4 @@
-name: Historical Data Collector
+name: item history
 
 on:
   workflow_dispatch:
