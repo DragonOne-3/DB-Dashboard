@@ -114,6 +114,7 @@ try:
             return any(agency_name.startswith(dist) for dist in FULL_DISTRICT_LIST)
 
         df = df[df['★가공_수요기관'].apply(filter_agency)]
+        df = df[~df['★가공_수요기관'].str.contains("교육청", na=False)]
         
         # [수정] 2. 계약명 필터링 (필수: 유지 / OR: 통합관제, 통합, CCTV / 제외: 상수도)
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
