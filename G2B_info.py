@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 import re
 import io
 
-# --- 1. 226개 광역+기초 통합 리스트 (기존 그대로 유지) ---
+# --- 1. 226개 광역+기초 통합 리스트 ---
 FULL_DISTRICT_LIST = [
     "서울특별시", "서울특별시 종로구", "서울특별시 중구", "서울특별시 용산구", "서울특별시 성동구", "서울특별시 광진구", "서울특별시 동대문구", "서울특별시 중랑구", "서울특별시 성북구", "서울특별시 강북구", "서울특별시 도봉구", "서울특별시 노원구", "서울특별시 은평구", "서울특별시 서대문구", "서울특별시 마포구", "서울특별시 양천구", "서울특별시 강서구", "서울특별시 구로구", "서울특별시 금천구", "서울특별시 영등포구", "서울특별시 동작구", "서울특별시 관악구", "서울특별시 서초구", "서울특별시 강남구", "서울특별시 송파구", "서울특별시 강동구",
     "부산광역시", "부산광역시 중구", "부산광역시 서구", "부산광역시 동구", "부산광역시 영도구", "부산광역시 부산진구", "부산광역시 동래구", "부산광역시 남구", "부산광역시 북구", "부산광역시 해운대구", "부산광역시 사하구", "부산광역시 금정구", "부산광역시 강서구", "부산광역시 연제구", "부산광역시 수영구", "부산광역시 사상구", "부산광역시 기장군",
@@ -65,19 +65,27 @@ def calculate_logic(row):
         total_finish_date = parse_date(row.get('총완수일자'))
         
         final_expire_dt = None
+        this_match = re.search(r'금차\s*[:\s]*(\d+)', period_raw)
         total_match = re.search(r'(총차|총용역|총)\s*[:\s]*(\d+)', period_raw)
-        total_days = int(total_match.group(2)) if total_match else 0
         
-        if total_days > 0:
+        this_val = int(this_match.group(1)) if this_match else 0
+        total_val = int(total_match.group(2)) if total_match else 0
+
+        if this_val != total_val and total_finish_date:
+            final_expire_dt = total_finish_date
+        
+        if not final_expire_dt and total_val > 0:
             base_date = start_date if start_date else cntrct_date
             if base_date:
-                final_expire_dt = base_date + relativedelta(days=total_days)
-        if not final_expire_dt and total_finish_date:
-            final_expire_dt = total_finish_date
+                final_expire_dt = base_date + relativedelta(days=total_val)
+
         if not final_expire_dt:
             date_in_period = re.sub(r'[^0-9]', '', period_raw)
             if len(date_in_period) >= 8:
                 final_expire_dt = parse_date(date_in_period[:8])
+        
+        if not final_expire_dt and total_finish_date:
+            final_expire_dt = total_finish_date
 
         if not final_expire_dt:
             return "정보부족", "정보부족"
@@ -100,56 +108,49 @@ st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
 try:
     df = get_data_from_gsheet()
     if not df.empty:
-        # 1. 기관명 필터링 (기존 startswith 방식 유지)
+        # 1. 기관명 필터링
         def filter_agency(agency_name):
             agency_name = str(agency_name).strip()
             return any(agency_name.startswith(dist) for dist in FULL_DISTRICT_LIST)
 
         df = df[df['★가공_수요기관'].apply(filter_agency)]
+        
+        # [수정] 2. 계약명 필터링 (필수: 유지 / OR: 통합관제, 통합, CCTV / 제외: 상수도)
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
-        df = df[df['★가공_계약명'].str.contains("통합관제", na=False)]
+        df = df[df['★가공_계약명'].str.contains("통합관제|통합|CCTV", na=False)]
+        df = df[~df['★가공_계약명'].str.contains("상수도", na=False)]
 
-        # 2. 계약 날짜 및 만료 계산
+        # 3. 날짜 계산 및 데이터 정렬
         df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
         df['temp_date'] = pd.to_datetime(df['계약일자'], errors='coerce')
 
-        # 3. 중복 제거용 그룹키 생성
         def clean_contract_name(name):
             name = str(name).replace(" ", "")
             name = re.sub(r'\d+차분?', '', name)
             return re.sub(r'\d+', '', name)
 
         df['contract_group_key'] = df['★가공_계약명'].apply(clean_contract_name)
-
-        # 4. 데이터 분리 및 중복 제거
-        # [수정] 2026년 데이터를 가장 상단에 배치하기 위해 정렬 강화
         df = df.sort_values(by=['★가공_수요기관', 'contract_group_key', '★가공_업체명', 'temp_date'], ascending=[True, True, True, False])
 
-        # 현재 진행 중인 데이터
+        # 4. 데이터 분리 및 보완
         active_df = df[df['남은기간'] != "만료됨"].drop_duplicates(['★가공_수요기관', 'contract_group_key', '★가공_업체명'], keep='first')
-        
-        # 만료된 전체 데이터
         expired_all_df = df[df['남은기간'] == "만료됨"].copy()
 
-        # [핵심 보완] 유효 계약이 없는 기관 구제 로직
         agencies_with_active = active_df['★가공_수요기관'].unique()
-        all_possible_agencies = df['★가공_수요기관'].unique()
-        agencies_needing_fallback = [ag for ag in all_possible_agencies if ag not in agencies_with_active]
+        all_target_agencies = df['★가공_수요기관'].unique()
+        agencies_needing_fallback = [ag for ag in all_target_agencies if ag not in agencies_with_active]
 
-        # 인제군 등 유효 계약이 없는 기관의 경우, 만료 데이터 중 가장 최신 건을 추출
         fallback_df = expired_all_df[expired_all_df['★가공_수요기관'].isin(agencies_needing_fallback)].copy()
         fallback_df = fallback_df.drop_duplicates(['★가공_수요기관'], keep='first')
         
         def format_expired_label(date_str):
             try: return f"{date_str[:4]}년 계약만료"
             except: return "계약만료"
-        
         fallback_df['남은기간'] = fallback_df['★가공_계약만료일'].apply(format_expired_label)
 
-        # 5. 데이터 최종 병합
+        # 5. 최종 데이터 병합
         final_processed_df = pd.concat([active_df, fallback_df], ignore_index=True)
 
-        # 6. 광역단위 설정
         def get_metro_name(agency):
             agency_str = str(agency)
             for metro in METRO_LIST[1:]:
@@ -159,14 +160,13 @@ try:
         final_processed_df['광역단위'] = final_processed_df['★가공_수요기관'].apply(get_metro_name)
         final_processed_df['★가공_계약금액'] = pd.to_numeric(final_processed_df['★가공_계약금액'], errors='coerce').fillna(0).astype(int)
 
-        # --- UI 상단 필터 ---
+        # 6. UI 출력
         st.subheader("📍 지역별 필터 선택")
         selected_region = st.radio("광역시도를 선택하세요:", METRO_LIST, horizontal=True)
         display_df = final_processed_df.copy() if selected_region == "전국" else final_processed_df[final_processed_df['광역단위'] == selected_region].copy()
 
         st.divider()
         
-        # --- [수정] 데이터 다운로드 버튼 위치 고정 (표 바로 위) ---
         cols_to_show = ['★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL']
         final_out = display_df[cols_to_show].copy()
         final_out.columns = [c.replace('★가공_', '') for c in final_out.columns]
@@ -182,7 +182,6 @@ try:
             mime="text/csv"
         )
 
-        # 데이터 표 출력
         st.dataframe(
             final_out,
             column_config={
