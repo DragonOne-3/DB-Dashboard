@@ -30,7 +30,12 @@ FULL_DISTRICT_LIST = [
     "제주특별자치도", "제주특별자치도 제주시", "제주특별자치도 서귀포시"
 ]
 
-METRO_LIST = ["전국", "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도"]
+# --- 2. 17개 광역시도 정의 ---
+METRO_LIST = [
+    "전국", "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", 
+    "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", 
+    "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도"
+]
 
 def get_data_from_gsheet():
     auth_json = os.environ.get('GOOGLE_AUTH_JSON')
@@ -83,64 +88,54 @@ def calculate_logic(row):
         return expire_str, remain_str
     except: return "계산불가", "오류"
 
+# --- 5. 스트림릿 메인 실행 ---
 st.set_page_config(layout="wide")
 st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
 
 try:
     df = get_data_from_gsheet()
     if not df.empty:
-        # 1. 기관명 및 기본 키워드 필터링
+        # 1. 기관명 필터링 (FULL_DISTRICT_LIST로 시작하는 데이터 모두 포함)
         def filter_agency(agency_name):
             agency_name = str(agency_name).strip()
             return any(agency_name.startswith(dist) for dist in FULL_DISTRICT_LIST)
 
         df = df[df['★가공_수요기관'].apply(filter_agency)]
+        
+        # 2. 기본 키워드 필터링
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
         df = df[df['★가공_계약명'].str.contains("통합관제", na=False)]
 
-        # 2. 계약 기간 및 만료 여부 계산
-        df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
-        
-        # [신규 추가] 만료된 데이터 삭제
-        df = df[df['남은기간'] != "만료됨"]
-
-        # 3. 중복 제거를 위한 텍스트 정교화
-        # [수정] 차수(1차, 2차 등)와 연도 숫자를 모두 제거하여 동일 사업군으로 묶음
-        def clean_contract_name_advanced(name):
-            if pd.isna(name): return ""
-            name = str(name).replace(" ", "")
-            # 차수 구분 제거 (1차, 2차, 1차분, 2차분 등)
-            name = re.sub(r'\d+차분?', '', name)
-            # 연도 숫자 제거
-            name = re.sub(r'\d+', '', name)
-            return name
-
-        df['contract_group_key'] = df['★가공_계약명'].apply(clean_contract_name_advanced)
+        # 3. 중복 제거 로직 강화
+        df['contract_name_clean'] = df['★가공_계약명'].str.replace(r'\d+', '', regex=True).str.strip()
         df['temp_date'] = pd.to_datetime(df['계약일자'], errors='coerce')
+        df = df.sort_values(by=['★가공_수요기관', 'contract_name_clean', '★가공_업체명', '★가공_계약금액', 'temp_date'], 
+                           ascending=[True, True, True, True, False])
+        df = df.drop_duplicates(subset=['★가공_수요기관', 'contract_name_clean', '★가공_업체명', '★가공_계약금액'], keep='first')
 
-        # 정렬: 기관명, 그룹키, 업체명, 날짜(최신순)
-        df = df.sort_values(by=['★가공_수요기관', 'contract_group_key', '★가공_업체명', 'temp_date'], 
-                           ascending=[True, True, True, False])
-
-        # [신규 추가] 동일 사업군 내에서 최종 차수(가장 최신 날짜)만 유지
-        df = df.drop_duplicates(subset=['★가공_수요기관', 'contract_group_key', '★가공_업체명'], keep='first')
-
-        # 4. 후처리
+        # 4. 공통 계산 및 후처리
+        df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
         df['★가공_계약금액'] = pd.to_numeric(df['★가공_계약금액'], errors='coerce').fillna(0).astype(int)
         
+        # [수정] 광역단위 추출 로직 보완 (세종, 강원, 전북, 제주 등 특별자치 형태 대응)
         def get_metro_name(agency):
             agency = str(agency)
-            for metro in METRO_LIST[1:]:
-                if agency.startswith(metro): return metro
+            for metro in METRO_LIST[1:]: # '전국' 제외한 리스트
+                if agency.startswith(metro):
+                    return metro
             return "기타"
         
         df['광역단위'] = df['★가공_수요기관'].apply(get_metro_name)
 
-        # --- 상단 필터 UI ---
+        # --- 상단 필터 UI (17개 광역시도 고정) ---
         st.subheader("📍 지역별 필터 선택")
         selected_region = st.radio("광역시도를 선택하세요:", METRO_LIST, horizontal=True)
 
-        filtered_df = df.copy() if selected_region == "전국" else df[df['광역단위'] == selected_region].copy()
+        # 필터링 적용
+        if selected_region == "전국":
+            filtered_df = df.copy()
+        else:
+            filtered_df = df[df['광역단위'] == selected_region].copy()
 
         st.divider()
         st.write(f"### 📊 {selected_region} 분석 현황 (총 {len(filtered_df)}건)")
