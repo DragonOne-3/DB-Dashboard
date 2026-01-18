@@ -1,0 +1,20 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    - cron: '0 */10 * * *' # 10시간마다 실행
+  workflow_dispatch:      # 수동 실행 가능하게 설정
+
+jobs:
+  auto_commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create empty commit
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "Keep-alive: Periodic dummy commit"
+          git push
