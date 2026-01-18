@@ -1,7 +1,7 @@
 import os, json, datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-
+from datetime import timezone, timedelta
 # 환경 변수 로드
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
 
@@ -14,9 +14,14 @@ def get_target_companies():
     return ["이노뎁(주)", "이노뎁"] # 기본값
 
 def get_last_week_range():
-    today = datetime.date.today()
-    last_monday = today - datetime.timedelta(days=today.weekday() + 7)
+    # UTC 기준 시간을 가져와서 한국 시간(+9)으로 변환
+    now_utc = datetime.datetime.now(timezone.utc)
+    today = (now_utc + timedelta(hours=9)).date()
+    
+    this_monday = today - datetime.timedelta(days=today.weekday())
+    last_monday = this_monday - datetime.timedelta(days=7)
     last_sunday = last_monday + datetime.timedelta(days=6)
+    
     return last_monday, last_sunday
 
 def main():
