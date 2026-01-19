@@ -75,7 +75,7 @@ def run_process():
     headers_initialized = False
 
     # 2. 날짜 설정 (2023-01-01부터 오늘까지)
-    start_dt = datetime(2023, 1, 1)
+    start_dt = datetime(2025, 1, 1)
     end_dt = datetime.now()
     
     current_dt = start_dt
