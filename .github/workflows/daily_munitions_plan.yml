@@ -1,0 +1,30 @@
+name: Daily Update Munitions Plan
+
+on:
+  schedule:
+    # 한국 시간(KST) 매일 06:00 = UTC 매일 21:00
+    - cron: '0 21 * * *'
+  workflow_dispatch: # 필요할 때 바로 실행 가능
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pandas gspread oauth2client
+
+      - name: Run script
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          TZ: Asia/Seoul
+        run: python munitions_plan.py
