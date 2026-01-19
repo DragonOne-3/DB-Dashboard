@@ -14,38 +14,54 @@ SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
 def fetch_period(date_range):
-    """특정 구간(start, end)의 모든 데이터를 가져오는 스레드용 함수"""
+    """특정 7일 구간의 데이터를 수집 (실패 시 3회 재시도)"""
     start_date, end_date = date_range
     url = 'http://openapi.d2b.go.kr/openapi/service/BidPblancInfoService/getDmstcCmpetBidPblancList'
     all_items = []
     page_no = 1
     
-    while True:
-        params = {
-            'serviceKey': SERVICE_KEY,
-            'anmtDateBegin': start_date,
-            'anmtDateEnd': end_date,
-            'numOfRows': '500',
-            'pageNo': str(page_no)
-        }
+    for attempt in range(3): # 재시도 로직
         try:
-            # 타임아웃을 넉넉히 주되 병렬로 여러 개를 찌릅니다.
-            response = requests.get(url, params=params, timeout=60)
-            if response.status_code != 200: break
+            while True:
+                params = {
+                    'serviceKey': SERVICE_KEY,
+                    'anmtDateBegin': start_date,
+                    'anmtDateEnd': end_date,
+                    'numOfRows': '500',
+                    'pageNo': str(page_no)
+                }
+                
+                response = requests.get(url, params=params, timeout=60)
+                if response.status_code != 200:
+                    break
+
+                root = ET.fromstring(response.content)
+                items = root.findall('.//item')
+                
+                if not items:
+                    break
+                    
+                for item in items:
+                    all_items.append({child.tag: child.text for child in item})
+                
+                # totalCount 확인
+                total_element = root.find('.//totalCount')
+                if total_element is not None:
+                    total_count = int(total_element.text)
+                    if len(all_items) >= total_count:
+                        break
+                    page_no += 1
+                else:
+                    break
             
-            root = ET.fromstring(response.content)
-            items = root.findall('.//item')
-            if not items: break
-            
-            for item in items:
-                all_items.append({child.tag: child.text for child in item})
-            
-            total_count = int(root.find('.//totalCount').text or 0)
-            if len(all_items) >= total_count: break
-            page_no += 1
+            if all_items or page_no == 1: # 데이터가 있거나 조회를 마쳤으면 종료
+                break
+                
         except Exception as e:
-            print(f"  [오류] {start_date} 구간 에러: {e}")
-            break
+            print(f"  [재시도 {attempt+1}] {start_date} 구간 오류: {e}")
+            time.sleep(2)
+            
+    print(f"  [수집완료] {start_date} ~ {end_date}: {len(all_items)}건")
     return all_items
 
 def run_process():
@@ -57,50 +73,47 @@ def run_process():
     spreadsheet = client.open("군수품조달_국내_입찰공고")
     sheet = spreadsheet.get_worksheet(0)
 
-    # 2. 수집할 날짜 구간 생성 (15일 단위로 쪼개서 병렬 처리)
-    start_dt = datetime(2024, 1, 1)
-    end_dt = datetime(2025, 12, 31)
+    # 2. 날짜 구간 생성 (안전하게 7일 단위로 생성)
+    start_dt = datetime(2023, 1, 1)
+    end_dt = datetime.now()
     date_ranges = []
     
     temp_dt = start_dt
     while temp_dt <= end_dt:
         chunk_start = temp_dt.strftime('%Y%m%d')
-        chunk_end_dt = temp_dt + timedelta(days=14) # 15일 단위
+        chunk_end_dt = temp_dt + timedelta(days=6) # 7일 단위
         if chunk_end_dt > end_dt: chunk_end_dt = end_dt
         date_ranges.append((chunk_start, chunk_end_dt.strftime('%Y%m%d')))
         temp_dt = chunk_end_dt + timedelta(days=1)
 
-    # 3. 병렬 수집 실행 (동시 5개 구간씩 호출)
-    print(f">>> 총 {len(date_ranges)}개 구간 병렬 수집 시작...")
+    # 3. 병렬 수집 (서버 차단 방지를 위해 동시 작업수 조정)
+    print(f">>> 총 {len(date_ranges)}개 구간(7일 단위) 수집 시작...")
     final_results = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor: # max_workers를 3으로 낮춤 (안전성)
         results = list(executor.map(fetch_period, date_ranges))
         for r in results:
             final_results.extend(r)
 
-    # 4. 데이터 저장 처리
+    # 4. 데이터 저장
     if final_results:
         df = pd.DataFrame(final_results)
-        # 중복 제거 (입찰공고번호 기준 등 - 필요시 활성화)
-        # df = df.drop_duplicates() 
-
-        # 시트 상태 확인 및 제목행 처리
+        
+        # 제목행 및 데이터 추가
         first_row = sheet.row_values(1)
         if not first_row:
             header = df.columns.tolist()
             sheet.insert_row(header, 1)
-            print("  [알림] 제목행 생성 완료.")
         
-        # 구글 시트에 대량 업로드 (5000줄씩 쪼개서 전송하여 속도 향상)
         values = df.fillna('').values.tolist()
-        batch_size = 5000
-        print(f">>> 총 {len(values)}건 시트 전송 시작 (Batch size: {batch_size})...")
+        # 시트에 추가 (데이터가 많으므로 2000줄씩 안전하게 전송)
+        batch_size = 2000
+        print(f">>> 시트에 {len(values)}건 전송 시작...")
         for i in range(0, len(values), batch_size):
             sheet.append_rows(values[i:i + batch_size])
-            print(f"  [전송] {i + len(values[i:i + batch_size])} / {len(values)} 완료")
-            time.sleep(1) # 시트 API 제한 방지
+            time.sleep(1.5)
+        print(">>> 모든 과거 데이터 업데이트 완료.")
     else:
-        print(">>> 수집된 데이터가 없습니다.")
+        print(">>> 수집된 데이터가 없습니다. API 인증키나 서버 상태를 확인하세요.")
 
 if __name__ == "__main__":
     run_process()
