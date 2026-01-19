@@ -7,115 +7,108 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import xml.etree.ElementTree as ET
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 # 환경 변수 로드
 SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
-def get_all_pages_data(target_month):
-    """특정 월(YYYYMM)의 모든 페이지 데이터를 수집"""
+def fetch_monthly_plan(target_month):
+    """특정 월(YYYYMM)의 모든 발주계획 데이터를 수집 (재시도 포함)"""
     url = 'http://openapi.d2b.go.kr/openapi/service/PrcurePlanInfoService/getDmstcPrcurePlanList'
     all_items = []
     page_no = 1
     
-    while True:
-        params = {
-            'serviceKey': SERVICE_KEY,
-            'orderPrearngeMtBegin': target_month,
-            'orderPrearngeMtEnd': target_month,
-            'numOfRows': '500',
-            'pageNo': str(page_no)
-        }
-
-        print(f"조회 중: {target_month} (페이지: {page_no})")
-        
+    for attempt in range(3):
         try:
-            response = requests.get(url, params=params, timeout=30)
-            if response.status_code != 200:
-                break
-
-            root = ET.fromstring(response.content)
-            items = root.findall('.//item')
-            
-            if not items:
-                break
+            while True:
+                params = {
+                    'serviceKey': SERVICE_KEY,
+                    'orderPrearngeMtBegin': target_month,
+                    'orderPrearngeMtEnd': target_month,
+                    'numOfRows': '500',
+                    'pageNo': str(page_no)
+                }
                 
-            for item in items:
-                row = {child.tag: child.text for child in item}
-                all_items.append(row)
-            
-            # 전체 개수 확인 후 루프 종료 조건 체크
-            total_element = root.find('.//totalCount')
-            if total_element is not None:
-                total_count = int(total_element.text)
-                if len(all_items) >= total_count:
+                response = requests.get(url, params=params, timeout=60)
+                if response.status_code != 200:
                     break
-            else:
-                break
+
+                root = ET.fromstring(response.content)
+                items = root.findall('.//item')
                 
-            page_no += 1
-            time.sleep(0.5) # 서버 부하 방지
+                if not items:
+                    break
+                    
+                for item in items:
+                    all_items.append({child.tag: child.text for child in item})
+                
+                total_element = root.find('.//totalCount')
+                if total_element is not None:
+                    total_count = int(total_element.text)
+                    if len(all_items) >= total_count:
+                        break
+                    page_no += 1
+                else:
+                    break
             
+            if all_items or page_no == 1:
+                break
         except Exception as e:
-            print(f"오류 발생: {e}")
-            break
+            print(f"  [재시도] {target_month} 에러: {e}")
+            time.sleep(2)
             
+    print(f"  [수집완료] {target_month}: {len(all_items)}건")
     return all_items
 
-def fetch_historical_data():
-    """2023년 1월부터 현재까지 월별로 수집"""
-    start_year = 2023
-    start_month = 1
-    
-    now = datetime.now()
-    current_year = now.year
-    current_month = now.month
-    
-    final_data = []
-    
-    # 2023년 01월부터 현재까지 루프
-    for year in range(start_year, current_year + 1):
-        m_start = start_month if year == start_year else 1
-        m_end = current_month if year == current_year else 12
-        
-        for month in range(m_start, m_end + 1):
-            target_yyyymm = f"{year}{month:02d}"
-            month_items = get_all_pages_data(target_yyyymm)
-            final_data.extend(month_items)
-            
-    return pd.DataFrame(final_data)
-
-def update_google_sheet(df):
-    if df.empty:
-        print("수집된 데이터가 없습니다.")
-        return
-
-    # 중복 제거 (결정번호 'dcsNo' 등이 있다면 기준 설정 가능, 여기선 전체 기준)
-    df = df.drop_duplicates()
-
+def run_process():
+    # 1. 구글 인증 및 시트 열기
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = json.loads(GOOGLE_AUTH_JSON)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
-    
-    # 구글 시트 파일명: 군수품조달_국내_발주계획
     spreadsheet = client.open("군수품조달_국내_발주계획")
     sheet = spreadsheet.get_worksheet(0)
-    
-    sheet.clear()
-    header = df.columns.tolist()
-    values = df.fillna('').values.tolist()
-    
-    # 2000행씩 분할 업로드
-    rows_to_upload = [header] + values
-    for i in range(0, len(rows_to_upload), 2000):
-        chunk = rows_to_upload[i:i + 2000]
-        sheet.append_rows(chunk)
-        print(f"{i}행부터 데이터 전송 중...")
-        time.sleep(1)
+
+    # 2. 수집할 월 목록 생성 (202301 ~ 현재월)
+    start_year = 2023
+    now = datetime.now()
+    months = []
+    for year in range(start_year, now.year + 1):
+        m_start = 1
+        m_end = now.month if year == now.year else 12
+        for month in range(m_start, m_end + 1):
+            months.append(f"{year}{month:02d}")
+
+    # 3. 병렬 수집 실행
+    print(f">>> 총 {len(months)}개 월 발주계획 병렬 수집 시작...")
+    final_results = []
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        results = list(executor.map(fetch_monthly_plan, months))
+        for r in results:
+            final_results.extend(r)
+
+    # 4. 데이터 저장 (누적 방식)
+    if final_results:
+        df = pd.DataFrame(final_results)
         
-    print(f"총 {len(df)}건 업데이트 완료.")
+        # 1행 제목 확인 및 추가
+        first_row = sheet.row_values(1)
+        if not first_row:
+            header = df.columns.tolist()
+            sheet.insert_row(header, 1)
+            print("  [알림] 제목행을 생성했습니다.")
+        
+        # 마지막 데이터 다음에 추가
+        values = df.fillna('').values.tolist()
+        batch_size = 3000
+        print(f">>> 시트에 {len(values)}건 전송 시작...")
+        for i in range(0, len(values), batch_size):
+            sheet.append_rows(values[i:i + batch_size])
+            time.sleep(1.5)
+        print(">>> 발주계획 업데이트 완료.")
+    else:
+        print(">>> 수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
-    df_result = fetch_historical_data()
-    update_google_sheet(df_result)
+    run_process()
