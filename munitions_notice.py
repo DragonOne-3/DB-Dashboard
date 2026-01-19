@@ -59,7 +59,7 @@ def run_process():
 
     # 2. 수집할 날짜 구간 생성 (15일 단위로 쪼개서 병렬 처리)
     start_dt = datetime(2025, 1, 1)
-    end_dt = datetime(2025, 12, 31)
+    end_dt = datetime(2025, 3, 31)
     date_ranges = []
     
     temp_dt = start_dt
