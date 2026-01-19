@@ -11,8 +11,8 @@ import time
 SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
-def fetch_g2b_by_order_month(target_month):
-    """발주예정년월(orderBgnYm)을 기준으로 데이터 수집"""
+def fetch_g2b_by_date_range(start_date, end_date):
+    """5일 단위의 짧은 기간 내의 모든 데이터를 수집"""
     url = 'http://apis.data.go.kr/1230000/ao/OrderPlanSttusService/getOrderPlanSttusListServcPPSSrch'
     all_items = []
     page_no = 1
@@ -23,8 +23,8 @@ def fetch_g2b_by_order_month(target_month):
             'pageNo': str(page_no),
             'numOfRows': '900',
             'type': 'json',
-            'orderBgnYm': target_month, # 발주시작년월 (예: 202401)
-            'orderEndYm': target_month  # 발주종료년월
+            'inqryBgnDt': start_date + '0000',
+            'inqryEndDt': end_date + '2359'
         }
         
         try:
@@ -40,14 +40,14 @@ def fetch_g2b_by_order_month(target_month):
             if isinstance(items, dict): items = [items]
             
             all_items.extend(items)
-            print(f"    [진행] {target_month}: {page_no}페이지 수집 중... ({len(all_items)}/{total_count})")
+            print(f"    [진행] {start_date}~{end_date}: {page_no}페이지 수집 중... ({len(all_items)}/{total_count})")
             
             if len(all_items) >= total_count: break
             page_no += 1
-            time.sleep(0.3)
+            time.sleep(0.5)
             
         except Exception as e:
-            print(f"    [예외] {target_month} 수집 중 오류: {e}")
+            print(f"    [예외] {start_date} 구간 오류: {e}")
             break
             
     return all_items
@@ -61,37 +61,38 @@ def run_process():
     spreadsheet = client.open("나라장터_용역_발주계획")
     sheet = spreadsheet.get_worksheet(0)
 
-    # 2. 수집할 월 리스트 생성 (202401 ~ 현재월)
-    start_year = 2024
-    now = datetime.now()
-    target_months = []
+    # 2. 날짜 구간 설정 (2025-01-01 ~ 오늘)
+    current_dt = datetime(2025, 1, 1)
+    end_dt = datetime.now()
     
-    for year in range(start_year, now.year + 1):
-        m_start = 1
-        m_end = now.month if year == now.year else 12
-        for month in range(m_start, m_end + 1):
-            target_months.append(f"{year}{month:02d}")
-
-    # 3. 월별 전수 수집 및 저장
-    print(f">>> 총 {len(target_months)}개 월 데이터 전수 수집 시작...")
+    print(f"====================================")
+    print(f">>> 2025년 1월부터 정밀 수집 시작")
+    print(f"====================================")
     
-    for month in target_months:
-        print(f"  > {month} 발주 예정 데이터 수집 중...")
-        items = fetch_g2b_by_order_month(month)
+    while current_dt <= end_dt:
+        chunk_start = current_dt.strftime('%Y%m%d')
+        chunk_end_dt = current_dt + timedelta(days=4) # 5일 단위
+        if chunk_end_dt > end_dt: chunk_end_dt = end_dt
+        chunk_end = chunk_end_dt.strftime('%Y%m%d')
+        
+        print(f"  > {chunk_start} ~ {chunk_end} 데이터 수집 중...")
+        items = fetch_g2b_by_date_range(chunk_start, chunk_end)
         
         if items:
             df = pd.DataFrame(items)
-            # 1행 제목 작성
+            
+            # 제목행이 없으면 생성
             if not sheet.row_values(1):
                 sheet.insert_row(df.columns.tolist(), 1)
             
-            # 시트 저장
+            # 데이터 추가 (누적)
             values = df.fillna('').values.tolist()
             for i in range(0, len(values), 3000):
                 sheet.append_rows(values[i:i+3000])
-            print(f"  > [완료] {month} 시트 저장 완료 ({len(items)}건)")
+            print(f"  > [완료] {chunk_start} 구간 저장 완료 ({len(items)}건)")
         
-        time.sleep(0.5)
+        current_dt = chunk_end_dt + timedelta(days=1)
+        time.sleep(1) # 서버 보호를 위한 대기
 
 if __name__ == "__main__":
     run_process()
