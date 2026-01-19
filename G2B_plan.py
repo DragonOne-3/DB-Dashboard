@@ -6,61 +6,51 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
 import time
-import xml.etree.ElementTree as ET
 
 # 환경 변수 로드
 SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
-def fetch_g2b_period(date_range):
-    start_dt, end_dt = date_range
-    # 나라장터 용역 발주계획 API 엔드포인트
+def fetch_g2b_by_order_month(target_month):
+    """발주예정년월(orderBgnYm)을 기준으로 데이터 수집"""
     url = 'http://apis.data.go.kr/1230000/ao/OrderPlanSttusService/getOrderPlanSttusListServcPPSSrch'
+    all_items = []
+    page_no = 1
     
-    params = {
-        'serviceKey': SERVICE_KEY,
-        'pageNo': '1',
-        'numOfRows': '999', # 한 번에 최대한 많이
-        'type': 'json',
-        'inqryBgnDt': start_dt + '0000',
-        'inqryEndDt': end_dt + '2359'
-    }
-    
-    try:
-        # 인증키 인코딩 문제 방지를 위해 params를 직접 string으로 넘기지 않고 requests에 맡김
-        response = requests.get(url, params=params, timeout=30)
+    while True:
+        params = {
+            'serviceKey': SERVICE_KEY,
+            'pageNo': str(page_no),
+            'numOfRows': '900',
+            'type': 'json',
+            'orderBgnYm': target_month, # 발주시작년월 (예: 202401)
+            'orderEndYm': target_month  # 발주종료년월
+        }
         
-        # 만약 XML 에러가 왔을 경우 파싱해서 메시지 확인
-        if response.text.strip().startswith('<'):
-            print(f"    [확인] {start_dt} 구간: XML 응답 수신 (인증키 확인 필요)")
-            try:
-                root = ET.fromstring(response.text)
-                msg = root.find('.//returnAuthMsg')
-                if msg is not None:
-                    print(f"    [API 메시지]: {msg.text}")
-                else:
-                    print(f"    [응답내용 일부]: {response.text[:100]}")
-            except:
-                pass
-            return []
+        try:
+            response = requests.get(url, params=params, timeout=45)
+            if response.status_code != 200: break
 
-        # 정상적인 JSON 응답 처리
-        data = response.json()
-        body = data.get('response', {}).get('body', {})
-        items = body.get('items', [])
-        
-        # items가 리스트가 아닌 경우 처리 (데이터가 1건이면 딕셔너리로 올 때가 있음)
-        if isinstance(items, dict):
-            items = [items]
+            data = response.json()
+            body = data.get('response', {}).get('body', {})
+            items = body.get('items', [])
+            total_count = int(body.get('totalCount', 0))
             
-        if items:
-            print(f"    [성공] {start_dt} ~ {end_dt}: {len(items)}건 수집")
-            return items
-        return []
+            if not items: break
+            if isinstance(items, dict): items = [items]
             
-    except Exception as e:
-        print(f"    [오류] {start_dt} 구간: {str(e)}")
-        return []
+            all_items.extend(items)
+            print(f"    [진행] {target_month}: {page_no}페이지 수집 중... ({len(all_items)}/{total_count})")
+            
+            if len(all_items) >= total_count: break
+            page_no += 1
+            time.sleep(0.3)
+            
+        except Exception as e:
+            print(f"    [예외] {target_month} 수집 중 오류: {e}")
+            break
+            
+    return all_items
 
 def run_process():
     # 1. 구글 시트 연결
@@ -71,40 +61,37 @@ def run_process():
     spreadsheet = client.open("나라장터_용역_발주계획")
     sheet = spreadsheet.get_worksheet(0)
 
-    # 2. 날짜 구간 생성 (1개월 단위로 조회 - 나라장터는 구간이 너무 길면 에러날 수 있음)
-    start_date = datetime(2024, 1, 1)
-    end_date = datetime.now()
-    date_ranges = []
-    temp_dt = start_date
-    while temp_dt <= end_date:
-        d_start = temp_dt.strftime('%Y%m%d')
-        # 약 30일 단위로 끊기
-        d_end_dt = temp_dt + timedelta(days=30)
-        if d_end_dt > end_date: d_end_dt = end_date
-        date_ranges.append((d_start, d_end_dt.strftime('%Y%m%d')))
-        temp_dt = d_end_dt + timedelta(days=1)
+    # 2. 수집할 월 리스트 생성 (202401 ~ 현재월)
+    start_year = 2024
+    now = datetime.now()
+    target_months = []
+    
+    for year in range(start_year, now.year + 1):
+        m_start = 1
+        m_end = now.month if year == now.year else 12
+        for month in range(m_start, m_end + 1):
+            target_months.append(f"{year}{month:02d}")
 
-    # 3. 순차 수집 (병렬보다는 순차가 에러 확인에 용이함)
-    all_data = []
-    print(f">>> {len(date_ranges)}개 구간 수집 시작...")
-    for dr in date_ranges:
-        res = fetch_g2b_period(dr)
-        all_data.extend(res)
-        time.sleep(0.8) # 서버 부하 방지
-
-    # 4. 저장
-    if all_data:
-        df = pd.DataFrame(all_data)
-        # 제목행
-        if not sheet.row_values(1):
-            sheet.insert_row(df.columns.tolist(), 1)
+    # 3. 월별 전수 수집 및 저장
+    print(f">>> 총 {len(target_months)}개 월 데이터 전수 수집 시작...")
+    
+    for month in target_months:
+        print(f"  > {month} 발주 예정 데이터 수집 중...")
+        items = fetch_g2b_by_order_month(month)
         
-        # 기존 데이터 유지하며 추가
-        values = df.fillna('').values.tolist()
-        sheet.append_rows(values)
-        print(f">>> 총 {len(all_data)}건 업데이트 완료")
-    else:
-        print(">>> 수집된 데이터가 없습니다. 서비스 키의 권한을 확인하세요.")
+        if items:
+            df = pd.DataFrame(items)
+            # 1행 제목 작성
+            if not sheet.row_values(1):
+                sheet.insert_row(df.columns.tolist(), 1)
+            
+            # 시트 저장
+            values = df.fillna('').values.tolist()
+            for i in range(0, len(values), 3000):
+                sheet.append_rows(values[i:i+3000])
+            print(f"  > [완료] {month} 시트 저장 완료 ({len(items)}건)")
+        
+        time.sleep(0.5)
 
 if __name__ == "__main__":
     run_process()
