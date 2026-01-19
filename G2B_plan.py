@@ -62,37 +62,20 @@ def run_process():
     sheet = spreadsheet.get_worksheet(0)
 
     # 2. 날짜 구간 설정 (2025-01-01 ~ 오늘)
-    current_dt = datetime(2025, 1, 1)
-    end_dt = datetime.now()
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    today = datetime.now().strftime('%Y%m%d')
     
-    print(f"====================================")
-    print(f">>> 2025년 1월부터 정밀 수집 시작")
-    print(f"====================================")
+    print(f">>> {yesterday} 발주계획 데이터 수집 시작...")
+    items = fetch_g2b_by_date_range(yesterday, today) # fetch_g2b_by_date_range 함수 사용
     
-    while current_dt <= end_dt:
-        chunk_start = current_dt.strftime('%Y%m%d')
-        chunk_end_dt = current_dt + timedelta(days=4) # 5일 단위
-        if chunk_end_dt > end_dt: chunk_end_dt = end_dt
-        chunk_end = chunk_end_dt.strftime('%Y%m%d')
-        
-        print(f"  > {chunk_start} ~ {chunk_end} 데이터 수집 중...")
-        items = fetch_g2b_by_date_range(chunk_start, chunk_end)
-        
-        if items:
-            df = pd.DataFrame(items)
-            
-            # 제목행이 없으면 생성
-            if not sheet.row_values(1):
-                sheet.insert_row(df.columns.tolist(), 1)
-            
-            # 데이터 추가 (누적)
-            values = df.fillna('').values.tolist()
-            for i in range(0, len(values), 3000):
-                sheet.append_rows(values[i:i+3000])
-            print(f"  > [완료] {chunk_start} 구간 저장 완료 ({len(items)}건)")
-        
-        current_dt = chunk_end_dt + timedelta(days=1)
-        time.sleep(1) # 서버 보호를 위한 대기
+    if items:
+        df = pd.DataFrame(items)
+        # 데이터 추가
+        values = df.fillna('').values.tolist()
+        sheet.append_rows(values, value_input_option='RAW')
+        print(f"✅ {yesterday} 데이터 {len(items)}건 추가 완료")
+    else:
+        print(f"ℹ️ {yesterday}에 등록된 데이터가 없습니다.")
 
 if __name__ == "__main__":
     run_process()
