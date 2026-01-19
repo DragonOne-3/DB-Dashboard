@@ -12,8 +12,8 @@ import time
 SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
-def fetch_period(start_date, end_date):
-    """특정 구간의 공개수의공고 데이터를 수집"""
+def fetch_daily_data(target_date):
+    """특정 날짜(하루)의 공개수의공고 데이터를 수집"""
     url = 'http://openapi.d2b.go.kr/openapi/service/BidPblancInfoService/getDmstcOthbcVltrnNtatPlanList'
     all_items = []
     page_no = 1
@@ -21,9 +21,8 @@ def fetch_period(start_date, end_date):
     while True:
         params = {
             'serviceKey': SERVICE_KEY,
-            # 특정 기관 코드(EGC)를 빼고 전체 조회 시도 (데이터 확보를 위해)
-            'prqudoPresentnClosDateBegin': start_date,
-            'prqudoPresentnClosDateEnd': end_date,
+            'prqudoPresentnClosDateBegin': target_date, # 마감일 시작 (어제)
+            'prqudoPresentnClosDateEnd': target_date,   # 마감일 종료 (어제)
             'numOfRows': '500',
             'pageNo': str(page_no)
         }
@@ -34,7 +33,6 @@ def fetch_period(start_date, end_date):
                 print(f"    [오류] HTTP {response.status_code}")
                 break
 
-            # 응답이 XML 에러인지 확인
             if response.text.strip().startswith('<CmmnMsg>'):
                 print(f"    [API 에러] {response.text}")
                 break
@@ -48,15 +46,18 @@ def fetch_period(start_date, end_date):
             for item in items:
                 all_items.append({child.tag: child.text for child in item})
             
-            total_count = int(root.find('.//totalCount').text or 0)
-            if len(all_items) >= total_count:
+            total_element = root.find('.//totalCount')
+            if total_element is not None:
+                total_count = int(total_element.text)
+                if len(all_items) >= total_count:
+                    break
+                page_no += 1
+                time.sleep(0.5)
+            else:
                 break
                 
-            page_no += 1
-            time.sleep(0.3)
-            
         except Exception as e:
-            print(f"    [예외] {start_date} 구간 에러: {e}")
+            print(f"    [예외] {target_date} 수집 중 오류: {e}")
             break
             
     return all_items
@@ -70,35 +71,32 @@ def run_process():
     spreadsheet = client.open("군수품조달_국내_공개수의공고")
     sheet = spreadsheet.get_worksheet(0)
 
-    # 2. 날짜 구간 (15일 단위로 더 넓게 쪼개서 안정성 확보)
-    start_dt = datetime(2024, 1, 1)
-    end_dt = datetime.now()
+    # 2. 어제 날짜 설정 (한국 시간 기준)
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
     
-    print(f">>> 2024년부터 공개수의공고 수집 시작...")
-    
-    current_dt = start_dt
-    while current_dt <= end_dt:
-        d_start = current_dt.strftime('%Y%m%d')
-        d_end_dt = current_dt + timedelta(days=14)
-        if d_end_dt > end_dt: d_end_dt = end_dt
-        d_end = d_end_dt.strftime('%Y%m%d')
+    print(f"====================================")
+    print(f">>> {yesterday} 공개수의공고 업데이트 시작")
+    print(f"====================================")
+
+    # 3. 데이터 수집
+    items = fetch_daily_data(yesterday)
+
+    # 4. 데이터 저장 (누적)
+    if items:
+        df = pd.DataFrame(items)
         
-        print(f"  > {d_start} ~ {d_end} 조회 중...")
-        items = fetch_period(d_start, d_end)
+        # 제목행 확인
+        first_row = sheet.row_values(1)
+        if not first_row:
+            header = df.columns.tolist()
+            sheet.insert_row(header, 1)
         
-        if items:
-            df = pd.DataFrame(items)
-            # 제목행 처리
-            if not sheet.row_values(1):
-                sheet.insert_row(df.columns.tolist(), 1)
-            
-            # 데이터 추가
-            values = df.fillna('').values.tolist()
-            sheet.append_rows(values)
-            print(f"    [성공] {len(items)}건 저장 완료")
-        
-        current_dt = d_end_dt + timedelta(days=1)
-        time.sleep(1)
+        # 데이터 추가 (append_rows)
+        values = df.fillna('').values.tolist()
+        sheet.append_rows(values, value_input_option='RAW')
+        print(f"✅ {yesterday} 데이터 {len(items)}건 누적 완료.")
+    else:
+        print(f"ℹ️ {yesterday}에 마감되는 공개수의공고 데이터가 없습니다.")
 
 if __name__ == "__main__":
     run_process()
