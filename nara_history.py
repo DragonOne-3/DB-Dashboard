@@ -31,7 +31,7 @@ def get_gs_client():
 
 def main():
     # 1. 수집 기간 설정 (너무 길면 서버에서 차단하므로 확인용으로 짧게 테스트 후 늘리세요)
-    start_dt = datetime(2024, 1, 1)
+    start_dt = datetime(2025, 1, 1)
     end_dt = datetime.now()
     
     # 중복 키워드 제거
