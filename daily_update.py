@@ -13,6 +13,12 @@ from pytimekr import pytimekr  # 공휴일 체크를 위해 추가
 API_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 API_URL = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
 
+EXCLUDE_KEYWORDS = [
+    '감리', '데이터베이스', '교육', '작성', '예방', '발굴', 'ISP', '구조물', '관광', '가명', '익명', '검토', '의료', '귀농', '귀촌',
+    '실시', '설계', '바이오', '콘텐츠', '측정', '조사', '검증', '거래', '탄소', '농수산물', '도매', '컨설팅', '가이드라인', '굿즈', '폐기물', '인사', '육아', '수산물', '목재', '주소',
+    '하드웨어', '3차원', '3D', '유산', '문화', '대행'
+]
+
 def get_target_date():
     """한국 시간 기준, 주말 및 공휴일을 제외한 최근 평일 계산"""
     now = datetime.utcnow() + timedelta(hours=9)
@@ -56,6 +62,11 @@ def main():
                 root = ET.fromstring(res.content)
                 for item in root.findall('.//item'):
                     raw = {child.tag: child.text for child in item}
+
+                    cntrct_nm = raw.get('cntrctNm', '')  # 계약명 가져오기
+                    # 제외 키워드 중 하나라도 계약명에 포함되어 있으면 이번 항목은 건너뜁니다(continue).
+                    if any(ex_kw in cntrct_nm for ex_kw in EXCLUDE_KEYWORDS):
+                        continue
                     
                     # 수요기관 및 업체명 정제
                     raw_demand = raw.get('dminsttList', '')
