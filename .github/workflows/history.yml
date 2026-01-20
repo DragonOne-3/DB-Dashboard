@@ -1,0 +1,26 @@
+name: Collect History Data (2021-2023)
+
+on:
+  workflow_dispatch: # 버튼 눌러서 수동 실행
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas requests gspread oauth2client
+
+      - name: Run History Collection
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+        run: python fetch_history.py
