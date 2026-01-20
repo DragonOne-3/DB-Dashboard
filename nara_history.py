@@ -28,8 +28,8 @@ def get_gs_client():
 
 def main():
     # 1. 과거 데이터 수집 기간 설정 (2024년 1월 1일 ~ 현재)
-    start_dt = datetime(2024, 1, 1)
-    end_dt = datetime.now()
+    start_dt = datetime(2023, 1, 1)
+    end_dt = datetime(2024, 1, 1)
     
     keywords = list(set([
         'CCTV', '통합관제', '주차관리', '영상감시장치', '영상정보처리기기', '국방', '부대', '작전', '경계', '방위',
