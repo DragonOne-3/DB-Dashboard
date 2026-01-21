@@ -2,21 +2,14 @@ import os, json, datetime, time, requests
 
 import xml.etree.ElementTree as ET
 
-# 💡 [루이튼 반영] 구글 드라이브 및 pandas 사용을 위해 import 추가
-#    gspread 관련 import는 더 이상 필요 없으므로 주석 처리하거나 제거.
-# import gspread
-# from oauth2client.service_account import ServiceAccountCredentials
-import pandas as pd # DataFrame 사용
-import io # 파일 I/O 사용
-
-# 구글 API 클라이언트 빌더
+# 구글 드라이브 CSV 저장을 위해 다음 모듈들을 import 합니다.
+import pandas as pd
+import io
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
-
-from pytimekr import pytimekr
-
-import re
+from pytimekr import pytimekr # 공휴일 계산용
+import re # 정규식 사용을 위해 필요합니다.
 
 
 # [보안 적용] 환경 변수에서 키 불러오기
@@ -35,35 +28,34 @@ keywords = [
     '랙캐비닛용패널','베어본컴퓨터','분배기','결선보드유닛','벨','난연접지용비닐절연전선','경광등','데스크톱컴퓨터','특수목적컴퓨터','철근콘크리트공사','토공사','안내전광판','접지봉','카메라회전대','무선랜액세스포인트','컴퓨터망전환장치',
     '포장공사','고주파동축케이블','카메라하우징','인터폰','스위칭모드전원공급장치','금속상자','열선감지기','태양전지조절기','밀폐고정형납축전지','IP전화기','디스크어레이','그래픽용어댑터','인터콤장비','기억유닛','컴퓨터지문인식장치','랜접속카드',
     '접지판','제어케이블','비디오네트워킹장비','레이스웨이','콘솔익스텐더','전자카드','비대면방역감지장비','온습도트랜스미터','도난방지기','융복합영상감시장치','멀티스크린컴퓨터','컴퓨터정맥인식장치','카메라컨트롤러','SSD저장장치','원격단말장치(RTU)',
+
     '융복합네트워크스위치','융복합액정모니터','융복합데스크톱컴퓨터','융복합그래픽용어댑터','융복합베어본컴퓨터','융복합서지흡수기','배선장치','융복합배선장치','융복합카메라브래킷','융복합네트워크시스템장비용랙','융복합UTP케이블','테이프백업장치',
     '자기식테이프','레이드저장장치','광송수신기','450/750V 유연성단심비닐절연전선','솔내시스템','450/750V유연성단심비닐절연전선','카메라받침대','텔레비전거치대','광수신기','무선통신장치','동작분석기','전력공급장치','450/750V 일반용유연성단심비닐절연전선','분전함',
     '비디오믹서','절연전선및피복선','레이더','적외선방사기', '보안용카메라', '통신소프트웨어','분석및과학용소프트웨어','소프트웨어유지및지원서비스'
 ]
 
-# 💡 [루이튼 반영] 구글 드라이브 API 서비스 함수
+# 구글 드라이브 API 서비스 함수
+# 이 함수는 이 스크립트가 구글 드라이브에 파일을 읽고 쓸 때 사용됩니다.
 def get_drive_service_for_script():
     info = json.loads(AUTH_JSON_STR)
-    # 파일 생성/수정 권한이 필요하므로 drive.file 또는 drive 스코프 사용
-    # drive.file은 이 앱이 생성/수정하는 파일에만 접근 가능 (권장)
-    # drive는 Drive의 모든 파일에 접근 가능 (더 넓은 권한)
+    # 파일 생성/수정 권한이 필요하므로 drive.file 스코프 사용 (최소 권한 원칙)
     scopes = ['https://www.googleapis.com/auth/drive.file']
     creds = service_account.Credentials.from_service_account_info(info, scopes=scopes)
     return build('drive', 'v3', credentials=creds), creds
 
 
+# (AttributeError 해결) get_target_date 함수
 def get_target_date():
     """한국 시간 기준, 공휴일 제외 최근 평일 계산"""
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
-    # 현재로부터 하루 전의 날짜 (datetime 객체)를 초기 target으로 설정
     target = now - datetime.timedelta(days=1)
     
-    # 💡 [루이튼 최종 수정] pytimekr.holidays()는 이미 datetime.date 객체들의 리스트를 반환해.
-    #                   따라서, 다시 .date()를 호출할 필요가 없어!
-    #                   target.year는 int 타입이므로 그대로 사용하면 됨.
-    holidays = pytimekr.holidays(year=target.year)
+    # pytimekr.holidays()는 이미 datetime.date 객체들의 리스트를 반환합니다.
+    # 따라서 `.date()`를 다시 호출할 필요가 없습니다.
+    holidays = pytimekr.holidays(year=target.year) # 이 부분이 수정됨!
     
-    # while 루프에서 target.date()는 datetime 객체인 target에서 날짜 부분만 추출하는 올바른 사용법이야.
-    # holidays 리스트에 있는 요소들도 이미 datetime.date 객체이므로 직접 비교하면 돼.
+    # target.date()는 datetime 객체인 target에서 날짜 부분만 추출하는 올바른 사용법입니다.
+    # holidays 리스트의 요소들도 이미 datetime.date 객체이므로 직접 비교하면 됩니다.
     while target.weekday() >= 5 or target.date() in holidays:
         target -= datetime.timedelta(days=1)
     return target
@@ -73,26 +65,8 @@ def get_quarter(month):
     return (month - 1) // 3 + 1
 
 
-# 💡 [루이튼 반영] 이 함수는 이제 main() 함수에서 사용되지 않음 (구글 시트 저장을 안 하므로).
-#    만약 Streamlit 앱에서 Google Sheets를 직접 읽어오는 로직이 있다면 거기서 쓰일 수는 있음.
-# def get_or_create_worksheet(client, target_dt):
-#     year, month = target_dt.year, target_dt.month
-#     quarter = get_quarter(month)
-#     file_name = f"조달청_납품내역_{year}_{quarter}분기"
-#     sheet_name = f"{year}_{month}월"
-#     try:
-#         sh = client.open(file_name)
-#     except gspread.exceptions.SpreadsheetNotFound:
-#         sh = client.create(file_name)
-#     try:
-#         ws = sh.worksheet(title=sheet_name, rows="5000", cols="44")
-#     except gspread.exceptions.WorksheetNotFound:
-#         ws = sh.add_worksheet(title=sheet_name, rows="5000", cols="44")
-#         ws.append_row(HEADER_KOR)
-#     return ws
-
-
-def fetch_api_data_from_g2b(kw, d_str): # 기존 fetch_data와 Streamlit 앱의 fetch_data와 구분하기 위해 함수명 변경
+# fetch_data 함수명을 변경하여 스크립트 내부에서만 사용되는 것을 명확히 합니다.
+def fetch_api_data_from_g2b(kw, d_str):
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
     params = {'numOfRows': '999', 'pageNo': '1', 'ServiceKey': MY_DIRECT_KEY, 'Type_A': 'xml', 'inqryDiv': '1', 'inqryPrdctDiv': '2', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'dtilPrdctClsfcNoNm': kw}
     try:
@@ -162,28 +136,23 @@ def main():
     target_dt = get_target_date()
     d_str = target_dt.strftime("%Y%m%d")
     
-    # 💡 [루이튼 반영] 구글 스프레드시트 관련 인증 및 클라이언트 부분은 이제 사용하지 않으므로 주석 처리!
-    # creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(AUTH_JSON_STR), ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
-    # client = gspread.authorize(creds)
-    # ws = get_or_create_worksheet(client, target_dt) # 이 라인도 이제 불필요
-
-    # 💡 [루이튼 반영] 구글 드라이브 API 서비스 가져오기
-    drive_service, drive_creds = get_drive_service_for_script() # 별도로 정의된 get_drive_service_for_script 사용
+    # 구글 드라이브 API 서비스 가져오기
+    drive_service, drive_creds = get_drive_service_for_script()
     
     final_data = []
     for kw in keywords:
-        data = fetch_api_data_from_g2b(kw, d_str) # fetch_data 함수명 변경
+        data = fetch_api_data_from_g2b(kw, d_str)
         if data: final_data.extend(data)
         time.sleep(0.5) # API 호출 간 딜레이
     
     if final_data:
-        # --- 💡 [루이튼 반영] 이 부분이 구글 시트 저장 로직 대신 구글 드라이브 CSV 파일 저장 로직으로 대체되는 부분 ---
+        # 이 부분이 구글 시트 저장 로직 대신 구글 드라이브 CSV 파일 저장 로직으로 대체됩니다.
         
         # 0. 수집된 final_data를 DataFrame으로 변환
         new_df = pd.DataFrame(final_data, columns=HEADER_KOR)
         
         # --- 파일 정보 설정 ---
-        DRIVE_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr' # << 네가 지정한 폴더 ID!
+        DRIVE_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr' # << 네가 지정한 구글 드라이브 폴더 ID!
         FILE_NAME_FOR_YEAR = f"{target_dt.year}.csv"          # 저장할 CSV 파일 이름 (예: 2026.csv)
 
         # --- 구글 드라이브에서 해당 연도 CSV 파일 찾기 ---
@@ -195,35 +164,36 @@ def main():
         items = results.get('files', [])
 
         if items:
-            # 파일이 존재하면 첫 번째 파일 사용
+            # 파일이 존재하면 첫 번째 파일 ID 사용
             file_id = items[0]['id']
             print(f"🔄 기존 파일 '{FILE_NAME_FOR_YEAR}' (ID: {file_id})에 데이터 추가 중...")
             
             # 기존 파일 내용 다운로드
             download_url = f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media'
+            # 인증 헤더를 drive_creds.token으로 사용하여 다운로드
             response = requests.get(download_url, headers={'Authorization': f'Bearer {drive_creds.token}'})
             
             if response.status_code == 200:
-                # 다운로드 받은 CSV 파일을 DataFrame으로 읽기 (utf-8-sig로 인코딩)
+                # 다운로드 받은 CSV 파일을 DataFrame으로 읽기 (한글 인코딩 'utf-8-sig' 고려)
                 existing_df = pd.read_csv(io.BytesIO(response.content), encoding='utf-8-sig', low_memory=False)
                 
                 # 기존 데이터 밑에 새로운 데이터(new_df)를 추가
                 combined_df = pd.concat([existing_df, new_df], ignore_index=True)
                 
-                # 💡 [루이튼 반영] '제일 마지막 데이터 밑에 추가'하되, 혹시 모를 중복 제거도 포함
-                #    주어진 데이터의 특성을 고려하여 `계약납품요구일자`, `수요기관명`, `품명`, `금액` 기준으로 중복을 제거.
-                #    `keep='last'`를 사용하여 새롭게 추가된 데이터가 유지되도록 함.
+                # '제일 마지막 데이터 밑에 추가'하되, 혹시 모를 중복 제거를 위해 주요 컬럼 기준으로 중복을 제거합니다.
+                # `keep='last'`를 사용하여 새로 추가된 데이터(오늘 수집된 데이터)가 유지되도록 합니다.
                 deduplicated_combined_df = combined_df.drop_duplicates(
-                    subset=['계약납품요구일자', '수요기관명', '품명', '금액'], # << 이 컬럼명은 HEADER_KOR에 있는 이름 그대로 사용해야 해!
+                    # HEADER_KOR에 정의된 실제 컬럼명 ['계약납품요구일자', '수요기관명', '품명', '금액']을 사용해야 합니다!
+                    subset=['계약납품요구일자', '수요기관명', '품명', '금액'], 
                     keep='last'
                 )
                 df_to_upload = deduplicated_combined_df
                 print(f"✅ 기존 '{FILE_NAME_FOR_YEAR}' 데이터 {len(existing_df)}건에 오늘 데이터 {len(new_df)}건 추가 (중복 제거 후 최종 {len(df_to_upload)}건).")
             else:
-                print(f"⚠️ 기존 파일 '{FILE_NAME_FOR_YEAR}' 다운로드 실패 (상태 코드: {response.status_code}). 새 데이터만으로 파일 업데이트 시도.")
-                df_to_upload = new_df # 다운로드 실패 시 새 데이터만으로 업로드 (새 파일 생성과 동일한 효과)
+                print(f"⚠️ 기존 파일 '{FILE_NAME_FOR_YEAR}' 다운로드 실패 (상태 코드: {response.status_code}). 오늘 데이터만으로 파일 업데이트/생성 시도.")
+                df_to_upload = new_df # 다운로드 실패 시 새 데이터만으로 업로드
         else:
-            print(f"🆕 파일 '{FILE_NAME_FOR_YEAR}'이(가) 없어 새로 생성합니다.")
+            print(f"🆕 파일 '{FILE_NAME_FOR_YEAR}'이(가) 없어 새로 생성합니다. 오늘 데이터를 저장합니다.")
             df_to_upload = new_df
 
         # --- 업데이트/생성할 CSV 데이터를 바이트 스트림으로 변환 ---
@@ -245,7 +215,7 @@ def main():
             # 새 파일 생성
             file_metadata = {
                 'name': FILE_NAME_FOR_YEAR,
-                'parents': [DRIVE_FOLDER_ID], # << 여기에 폴더 ID 지정!
+                'parents': [DRIVE_FOLDER_ID], # 여기에 폴더 ID 지정!
                 'mimeType': 'text/csv'
             }
             media_body = io.BytesIO(csv_bytes)
@@ -259,9 +229,9 @@ def main():
         print(f"✅ {d_str} 원본 데이터 {len(final_data)}건 CSV 파일 처리 완료.")
 
         # --- 2. [분석 및 메인 본문용] 중복 제거 로직 ---
-        # 💡 [루이튼 반영] 이 분석 로직은 '오늘 수집된 데이터(new_df, 즉 final_data)'만을 가지고 진행하는 기존 방식을 유지함.
+        # 이 분석 로직은 '오늘 수집된 데이터(final_data)'만을 가지고 진행하는 기존 방식을 유지합니다.
         unique_final_data = {} 
-        for row in final_data: # << 기존처럼 final_data를 사용!
+        for row in final_data: 
             try:
                 # 데이터 인덱스 기반 키 생성 (4가지 기준)
                 key = (str(row[7]), str(row[21]), str(row[20]), str(row[14]))
