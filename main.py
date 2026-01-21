@@ -54,8 +54,16 @@ def get_drive_service_for_script():
 def get_target_date():
     """한국 시간 기준, 공휴일 제외 최근 평일 계산"""
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    # 현재로부터 하루 전의 날짜 (datetime 객체)를 초기 target으로 설정
     target = now - datetime.timedelta(days=1)
-    holidays = [h.date() for h in pytimekr.holidays(year=target.year)] # pytimekr.holidays는 datetime.date 객체를 반환
+    
+    # 💡 [루이튼 최종 수정] pytimekr.holidays()는 이미 datetime.date 객체들의 리스트를 반환해.
+    #                   따라서, 다시 .date()를 호출할 필요가 없어!
+    #                   target.year는 int 타입이므로 그대로 사용하면 됨.
+    holidays = pytimekr.holidays(year=target.year)
+    
+    # while 루프에서 target.date()는 datetime 객체인 target에서 날짜 부분만 추출하는 올바른 사용법이야.
+    # holidays 리스트에 있는 요소들도 이미 datetime.date 객체이므로 직접 비교하면 돼.
     while target.weekday() >= 5 or target.date() in holidays:
         target -= datetime.timedelta(days=1)
     return target
