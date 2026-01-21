@@ -38,6 +38,15 @@ st.markdown("""
         margin-top: 0px !important;
     }
 
+    /* 퀵 버튼 6개가 들어있는 stHorizontalBlock 내부의 각 stColumn 타겟팅 */
+    .q-btn-container > div > div > div[data-testid="stHorizontalBlock"] > div.stColumn {
+        padding-left: 1px !important; /* 왼쪽 패딩을 최소화 */
+        padding-right: 1px !important; /* 오른쪽 패딩을 최소화 */
+        margin-left: 0px !important;
+        margin-right: 0px !important;
+    }
+    /* (만약 버튼 텍스트가 너무 붙으면 위에 padding: 0px 5px !important; 부분의 5px를 조절해봐) */
+
     /* 💡 [루이튼 제안] 조회 기간 input 및 퀵 버튼 라인 정렬 최종 개선 */
     /* date_input과 퀵 버튼들이 있는 전체 가로줄(컬럼들 d1, d2, d3, d4)을 감싸는 stHorizontalBlock */
     /* 네가 F12로 확인한 클래스 이름 (st-emotion-cache-1permvm) 사용! */
@@ -199,7 +208,7 @@ for i, tab in enumerate(tabs):
             r2_l, r2_r = st.columns([1, 8.5])
             with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
             with r2_r:
-                d1, d2, d3, d4 = st.columns([1.3, 1.3, 5.8, 1.2])
+                d1, d2, d3, d4 = st.columns([1.3, 1.3, 5.0, 2.0])
                 
                 # [에러 해결] 세션에서 날짜를 불러올 때 반드시 date 타입임을 보장
                 v_num = st.session_state[f"ver_{cat}"]
