@@ -9,25 +9,18 @@ import google.auth.transport.requests
 from googleapiclient.discovery import build
 from dateutil.relativedelta import relativedelta
 
-# --- [1] 페이지 기본 설정 (제목 짤림 방지 여백 포함) ---
+# --- [1] 페이지 기본 설정 ---
 st.set_page_config(page_title="공공조달 DATA 통합검색 시스템", layout="wide")
 
 st.markdown("""
     <style>
-    /* 상단 여백 조정하여 제목 짤림 방지 */
     .block-container { padding-top: 3.5rem !important; padding-bottom: 0rem !important; }
     .main { background-color: #f4f4f4; font-size: 13px !important; }
-    
-    /* 제목 및 레이아웃 스타일 */
     .title-text { font-size: 24px !important; font-weight: bold; color: #333; margin-bottom: 5px; }
     .search-container { background-color: white; border: 1px solid #ccc; margin-bottom: 10px; }
     .search-label { background-color: #f9f9f9; width: 120px; padding: 8px; font-weight: bold; border-right: 1px solid #eee; text-align: center; }
-    
-    /* 탭 및 표 스타일 */
     .stTabs [aria-selected="true"] { background-color: #00b050 !important; color: white !important; }
     .stDataFrame { font-size: 12px !important; }
-    
-    /* 버튼 스타일 통일 */
     div.stButton > button { width: 100%; height: 35px; }
     </style>
     """, unsafe_allow_html=True)
@@ -65,7 +58,7 @@ with h1: st.markdown('<p class="title-text">🏛 공공조달 DATA 통합검색 
 with h2: st.link_button("⛓️ 지자체 유지보수 내역", "https://g2b-info.streamlit.app/", use_container_width=True)
 st.markdown("<hr style='margin: 0px 0px 10px 0px; border-top: 2px solid #333;'>", unsafe_allow_html=True)
 
-# --- [5] 결과 테이블 조각 (Fragment) ---
+# --- [5] 결과 테이블 조각 (Fragment) - 페이지 이동 시 새로고침 방지 ---
 @st.fragment
 def show_result_table(cat, df, idx_list):
     st.markdown("<br>", unsafe_allow_html=True)
@@ -74,7 +67,6 @@ def show_result_table(cat, df, idx_list):
         c1, c2, c3 = st.columns([1.5, 1, 1])
         p_limit = c1.selectbox("표시개수", [50, 100, 150, 200], key=f"ps_sel_{cat}", label_visibility="collapsed")
         
-        # 엑셀 다운로드 손상 방지
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Data')
@@ -91,8 +83,9 @@ def show_result_table(cat, df, idx_list):
     curr_p = st.session_state[f"p_num_{cat}"]
     if curr_p > total_pages: curr_p = total_pages
 
-    # 필터링된 컬럼만 표출
     show_cols = [df.columns[idx] if isinstance(idx, int) else idx for idx in idx_list if (isinstance(idx, int) and idx < len(df.columns)) or (isinstance(idx, str) and idx in df.columns)]
+    
+    # 데이터 표출 (정렬된 데이터 슬라이싱)
     st.dataframe(df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], use_container_width=True, height=520)
 
     # [페이지네이션 숫자형 버튼]
@@ -119,7 +112,7 @@ def show_result_table(cat, df, idx_list):
         if btn_cols[13].button("»", key=f"last_{cat}", disabled=curr_p > total_pages - 10):
             st.session_state[f"p_num_{cat}"] = min(total_pages, curr_p + 10); st.rerun()
 
-# --- [6] 메인 루프 (버튼 제거 및 레이아웃 정리) ---
+# --- [6] 메인 루프 ---
 tabs = st.tabs(list(SHEET_FILE_IDS.keys()))
 
 for i, tab in enumerate(tabs):
@@ -127,7 +120,6 @@ for i, tab in enumerate(tabs):
     with tab:
         if f"df_{cat}" not in st.session_state: st.session_state[f"df_{cat}"] = None
 
-        # 검색창 중앙 정렬
         _, center_area, _ = st.columns([1, 8, 1])
         with center_area:
             st.markdown('<div class="search-container">', unsafe_allow_html=True)
@@ -141,16 +133,18 @@ for i, tab in enumerate(tabs):
                 l_val = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
                 k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val=="NONE"), placeholder="두 번째 검색어")
 
-            # 2행: 조회 기간 및 검색 버튼
+            # 2행: 조회 기간, 정렬 조건 및 검색 버튼
             r2_l, r2_r = st.columns([1, 8.5])
             with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
             with r2_r:
-                d1, d2, d_empty, d3 = st.columns([2, 2, 4.5, 1.5])
-                # 버튼을 다 뺐으므로 기본 날짜 설정은 직접 입력받음
+                d1, d2, d3, d4 = st.columns([2, 2, 4.5, 1.5])
                 sd_in = d1.date_input("시작", value=datetime.now()-relativedelta(months=6), key=f"sd_{cat}", label_visibility="collapsed")
                 ed_in = d2.date_input("종료", value=datetime.now(), key=f"ed_{cat}", label_visibility="collapsed")
                 
-                search_exe = d3.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
+                # [추가] 정렬 순서 선택
+                sort_order = d3.selectbox("정렬순서", ["최신순 (날짜 내림차순)", "과거순 (날짜 오름차순)"], key=f"sort_{cat}", label_visibility="collapsed")
+                
+                search_exe = d4.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
         # 검색 로직
@@ -166,10 +160,14 @@ for i, tab in enumerate(tabs):
                         d_col = DATE_COL_MAP.get(cat)
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8] if d_col in df_raw.columns else "0"
                     
-                    # 1차 날짜 필터
-                    df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s[:6]+"01") & (df_raw['tmp_dt'] <= e_s)]
+                    # 1. 날짜 필터
+                    df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s[:6]+"01") & (df_raw['tmp_dt'] <= e_s)].copy()
                     
-                    # 2차 키워드 필터 (검색어 있을 때만)
+                    # 2. [수정] 전체 데이터 정렬 (사용자가 선택한 기준 적용)
+                    ascending_flag = True if "과거순" in sort_order else False
+                    df_filtered = df_filtered.sort_values(by='tmp_dt', ascending=ascending_flag)
+                    
+                    # 3. 키워드 필터
                     if k1_val and k1_val.strip():
                         def get_mask(k):
                             if f_val == "ALL": return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1)
