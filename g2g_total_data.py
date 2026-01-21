@@ -9,7 +9,7 @@ import google.auth.transport.requests
 from googleapiclient.discovery import build
 from dateutil.relativedelta import relativedelta
 
-# --- [1] 페이지 설정 ---
+# --- [1] 페이지 기본 설정 ---
 st.set_page_config(page_title="공공조달 DATA 통합검색 시스템", layout="wide")
 
 st.markdown("""
@@ -21,12 +21,12 @@ st.markdown("""
     .search-label { background-color: #f9f9f9; width: 120px; padding: 8px; font-weight: bold; border-right: 1px solid #eee; text-align: center; }
     .stTabs [aria-selected="true"] { background-color: #00b050 !important; color: white !important; }
     .stDataFrame { font-size: 12px !important; }
-    /* 버튼 스타일 (기존 디자인 유지) */
-    div.stButton > button { width: 100%; height: 32px; font-size: 12px !important; }
+    /* 버튼 스타일 */
+    div.stButton > button { width: 100%; height: 30px; font-size: 11px !important; padding: 0px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- [2] 데이터 연결 함수 ---
+# --- [2] 데이터 연결 함수 (동일) ---
 @st.cache_resource
 def get_drive_service():
     auth_json_str = st.secrets["GOOGLE_AUTH_JSON"]
@@ -100,9 +100,10 @@ tabs = st.tabs(list(SHEET_FILE_IDS.keys()))
 for i, tab in enumerate(tabs):
     cat = list(SHEET_FILE_IDS.keys())[i]
     with tab:
-        # [A] 날짜 세션 상태 초기화
-        if f"sd_final_{cat}" not in st.session_state: st.session_state[f"sd_final_{cat}"] = datetime.now().date() - relativedelta(months=6)
-        if f"ed_final_{cat}" not in st.session_state: st.session_state[f"ed_final_{cat}"] = datetime.now().date()
+        # [A] 날짜 및 위젯 버전 관리 (버튼 클릭 시 버전을 올려서 위젯을 새로고침함)
+        if f"sd_{cat}" not in st.session_state: st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=6)
+        if f"ed_{cat}" not in st.session_state: st.session_state[f"ed_{cat}"] = datetime.now().date()
+        if f"ver_{cat}" not in st.session_state: st.session_state[f"ver_{cat}"] = 0
         if f"df_{cat}" not in st.session_state: st.session_state[f"df_{cat}"] = None
 
         _, center_area, _ = st.columns([1, 8, 1])
@@ -118,41 +119,35 @@ for i, tab in enumerate(tabs):
                 l_val = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
                 k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val=="NONE"))
 
-            # 행2: 조회기간 (날짜 입력창 하단에 버튼 배치)
+            # 행2: 조회기간
             r2_l, r2_r = st.columns([1, 8.5])
             with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
             with r2_r:
-                # 상단: 날짜 입력창
-                d1, d2, d_empty, d_search = st.columns([1.5, 1.5, 5, 1.5])
-                sd_in = d1.date_input("시작", value=st.session_state[f"sd_final_{cat}"], key=f"sd_w_{cat}", label_visibility="collapsed")
-                ed_in = d2.date_input("종료", value=st.session_state[f"ed_final_{cat}"], key=f"ed_w_{cat}", label_visibility="collapsed")
+                d1, d2, d_empty, d_search = st.columns([1.5, 1.5, 5.2, 1.3])
                 
-                # 수동 입력 시 세션 업데이트
-                st.session_state[f"sd_final_{cat}"] = sd_in
-                st.session_state[f"ed_final_{cat}"] = ed_in
+                # [핵심] Key-Switching: ver_{cat}을 key에 포함시켜 버튼 클릭 시 위젯을 새로 생성하게 함
+                sd_in = d1.date_input("시작", value=st.session_state[f"sd_{cat}"], key=f"sd_w_{cat}_{st.session_state[f'ver_{cat}']}", label_visibility="collapsed")
+                ed_in = d2.date_input("종료", value=st.session_state[f"ed_{cat}"], key=f"ed_w_{cat}_{st.session_state[f'ver_{cat}']}", label_visibility="collapsed")
+                
+                # 수동 변경 값 저장
+                st.session_state[f"sd_{cat}"] = sd_in
+                st.session_state[f"ed_{cat}"] = ed_in
 
-                # [여기가 핵심] 하단: 퀵 버튼
-                q_cols = st.columns(12) # 버튼 크기 조절을 위해 컬럼 분할
-                if q_cols[0].button("1M", key=f"m1_{cat}"): 
-                    st.session_state[f"sd_final_{cat}"] = datetime.now().date() - relativedelta(months=1)
+                # 퀵 버튼
+                q_cols = st.columns(12)
+                def set_period(m=0, y=0):
+                    st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=m, years=y)
+                    st.session_state[f"ed_{cat}"] = datetime.now().date()
+                    st.session_state[f"ver_{cat}"] += 1 # 버전 증가시켜 위젯 재생성 유도
                     st.rerun()
-                if q_cols[1].button("3M", key=f"m3_{cat}"): 
-                    st.session_state[f"sd_final_{cat}"] = datetime.now().date() - relativedelta(months=3)
-                    st.rerun()
-                if q_cols[2].button("6M", key=f"m6_{cat}"): 
-                    st.session_state[f"sd_final_{cat}"] = datetime.now().date() - relativedelta(months=6)
-                    st.rerun()
-                if q_cols[3].button("9M", key=f"m9_{cat}"): 
-                    st.session_state[f"sd_final_{cat}"] = datetime.now().date() - relativedelta(months=9)
-                    st.rerun()
-                if q_cols[4].button("1Y", key=f"y1_{cat}"): 
-                    st.session_state[f"sd_final_{cat}"] = datetime.now().date() - relativedelta(years=1)
-                    st.rerun()
-                if q_cols[5].button("2Y", key=f"y2_{cat}"): 
-                    st.session_state[f"sd_final_{cat}"] = datetime.now().date() - relativedelta(years=2)
-                    st.rerun()
+
+                if q_cols[0].button("1M", key=f"m1_{cat}"): set_period(m=1)
+                if q_cols[1].button("3M", key=f"m3_{cat}"): set_period(m=3)
+                if q_cols[2].button("6M", key=f"m6_{cat}"): set_period(m=6)
+                if q_cols[3].button("9M", key=f"m9_{cat}"): set_period(m=9)
+                if q_cols[4].button("1Y", key=f"y1_{cat}"): set_period(y=1)
+                if q_cols[5].button("2Y", key=f"y2_{cat}"): set_period(y=2)
                 
-                # 검색 실행 버튼 (우측 상단 위치 유지)
                 search_exe = d_search.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -171,7 +166,7 @@ for i, tab in enumerate(tabs):
                     if k1_val and k1_val.strip():
                         def get_mask(k): return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1) if f_val == "ALL" else df_filtered[f_val].astype(str).str.contains(k, case=False, na=False)
                         if l_val == "AND" and k2_val: df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
-                        elif l_val == "OR" and k2_val: df_filtered = df_filtered[get_m(k1_val) | get_m(k2_val)]
+                        elif l_val == "OR" and k2_val: df_filtered = df_filtered[get_mask(k1_val) | get_mask(k2_val)]
                         else: df_filtered = df_filtered[get_mask(k1_val)]
                     
                     st.session_state[f"df_{cat}"] = df_filtered.sort_values(by='tmp_dt', ascending=False)
