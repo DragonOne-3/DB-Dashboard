@@ -2,12 +2,13 @@ import os, json, datetime, time, requests
 
 import xml.etree.ElementTree as ET
 
-# 구글 드라이브 CSV 저장을 위해 다음 모듈들을 import 합니다.
+# 구글 드라이브 CSV 저장을 위해 필요한 모듈들
 import pandas as pd
 import io
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
+# 기타 스크립트에서 필요한 모듈들
 from pytimekr import pytimekr # 공휴일 계산용
 import re # 정규식 사용을 위해 필요합니다.
 
@@ -34,8 +35,7 @@ keywords = [
     '비디오믹서','절연전선및피복선','레이더','적외선방사기', '보안용카메라', '통신소프트웨어','분석및과학용소프트웨어','소프트웨어유지및지원서비스'
 ]
 
-# 구글 드라이브 API 서비스 함수
-# 이 함수는 이 스크립트가 구글 드라이브에 파일을 읽고 쓸 때 사용됩니다.
+# 구글 드라이브 API 서비스 함수 (데이터 수집 스크립트 전용)
 def get_drive_service_for_script():
     info = json.loads(AUTH_JSON_STR)
     # 파일 생성/수정 권한이 필요하므로 drive.file 스코프 사용 (최소 권한 원칙)
@@ -52,7 +52,7 @@ def get_target_date():
     
     # pytimekr.holidays()는 이미 datetime.date 객체들의 리스트를 반환합니다.
     # 따라서 `.date()`를 다시 호출할 필요가 없습니다.
-    holidays = pytimekr.holidays(year=target.year) # 이 부분이 수정됨!
+    holidays = pytimekr.holidays(year=target.year)
     
     # target.date()는 datetime 객체인 target에서 날짜 부분만 추출하는 올바른 사용법입니다.
     # holidays 리스트의 요소들도 이미 datetime.date 객체이므로 직접 비교하면 됩니다.
@@ -65,7 +65,7 @@ def get_quarter(month):
     return (month - 1) // 3 + 1
 
 
-# fetch_data 함수명을 변경하여 스크립트 내부에서만 사용되는 것을 명확히 합니다.
+# 데이터 API로부터 데이터를 가져오는 함수
 def fetch_api_data_from_g2b(kw, d_str):
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
     params = {'numOfRows': '999', 'pageNo': '1', 'ServiceKey': MY_DIRECT_KEY, 'Type_A': 'xml', 'inqryDiv': '1', 'inqryPrdctDiv': '2', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'dtilPrdctClsfcNoNm': kw}
@@ -152,17 +152,25 @@ def main():
         new_df = pd.DataFrame(final_data, columns=HEADER_KOR)
         
         # --- 파일 정보 설정 ---
-        DRIVE_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr' # << 네가 지정한 구글 드라이브 폴더 ID!
+        DRIVE_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr' # 당신이 지정한 구글 드라이브 폴더 ID!
         FILE_NAME_FOR_YEAR = f"{target_dt.year}.csv"          # 저장할 CSV 파일 이름 (예: 2026.csv)
+
+        # --- 디버깅 정보 (추가) ---
+        print(f"DEBUG: 스크립트가 사용하려는 폴더 ID: '{DRIVE_FOLDER_ID}'")
+        print(f"DEBUG: 스크립트가 찾으려는 파일명: '{FILE_NAME_FOR_YEAR}'")
+        # --- 디버깅 정보 끝 ---
 
         # --- 구글 드라이브에서 해당 연도 CSV 파일 찾기 ---
         file_id = None
         
         # Drive API로 타겟 폴더 내에서 파일 검색
         query = f"name='{FILE_NAME_FOR_YEAR}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
+        print(f"DEBUG: Drive API 실행 쿼리: '{query}'") # 이 쿼리 문자열도 중요!
         results = drive_service.files().list(q=query, spaces='drive', fields='files(id)').execute()
         items = results.get('files', [])
 
+        print(f"DEBUG: Drive API 쿼리 결과 items: {items}") # items가 비어있으면 []가 출력될 것입니다.
+        
         if items:
             # 파일이 존재하면 첫 번째 파일 ID 사용
             file_id = items[0]['id']
