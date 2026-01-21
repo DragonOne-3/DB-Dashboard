@@ -9,10 +9,14 @@ import re
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
 
+# [변경] 고정 저장 위치 설정
+TARGET_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr'
+TARGET_FILE_NAME = '2026.csv'
+
 # 국문 헤더 (43개 항목 전체 유지)
 HEADER_KOR = ['조달구분명', '계약구분명', '계약납품구분명', '계약납품요구일자', '계약납품요구번호', '변경차수', '최종변경차수여부', '수요기관명', '수요기관구분명', '수요기관지역명', '수요기관코드', '물품분류번호', '품명', '세부물품분류번호', '세부품명', '물품식별번호', '물품규격명', '단가', '수량', '단위', '금액', '업체명', '업체기업구분명', '계약명', '우수제품여부', '공사용자재직접구매대상여부', '다수공급자계약여부', '다수공급자계약2단계진행여부', '단가계약번호', '단가계약변경차수', '최초계약(납품요구)일자', '계약체결방법명', '증감수량', '증감금액', '납품장소명', '납품기한일자', '업체사업자등록번호', '인도조건명', '물품순번']
 
-# 요청하신 모든 키워드 풀 리스트
+# 요청하신 모든 키워드 풀 리스트 (그대로 유지)
 keywords = [
     '네트워크시스템장비용랙','영상감시장치','PA용스피커','안내판','카메라브래킷','액정모니터','광송수신모듈','전원공급장치','광분배함','컨버터','컴퓨터서버','하드디스크드라이브','네트워크스위치','광점퍼코드','풀박스','서지흡수기','디지털비디오레코더',
     '스피커','오디오앰프','브래킷','UTP케이블','정보통신공사','영상정보디스플레이장치','송신기','난연전력케이블','1종금속제가요전선관','호온스피커','누전차단기','방송수신기','LAP외피광케이블','폴리에틸렌전선관','리모트앰프',
@@ -36,19 +40,15 @@ def get_target_date():
 def get_quarter(month):
     return (month - 1) // 3 + 1
 
-def get_or_create_worksheet(client, target_dt):
-    year, month = target_dt.year, target_dt.month
-    quarter = get_quarter(month)
-    file_name = f"조달청_납품내역_{year}_{quarter}분기"
-    sheet_name = f"{year}_{month}월"
+# [수정] 고정된 파일 및 폴더를 사용하는 함수로 변경
+def get_target_worksheet(client):
     try:
-        sh = client.open(file_name)
+        sh = client.open(TARGET_FILE_NAME)
     except gspread.exceptions.SpreadsheetNotFound:
-        sh = client.create(file_name)
-    try:
-        ws = sh.worksheet(sheet_name)
-    except gspread.exceptions.WorksheetNotFound:
-        ws = sh.add_worksheet(title=sheet_name, rows="5000", cols="44")
+        sh = client.create(TARGET_FILE_NAME, folder_id=TARGET_FOLDER_ID)
+    
+    ws = sh.get_worksheet(0)
+    if not ws.get_all_values():
         ws.append_row(HEADER_KOR)
     return ws
 
@@ -116,9 +116,10 @@ def main():
     target_dt = get_target_date()
     d_str = target_dt.strftime("%Y%m%d")
     
+    # 1. 시트 연결 (변경된 저장 로직 적용)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(AUTH_JSON_STR), ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
-    ws = get_or_create_worksheet(client, target_dt)
+    ws = get_target_worksheet(client)
     
     final_data = []
     for kw in keywords:
@@ -127,16 +128,14 @@ def main():
         time.sleep(0.5)
     
     if final_data:
-        # 1. 구글 시트에는 중복 여부 상관없이 모든 수집 데이터 저장
+        # 구글 시트 저장
         ws.append_rows(final_data)
-        print(f"✅ {d_str} 원본 데이터 {len(final_data)}건 시트 저장 완료")
+        print(f"✅ {d_str} 데이터 {len(final_data)}건 {TARGET_FILE_NAME}에 저장 완료")
 
-        # 2. [분석 및 메인 본문용] 중복 제거 로직
-        # 기준: 기관명(7), 업체명(21), 금액(20), 세부품명(14)
+        # [기존 분석 로직 유지]
         unique_final_data = {}
         for row in final_data:
             try:
-                # 데이터 인덱스 기반 키 생성 (4가지 기준)
                 key = (str(row[7]), str(row[21]), str(row[20]), str(row[14]))
                 if key not in unique_final_data:
                     unique_final_data[key] = row
@@ -148,7 +147,6 @@ def main():
         innodep_today_dict = {} 
         innodep_total_amt = 0
 
-        # 3. 중복 제거된 데이터를 바탕으로 요약 분석
         for row in deduplicated_data:
             try:
                 org_name = str(row[7])
@@ -160,7 +158,6 @@ def main():
                 amt = int(amt_raw) if amt_raw else 0
             except: continue
 
-            # 학교 지능형 CCTV 분석
             if '학교' in org_name and '지능형' in contract_name and 'CCTV' in contract_name:
                 if org_name not in school_stats:
                     school_stats[org_name] = {'total_amt': 0, 'main_vendor': '', 'vendor_priority': 3}
@@ -170,13 +167,11 @@ def main():
                     school_stats[org_name]['main_vendor'] = comp_name
                     school_stats[org_name]['vendor_priority'] = priority
 
-            # 이노뎁 실적 합산
             if '이노뎁' in comp_name:
                 if org_name in innodep_today_dict: innodep_today_dict[org_name] += amt
                 else: innodep_today_dict[org_name] = amt
                 innodep_total_amt += amt
 
-        # 4. 메일 요약 텍스트 생성
         summary_lines = [f"⭐ {d_str} 학교 지능형 CCTV 납품 현황:"]
         if school_stats:
             for school, info in school_stats.items():
@@ -191,10 +186,8 @@ def main():
             summary_lines.append(f"** 총합계: {innodep_total_amt:,}원")
         else: summary_lines.append(" 0건")
 
-        # 5. 용역 계약 데이터 HTML 생성
         servc_html = fetch_and_generate_servc_html(target_dt)
 
-        # 6. GitHub Actions로 데이터 전달
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                 f.write(f"collect_date={d_str}\n")
