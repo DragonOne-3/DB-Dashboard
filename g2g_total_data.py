@@ -9,10 +9,9 @@ from googleapiclient.http import MediaIoBaseDownload
 # --- 1. 페이지 설정 ---
 st.set_page_config(page_title="공공조달 DATA 통합검색", layout="wide")
 
-# --- 2. 구글 인증 서비스 설정 (Secrets 참조) ---
+# --- 2. 구글 인증 서비스 설정 ---
 @st.cache_resource
 def get_drive_service():
-    # Secrets에서 계층형으로 저장된 정보를 읽어옵니다.
     try:
         info = st.secrets.connections.gcs.service_account_info
         creds = service_account.Credentials.from_service_account_info(info)
@@ -24,7 +23,7 @@ def get_drive_service():
 drive_service = get_drive_service()
 
 # --- 3. 데이터 소스 정보 ---
-CSV_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr' # 종합쇼핑몰 CSV 폴더
+CSV_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr' 
 SHEET_FILE_IDS = {
     '나라장터_발주': '1pGnb6O5Z1ahaHYuQdydyoY1Ayf147IoGmLRdA3WAHi4',
     '나라장터_계약': '15Hsr_nup4ZteIZ4Jyov8wG2s_rKoZ25muqRE3-sRnaw',
@@ -38,9 +37,10 @@ DATE_COL_MAP = {
     '군수품_공고': '공고일자', '나라장터_계약': '★가공_계약일', '종합쇼핑몰': '계약납품요구일자'
 }
 
-# --- 4. 데이터 로드 함수 ---
+# --- 4. 데이터 로드 함수 (대용량 대응 최적화) ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_csv(file_id):
+    """드라이브에 저장된 실제 CSV 파일을 읽어옵니다."""
     request = drive_service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
@@ -51,15 +51,11 @@ def load_csv(file_id):
     return pd.read_csv(fh, low_memory=False)
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_sheet(file_id):
-    request = drive_service.files().export_media(fileId=file_id, mimeType='text/csv')
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    fh.seek(0)
-    return pd.read_csv(fh, low_memory=False)
+def load_large_sheet(file_id):
+    """용량이 큰 구글 시트를 우회하여 읽어옵니다."""
+    # API Export 대신 직접 웹 배포 주소 형식을 사용하여 제한을 우회합니다.
+    url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv&gid=0"
+    return pd.read_csv(url, low_memory=False)
 
 # --- 5. 사이드바 UI ---
 with st.sidebar:
@@ -74,9 +70,9 @@ with st.sidebar:
     k2 = st.text_input("두 번째 검색어") if logic != "NONE" else ""
     search_btn = st.button("데이터 검색 실행", type="primary", use_container_width=True)
 
-# --- 6. 검색 로직 ---
+# --- 6. 검색 실행 로직 ---
 if search_btn:
-    with st.spinner("구글 드라이브에서 데이터를 가져오는 중..."):
+    with st.spinner("대용량 데이터를 처리 중입니다. 잠시만 기다려주세요..."):
         try:
             df = pd.DataFrame()
             s_str = start_date.strftime('%Y%m%d')
@@ -96,7 +92,8 @@ if search_btn:
                         relevant_dfs.append(tmp[mask])
                 if relevant_dfs: df = pd.concat(relevant_dfs, ignore_index=True)
             else:
-                df = load_sheet(SHEET_FILE_IDS[category])
+                # 대용량 시트 대응 함수 사용
+                df = load_large_sheet(SHEET_FILE_IDS[category])
                 date_col_name = DATE_COL_MAP.get(category)
                 if date_col_name and date_col_name in df.columns:
                     df['compare_date'] = df[date_col_name].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
