@@ -5,3 +5,5 @@ oauth2client
 xlsxwriter
 streamlit
 pytimekr
+st-files-connection
+gcsfs
