@@ -1,200 +1,176 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import json
-import os
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-import re
+from datetime import datetime, timedelta
 import io
+import json
+import requests
+from google.oauth2 import service_account
+import google.auth.transport.requests
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
-# --- 1. 226개 광역+기초 통합 리스트 ---
-FULL_DISTRICT_LIST = [
-    "서울특별시", "서울특별시 종로구", "서울특별시 중구", "서울특별시 용산구", "서울특별시 성동구", "서울특별시 광진구", "서울특별시 동대문구", "서울특별시 중랑구", "서울특별시 성북구", "서울특별시 강북구", "서울특별시 도봉구", "서울특별시 노원구", "서울특별시 은평구", "서울특별시 서대문구", "서울특별시 마포구", "서울특별시 양천구", "서울특별시 강서구", "서울특별시 구로구", "서울특별시 금천구", "서울특별시 영등포구", "서울특별시 동작구", "서울특별시 관악구", "서울특별시 서초구", "서울특별시 강남구", "서울특별시 송파구", "서울특별시 강동구",
-    "부산광역시", "부산광역시 중구", "부산광역시 서구", "부산광역시 동구", "부산광역시 영도구", "부산광역시 부산진구", "부산광역시 동래구", "부산광역시 남구", "부산광역시 북구", "부산광역시 해운대구", "부산광역시 사하구", "부산광역시 금정구", "부산광역시 강서구", "부산광역시 연제구", "부산광역시 수영구", "부산광역시 사상구", "부산광역시 기장군",
-    "대구광역시", "대구광역시 중구", "대구광역시 동구", "대구광역시 서구", "대구광역시 남구", "대구광역시 북구", "대구광역시 수성구", "대구광역시 달서구", "대구광역시 달성군", "대구광역시 군위군",
-    "인천광역시", "인천광역시 중구", "인천광역시 동구", "인천광역시 미추홀구", "인천광역시 연수구", "인천광역시 남동구", "인천광역시 부평구", "인천광역시 계양구", "인천광역시 서구", "인천광역시 강화군", "인천광역시 옹진군",
-    "광주광역시", "광주광역시 동구", "광주광역시 서구", "광주광역시 남구", "광주광역시 북구", "광주광역시 광산구",
-    "대전광역시", "대전광역시 동구", "대전광역시 중구", "대전광역시 서구", "대전광역시 유성구", "대전광역시 대덕구",
-    "울산광역시", "울산광역시 중구", "울산광역시 남구", "울산광역시 동구", "울산광역시 북구", "울산광역시 울주군",
-    "세종특별자치시",
-    "경기도 수원시", "경기도 성남시", "경기도 의정부시", "경기도 안양시", "경기도 부천시", "경기도 광명시", "경기도 평택시", "경기도 동두천시", "경기도 안산시", "경기도 고양시", "경기도 과천시", "경기도 구리시", "경기도 남양주시", "경기도 오산시", "경기도 시흥시", "경기도 군포시", "경기도 의왕시", "경기도 하남시", "경기도 용인시", "경기도 파주시", "경기도 이천시", "경기도 안성시", "경기도 김포시", "경기도 화성시", "경기도 광주시", "경기도 양주시", "경기도 포천시", "경기도 여주시", "경기도 연천군", "경기도 가평군", "경기도 양평군",
-    "강원특별자치도 춘천시", "강원특별자치도 원주시", "강원특별자치도 강릉시", "강원특별자치도 동해시", "강원특별자치도 태백시", "강원특별자치도 속초시", "강원특별자치도 삼척시", "강원특별자치도 홍천군", "강원특별자치도 횡성군", "강원특별자치도 영월군", "강원특별자치도 평창군", "강원특별자치도 정선군", "강원특별자치도 철원군", "강원특별자치도 화천군", "강원특별자치도 양구군", "강원특별자치도 인제군", "강원특별자치도 고성군", "강원특별자치도 양양군","강원특별자치도 원주시 도시정보센터",
-    "충청북도 청주시", "충청북도 충주시", "충청북도 제천시", "충청북도 보은군", "충청북도 옥천군", "충청북도 영동군", "충청북도 증평군", "충청북도 진천군", "충청북도 괴산군", "충청북도 음성군", "충청북도 단양군",
-    "충청남도 천안시", "충청남도 공주시", "충청남도 보령시", "충청남도 아산시", "충청남도 서산시", "충청남도 논산시", "충청남도 계룡시", "충청남도 당진시", "충청남도 금산군", "충청남도 부여군", "충청남도 서천군", "충청남도 청양군", "충청남도 홍성군", "충청남도 예산군", "충청남도 태안군",
-    "전북특별자치도 전주시", "전북특별자치도 군산시", "전북특별자치도 익산시", "전북특별자치도 정읍시", "전북특별자치도 남원시", "전북특별자치도 김제시", "전북특별자치도 완주군", "전북특별자치도 진안군", "전북특별자치도 무주군", "전북특별자치도 장수군", "전북특별자치도 임실군", "전북특별자치도 순창군", "전북특별자치도 고창군", "전북특별자치도 부안군",
-    "전라남도 목포시", "전라남도 여수시", "전라남도 순천시", "전라남도 나주시", "전라남도 광양시", "전라남도 담양군", "전라남도 곡성군", "전라남도 구례군", "전라남도 고흥군", "전라남도 보성군", "전라남도 화순군", "전라남도 장흥군", "전라남도 강진군", "전라남도 해남군", "전라남도 영암군", "전라남도 무안군", "전라남도 함평군", "전라남도 영광군", "전라남도 장성군", "전라남도 완도군", "전라남도 진도군", "전라남도 신안군",
-    "경상북도 포항시", "경상북도 경주시", "경상북도 김천시", "경상북도 안동시", "경상북도 구미시", "경상북도 영주시", "경상북도 상주시", "경상북도 문경시", "경상북도 경산시", "경상북도 의성군", "경상북도 청송군", "경상북도 영양군", "경상북도 영덕군", "경상북도 청도군", "경상북도 고령군", "경상북도 성주군", "경상북도 칠곡군", "경상북도 예천군", "경상북도 봉화군", "경상북도 울진군", "경상북도 울릉군",
-    "경상남도 창원시", "경상남도 진주시", "경상남도 통영시", "경상남도 사천시", "경상남도 김해시", "경상남도 밀양시", "경상남도 거제시", "경상남도 양산시", "경상남도 의령군", "경상남도 함안군", "경상남도 창녕군", "경상남도 고성군", "경상남도 남해군", "경상남도 하동군", "경상남도 산청군", "경상남도 함양군", "경상남도 거창군", "경상남도 합천군",
-    "제주특별자치도", "제주특별자치도 제주시", "제주특별자치도 서귀포시"
-]
+# --- 1. 페이지 설정 및 디자인 (디자인 주석 아님, 실행 코드) ---
+st.set_page_config(page_title="공공조달 DATA 통합검색 시스템", layout="wide")
 
-METRO_LIST = ["전국", "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도"]
+st.markdown("""
+    <style>
+    .main { background-color: #f8f9fa; }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] {
+        background-color: white; border: 1px solid #dee2e6;
+        border-radius: 8px 8px 0 0; padding: 10px 15px; font-weight: bold;
+    }
+    .stTabs [aria-selected="true"] { background-color: #0d6efd !important; color: white !important; }
+    .search-panel {
+        background: white; padding: 20px; border-radius: 12px;
+        border: 1px solid #dee2e6; margin-top: 10px; margin-bottom: 20px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .stDownloadButton button { width: 100%; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
 
-def get_data_from_gsheet():
-    auth_json = os.environ.get('GOOGLE_AUTH_JSON')
-    if auth_json is None:
-        st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
-        return pd.DataFrame()
+# --- 2. 구글 인증 서비스 ---
+@st.cache_resource
+def get_drive_service():
     try:
-        creds_dict = json.loads(auth_json)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        sh = client.open("나라장터_용역계약내역")
-        ws = sh.get_worksheet(0)
-        return pd.DataFrame(ws.get_all_records())
+        # 시크릿에 저장된 GOOGLE_AUTH_JSON 사용
+        auth_json_str = st.secrets["GOOGLE_AUTH_JSON"]
+        info = json.loads(auth_json_str)
+        creds = service_account.Credentials.from_service_account_info(
+            info, scopes=['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/spreadsheets.readonly']
+        )
+        return build('drive', 'v3', credentials=creds), creds
     except Exception as e:
-        st.error(f"❌ 시트 로드 중 오류: {e}")
-        return pd.DataFrame()
+        st.error(f"인증 초기화 실패: {e}")
+        st.stop()
 
-def parse_date(date_val):
-    if not date_val: return None
-    clean_val = re.sub(r'[^0-9]', '', str(date_val))
-    if len(clean_val) >= 8:
-        try: return datetime.strptime(clean_val[:8], "%Y%m%d")
-        except: return None
-    return None
+drive_service, credentials = get_drive_service()
 
-def calculate_logic(row):
-    try:
-        cntrct_date = parse_date(row.get('계약일자'))
-        start_date = parse_date(row.get('착수일자'))
-        period_raw = str(row.get('계약기간', ''))
-        total_finish_date = parse_date(row.get('총완수일자'))
-        
-        final_expire_dt = None
-        this_match = re.search(r'금차\s*[:\s]*(\d+)', period_raw)
-        total_match = re.search(r'(총차|총용역|총)\s*[:\s]*(\d+)', period_raw)
-        
-        this_val = int(this_match.group(1)) if this_match else 0
-        total_val = int(total_match.group(2)) if total_match else 0
+# --- 3. 데이터 설정 ---
+SHEET_FILE_IDS = {
+    '나라장터_발주': '1pGnb6O5Z1ahaHYuQdydyoY1Ayf147IoGmLRdA3WAHi4',
+    '나라장터_계약': '15Hsr_nup4ZteIZ4Jyov8wG2s_rKoZ25muqRE3-sRnaw',
+    '군수품_발주': '1pzW51Z29SSoQk7al_GvN_tj5smuhOR3J2HWnL_16fcI',
+    '군수품_계약': '1KPMUz0IKM6AQvqwfAkvW96WNvzbycN56vNlFnDmfRTw',
+    '군수품_공고': '1opuA_UzNm27U9QkbMay5UsyQqcwfxiEmIHNRdc4MyHM',
+    '군수품_수의': '1aYA18kPrSkpbayzbn16EdKUScVRwr2Nutyid5No5qjk',
+    '종합쇼핑몰': '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr'
+}
 
-        if this_val != total_val and total_finish_date:
-            final_expire_dt = total_finish_date
-        
-        if not final_expire_dt and total_val > 0:
-            base_date = start_date if start_date else cntrct_date
-            if base_date:
-                final_expire_dt = base_date + relativedelta(days=total_val)
+# 탭별 날짜 컬럼 매핑
+DATE_COL_MAP = {
+    '군수품_발주': '발주예정월', '군수품_수의': '개찰일자', '군수품_계약': '계약일자',
+    '군수품_공고': '공고일자', '나라장터_계약': '★가공_계약일', '종합쇼핑몰': '계약납품요구일자'
+}
 
-        if not final_expire_dt:
-            date_in_period = re.sub(r'[^0-9]', '', period_raw)
-            if len(date_in_period) >= 8:
-                final_expire_dt = parse_date(date_in_period[:8])
-        
-        if not final_expire_dt and total_finish_date:
-            final_expire_dt = total_finish_date
+# 표출 컬럼 인덱스 (제공해주신 displayIndexMap 기준)
+DISPLAY_COLS = {
+    '군수품_계약': [7, 5, 3, 1, 12],
+    '군수품_수의': [12, 10, 8, 3],
+    '군수품_발주': [7, 8, 12, 2, 3], 
+    '군수품_공고': [0, 17, 15, 22],
+    '나라장터_발주': [9, 13, 20],
+    '나라장터_계약': [0, 3, 4, 5, 6],
+    '종합쇼핑몰': ["수요기관명", "계약납품요구일자", "세부품명", "계약명", "업체명", "수량", "금액"]
+}
 
-        if not final_expire_dt:
-            return "정보부족", "정보부족"
+# --- 4. 데이터 로드 함수 ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_data(file_id, is_sheet=True):
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+    if is_sheet:
+        url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv"
+        headers = {'Authorization': f'Bearer {credentials.token}'}
+        res = requests.get(url, headers=headers)
+        return pd.read_csv(io.BytesIO(res.content), low_memory=False)
+    else: # 종합쇼핑몰 폴더 내 CSV 스캔
+        results = drive_service.files().list(q=f"'{file_id}' in parents and trashed = false").execute()
+        files = results.get('files', [])
+        dfs = []
+        for f in files:
+            url = f"https://www.googleapis.com/drive/v3/files/{f['id']}?alt=media"
+            headers = {'Authorization': f'Bearer {credentials.token}'}
+            res = requests.get(url, headers=headers)
+            dfs.append(pd.read_csv(io.BytesIO(res.content), low_memory=False))
+        return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-        today = datetime.now()
-        expire_str = final_expire_dt.strftime('%Y-%m-%d')
-        if final_expire_dt < today:
-            return expire_str, "만료됨"
-        else:
-            diff = relativedelta(final_expire_dt, today)
-            months = diff.years * 12 + diff.months
-            remain_str = f"{months}개월 {diff.days}일"
-            return expire_str, remain_str
-    except:
-        return "계산불가", "오류"
+# --- 5. 상단 타이틀 및 링크 ---
+h1, h2 = st.columns([3, 1])
+with h1:
+    st.title("🏛 공공조달 DATA 통합검색 시스템")
+with h2:
+    st.write("")
+    st.link_button("🌐 지자체 유지보수 바로가기", "https://g2b-info.streamlit.app/", use_container_width=True)
 
-st.set_page_config(layout="wide")
-st.title("🏛️ 전국 지자체별 유지보수 계약 현황")
+# --- 6. 탭 구성 및 각 탭별 로직 ---
+tabs = st.tabs(list(SHEET_FILE_IDS.keys()))
 
-try:
-    df = get_data_from_gsheet()
-    if not df.empty:
-        # 1. 기관명 필터링
-        def filter_agency(agency_name):
-            agency_name = str(agency_name).strip()
-            return any(agency_name.startswith(dist) for dist in FULL_DISTRICT_LIST)
+for i, tab in enumerate(tabs):
+    cat = list(SHEET_FILE_IDS.keys())[i]
+    with tab:
+        # 각 탭별 독립 검색 패널
+        st.markdown(f"#### 🔍 {cat} 검색 조건")
+        with st.container():
+            st.markdown('<div class="search-panel">', unsafe_allow_html=True)
+            c1, c2, c3 = st.columns([2.5, 4, 1.5])
+            with c1:
+                date_range = st.date_input("조회 기간", [datetime(2025, 1, 1), datetime.now()], key=f"d_{cat}")
+            with c2:
+                field = st.selectbox("검색 필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"], key=f"f_{cat}")
+                k1 = st.text_input("검색어 입력", key=f"k_{cat}", placeholder="검색어를 입력하세요")
+            with c3:
+                p_size = st.selectbox("표시 개수", [50, 100, 150, 200], key=f"p_{cat}")
+                s_btn = st.button("🚀 검색 실행", key=f"b_{cat}", type="primary", use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        df = df[df['★가공_수요기관'].apply(filter_agency)]
-        df = df[~df['★가공_수요기관'].str.contains("교육청", na=False)]
-        
-        # [수정] 2. 계약명 필터링 (필수: 유지 / OR: 통합관제, 통합, CCTV / 제외: 상수도)
-        df = df[df['★가공_계약명'].str.contains("유지", na=False)]
-        df = df[df['★가공_계약명'].str.contains("통합관제|통합|CCTV", na=False)]
-        df = df[~df['★가공_계약명'].str.contains("상수도", na=False)]
-        df = df[~df['★가공_계약명'].str.contains("청사", na=False)]
-        
+        if s_btn:
+            with st.spinner(f"{cat} 데이터 분석 중..."):
+                df = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
+                
+                if not df.empty:
+                    # 1. 날짜 필터링 로직
+                    s_str = date_range[0].strftime('%Y%m%d')
+                    e_str = date_range[1].strftime('%Y%m%d') if len(date_range) > 1 else s_str
+                    
+                    if cat == '나라장터_발주':
+                        # E열(년도: index 4) + M열(월: index 12) 결합
+                        y_col, m_col = df.columns[4], df.columns[12]
+                        df['tmp_date'] = df[y_col].astype(str) + df[m_col].astype(str).str.zfill(2) + "01"
+                    else:
+                        d_col = DATE_COL_MAP.get(cat)
+                        if d_col in df.columns:
+                            df['tmp_date'] = df[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+                        else:
+                            df['tmp_date'] = "00000000"
 
-        # 3. 날짜 계산 및 데이터 정렬
-        df[['★가공_계약만료일', '남은기간']] = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
-        df['temp_date'] = pd.to_datetime(df['계약일자'], errors='coerce')
+                    # 기간 비교 (월 단위 검색 허용 위해 s_str의 1일자부터 비교)
+                    df = df[(df['tmp_date'] >= s_str[:6] + "01") & (df['tmp_date'] <= e_str)]
 
-        def clean_contract_name(name):
-            name = str(name).replace(" ", "")
-            name = re.sub(r'\d+차분?', '', name)
-            return re.sub(r'\d+', '', name)
+                    # 2. 키워드 필터링 (해당 카테고리만 적용)
+                    if k1:
+                        if field == "ALL":
+                            df = df[df.astype(str).apply(lambda x: x.str.contains(k1, case=False, na=False)).any(axis=1)]
+                        elif field in df.columns:
+                            df = df[field].astype(str).str.contains(k1, case=False, na=False)
 
-        df['contract_group_key'] = df['★가공_계약명'].apply(clean_contract_name)
-        df = df.sort_values(by=['★가공_수요기관', 'contract_group_key', '★가공_업체명', 'temp_date'], ascending=[True, True, True, False])
+                    if not df.empty:
+                        # 3. 로우데이터 다운로드 버튼
+                        col_dl, _ = st.columns([1, 4])
+                        csv_data = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                        col_dl.download_button("📊 전체 로우데이터(CSV) 다운로드", csv_data, f"{cat}_raw_data.csv", "text/csv")
+                        
+                        # 4. 표출 컬럼 가공
+                        s_cols = DISPLAY_COLS.get(cat)
+                        f_cols = [df.columns[c] if isinstance(c, int) else c for c in s_cols if (isinstance(c, int) and c < len(df.columns)) or (isinstance(c, str) and c in df.columns)]
+                        
+                        st.success(f"총 {len(df):,}건의 데이터를 찾았습니다.")
+                        # 5. 반응형 페이징 데이터프레임
+                        st.dataframe(df[f_cols].head(p_size), use_container_width=True, height=600)
+                    else:
+                        st.warning("해당 조건의 검색 결과가 없습니다.")
+                else:
+                    st.error("데이터 소스 연결에 실패했습니다.")
 
-        # 4. 데이터 분리 및 보완
-        active_df = df[df['남은기간'] != "만료됨"].drop_duplicates(['★가공_수요기관', 'contract_group_key', '★가공_업체명'], keep='first')
-        expired_all_df = df[df['남은기간'] == "만료됨"].copy()
-
-        agencies_with_active = active_df['★가공_수요기관'].unique()
-        all_target_agencies = df['★가공_수요기관'].unique()
-        agencies_needing_fallback = [ag for ag in all_target_agencies if ag not in agencies_with_active]
-
-        fallback_df = expired_all_df[expired_all_df['★가공_수요기관'].isin(agencies_needing_fallback)].copy()
-        fallback_df = fallback_df.drop_duplicates(['★가공_수요기관'], keep='first')
-        
-        def format_expired_label(date_str):
-            try: return f"{date_str[:4]}년 계약만료"
-            except: return "계약만료"
-        fallback_df['남은기간'] = fallback_df['★가공_계약만료일'].apply(format_expired_label)
-
-        # 5. 최종 데이터 병합
-        final_processed_df = pd.concat([active_df, fallback_df], ignore_index=True)
-
-        def get_metro_name(agency):
-            agency_str = str(agency)
-            for metro in METRO_LIST[1:]:
-                if agency_str.startswith(metro): return metro
-            return "기타"
-        
-        final_processed_df['광역단위'] = final_processed_df['★가공_수요기관'].apply(get_metro_name)
-        final_processed_df['★가공_계약금액'] = pd.to_numeric(final_processed_df['★가공_계약금액'], errors='coerce').fillna(0).astype(int)
-
-        # 6. UI 출력
-        st.subheader("📍 지역별 필터 선택")
-        selected_region = st.radio("광역시도를 선택하세요:", METRO_LIST, horizontal=True)
-        display_df = final_processed_df.copy() if selected_region == "전국" else final_processed_df[final_processed_df['광역단위'] == selected_region].copy()
-
-        st.divider()
-        
-        cols_to_show = ['★가공_수요기관', '★가공_계약명', '★가공_업체명', '★가공_계약금액', '계약일자', '착수일자', '★가공_계약만료일', '남은기간', '계약상세정보URL']
-        final_out = display_df[cols_to_show].copy()
-        final_out.columns = [c.replace('★가공_', '') for c in final_out.columns]
-        final_out.columns = [c.replace('계약상세정보URL', 'URL') for c in final_out.columns]
-
-        st.write(f"### 📊 {selected_region} 분석 현황 (총 {len(final_out)}건)")
-        
-        csv = final_out.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button(
-            label=f"📥 {selected_region} 데이터 다운로드(CSV)",
-            data=csv,
-            file_name=f"현황_{selected_region}_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-
-        st.dataframe(
-            final_out,
-            column_config={
-                "URL": st.column_config.LinkColumn("상세정보"),
-                "계약금액": st.column_config.NumberColumn("계약금액(원)", format="localized"),
-            },
-            use_container_width=True, hide_index=True, height=800
-        )
-
-    else:
-        st.warning("데이터가 없습니다.")
-except Exception as e:
-    st.error(f"오류 발생: {e}")
+st.caption("🏛 공공조달 DATA 통합검색 | Ver. 2026.01.")
