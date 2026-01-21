@@ -234,12 +234,12 @@ for i, tab in enumerate(tabs):
                         st.session_state[f"ver_{cat}"] += 1
                         st.rerun()
 
-                    if q_cols[0].button("1개월", key=f"m1_{cat}"): set_period(m=1)
-                    if q_cols[1].button("3개월", key=f"m3_{cat}"): set_period(m=3)
-                    if q_cols[2].button("6개월", key=f"m6_{cat}"): set_period(m=6)
-                    if q_cols[3].button("9개월", key=f"m9_{cat}"): set_period(m=9)
-                    if q_cols[4].button("1년", key=f"y1_{cat}"): set_period(y=1)
-                    if q_cols[5].button("2년", key=f"y2_{cat}"): set_period(y=2)
+                    if q_cols[0].button(" 1개월 ", key=f"m1_{cat}"): set_period(m=1)
+                    if q_cols[1].button(" 3개월 ", key=f"m3_{cat}"): set_period(m=3)
+                    if q_cols[2].button(" 6개월 ", key=f"m6_{cat}"): set_period(m=6)
+                    if q_cols[3].button(" 9개월 ", key=f"m9_{cat}"): set_period(m=9)
+                    if q_cols[4].button("  1년  ", key=f"y1_{cat}"): set_period(y=1)
+                    if q_cols[5].button("  2년  ", key=f"y2_{cat}"): set_period(y=2)
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with d4:
