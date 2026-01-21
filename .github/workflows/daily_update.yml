@@ -17,10 +17,10 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install dependencies # 💡 [루이튼 수정] 이 부분을 이렇게 바꿔줘!
+      - name: Install dependencies # 💡 [루이튼 최종 수정] 이 부분을 이렇게 변경했습니다!
         run: |
-          python -m pip install --upgrade pip # pip 최신 버전으로 업데이트하는 건 좋은 습관!
-          pip install -r requirements.txt     # requirements.txt에 있는 모든 라이브러리를 설치!
+          python -m pip install --upgrade pip # pip를 최신 버전으로 업데이트하는 좋은 습관
+          pip install -r requirements.txt     # requirements.txt에 명시된 모든 의존성을 설치
 
       - name: Run script
         id: run_script
