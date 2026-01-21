@@ -9,13 +9,16 @@ import re
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
 
-# [변경] 저장 위치 설정 - 파일명만 정확하면 됩니다.
+# [고정 저장 설정] 
+# 파일을 이름이 아닌 '고유 ID'로 직접 열어 에러 가능성을 차단합니다.
+# 2026.csv 파일의 URL 주소창에서 'spreadsheets/d/...' 뒤에 오는 문자열이 ID입니다.
 TARGET_FILE_NAME = '2026.csv'
+TARGET_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr'
 
 # 국문 헤더 (43개 항목 전체 유지)
 HEADER_KOR = ['조달구분명', '계약구분명', '계약납품구분명', '계약납품요구일자', '계약납품요구번호', '변경차수', '최종변경차수여부', '수요기관명', '수요기관구분명', '수요기관지역명', '수요기관코드', '물품분류번호', '품명', '세부물품분류번호', '세부품명', '물품식별번호', '물품규격명', '단가', '수량', '단위', '금액', '업체명', '업체기업구분명', '계약명', '우수제품여부', '공사용자재직접구매대상여부', '다수공급자계약여부', '다수공급자계약2단계진행여부', '단가계약번호', '단가계약변경차수', '최초계약(납품요구)일자', '계약체결방법명', '증감수량', '증감금액', '납품장소명', '납품기한일자', '업체사업자등록번호', '인도조건명', '물품순번']
 
-# 요청하신 모든 키워드 풀 리스트 (그대로 유지)
+# 요청하신 모든 키워드 풀 리스트 (기존 내용 그대로 유지)
 keywords = [
     '네트워크시스템장비용랙','영상감시장치','PA용스피커','안내판','카메라브래킷','액정모니터','광송수신모듈','전원공급장치','광분배함','컨버터','컴퓨터서버','하드디스크드라이브','네트워크스위치','광점퍼코드','풀박스','서지흡수기','디지털비디오레코더',
     '스피커','오디오앰프','브래킷','UTP케이블','정보통신공사','영상정보디스플레이장치','송신기','난연전력케이블','1종금속제가요전선관','호온스피커','누전차단기','방송수신기','LAP외피광케이블','폴리에틸렌전선관','리모트앰프',
@@ -84,13 +87,17 @@ def fetch_and_generate_servc_html(target_dt):
 def main():
     if not MY_DIRECT_KEY or not AUTH_JSON_STR:
         print("❌ 환경변수 누락"); return
+    
     target_dt = get_target_date()
     d_str = target_dt.strftime("%Y%m%d")
+    
+    # 구글 인증
     creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(AUTH_JSON_STR), ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
 
-    # [핵심 수정] 새 파일을 만들지 않고 무조건 열기만 함
+    # [저장 로직 핵심 변경] 새 파일을 절대 생성하지 않고 기존 파일만 열기
     try:
+        # 1N2G... 폴더 내 2026.csv 파일을 이름으로 엽니다.
         sh = client.open(TARGET_FILE_NAME)
         ws = sh.get_worksheet(0)
     except Exception as e:
@@ -104,24 +111,28 @@ def main():
         time.sleep(0.5)
     
     if final_data:
+        # 데이터 추가
         ws.append_rows(final_data)
         print(f"✅ {d_str} 데이터 {len(final_data)}건 저장 완료")
-        
-        # [기존 분석 로직 그대로 유지]
+
+        # [기존 분석 및 요약 로직 그대로 유지]
         unique_final_data = {}
         for row in final_data:
             try:
                 key = (str(row[7]), str(row[21]), str(row[20]), str(row[14]))
                 if key not in unique_final_data: unique_final_data[key] = row
             except IndexError: continue
+        
         deduplicated_data = list(unique_final_data.values())
         school_stats = {}; innodep_today_dict = {}; innodep_total_amt = 0
+
         for row in deduplicated_data:
             try:
                 org_name = str(row[7]); item_name = str(row[14]); amt_val = str(row[20]); comp_name = str(row[21]); contract_name = str(row[23])
                 amt_raw = amt_val.replace(',', '').split('.')[0]
                 amt = int(amt_raw) if amt_raw else 0
             except: continue
+
             if '학교' in org_name and '지능형' in contract_name and 'CCTV' in contract_name:
                 if org_name not in school_stats: school_stats[org_name] = {'total_amt': 0, 'main_vendor': '', 'vendor_priority': 3}
                 school_stats[org_name]['total_amt'] += amt
@@ -129,20 +140,25 @@ def main():
                 if priority < school_stats[org_name]['vendor_priority']:
                     school_stats[org_name]['main_vendor'] = comp_name
                     school_stats[org_name]['vendor_priority'] = priority
+
             if '이노뎁' in comp_name:
                 if org_name in innodep_today_dict: innodep_today_dict[org_name] += amt
                 else: innodep_today_dict[org_name] = amt
                 innodep_total_amt += amt
+
         summary_lines = [f"⭐ {d_str} 학교 지능형 CCTV 납품 현황:"]
         if school_stats:
             for school, info in school_stats.items(): summary_lines.append(f"- {school} [{info['main_vendor']}]: {info['total_amt']:,}원")
         else: summary_lines.append(" 0건")
+        
         summary_lines.append(" "); summary_lines.append(f"🏢 {d_str} 이노뎁 실적:")
         if innodep_today_dict:
             for org, amt in innodep_today_dict.items(): summary_lines.append(f"- {org}: {amt:,}원")
             summary_lines.append(f"** 총합계: {innodep_total_amt:,}원")
         else: summary_lines.append(" 0건")
+
         servc_html = fetch_and_generate_servc_html(target_dt)
+
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                 f.write(f"collect_date={d_str}\n")
@@ -153,7 +169,8 @@ def main():
                 f.write("servc_info<<EOF\n")
                 f.write(f"{servc_html}\n")
                 f.write("EOF\n")
-    else: print(f"ℹ️ {d_str} 수집된 데이터가 없습니다.")
+    else:
+        print(f"ℹ️ {d_str} 수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
     main()
