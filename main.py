@@ -9,8 +9,7 @@ import re
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
 
-# [변경] 고정 저장 위치 설정
-TARGET_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr'
+# [변경] 저장 위치 설정 - 파일명만 정확하면 됩니다.
 TARGET_FILE_NAME = '2026.csv'
 
 # 국문 헤더 (43개 항목 전체 유지)
@@ -29,33 +28,12 @@ keywords = [
 ]
 
 def get_target_date():
-    """한국 시간 기준, 공휴일 제외 최근 평일 계산"""
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
     target = now - datetime.timedelta(days=1)
     holidays = pytimekr.holidays(year=target.year)
     while target.weekday() >= 5 or target.date() in holidays:
         target -= datetime.timedelta(days=1)
     return target
-
-def get_quarter(month):
-    return (month - 1) // 3 + 1
-
-# [수정] 고정된 파일 및 폴더를 사용하는 함수로 변경
-def get_target_worksheet(client):
-    """지정된 폴더 내의 2026.csv 파일을 열기만 함 (생성 로직 제거)"""
-    try:
-        # TARGET_FILE_NAME('2026.csv')으로 파일을 엽니다.
-        sh = client.open(TARGET_FILE_NAME)
-        ws = sh.get_worksheet(0)
-        
-        # 만약 시트가 완전히 비어있다면 헤더 추가
-        if not ws.get_all_values():
-            ws.append_row(HEADER_KOR)
-        return ws
-    except gspread.exceptions.SpreadsheetNotFound:
-        print(f"❌ 에러: '{TARGET_FILE_NAME}' 파일을 찾을 수 없습니다.")
-        print("서비스 계정 이메일이 해당 시트에 '편집자'로 공유되어 있는지 확인해주세요.")
-        raise  # 에러를 발생시켜 중단 (용량 부족을 일으키는 create 방지)
 
 def fetch_data(kw, d_str):
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
@@ -69,15 +47,12 @@ def fetch_data(kw, d_str):
     return []
 
 def fetch_and_generate_servc_html(target_dt):
-    """용역 계약 내역 수집 및 HTML 생성"""
     api_key = os.environ.get('DATA_GO_KR_API_KEY')
     api_url = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     target_date_str = target_dt.strftime("%Y%m%d")
     display_date_str = target_dt.strftime("%Y-%m-%d")
-    
     keywords_servc = ['통합관제', 'CCTV', '영상감시장치','국방','경계','작전','부대','육군','공군','해군','무인']
     collected_data = []
-
     for kw in keywords_servc:
         params = {'serviceKey': api_key, 'pageNo': '1', 'numOfRows': '999', 'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': target_date_str, 'inqryEndDate': target_date_str, 'cntrctNm': kw}
         try:
@@ -92,21 +67,13 @@ def fetch_and_generate_servc_html(target_dt):
                     clean_demand = demand_parts[2] if len(demand_parts) > 2 else raw_demand
                     corp_parts = raw_corp.replace('[', '').replace(']', '').split('^')
                     clean_corp = corp_parts[3] if len(corp_parts) > 3 else raw_corp
-
-                    collected_data.append({
-                        'demand': clean_demand, 'name': item.findtext('cntrctNm', '-'), 'corp': clean_corp,
-                        'amount': int(item.findtext('totCntrctAmt', '0')), 'date': target_dt.strftime("%Y-%m-%d"),
-                        'end_date': item.findtext('ttalScmpltDate', '-')
-                    })
+                    collected_data.append({'demand': clean_demand, 'name': item.findtext('cntrctNm', '-'), 'corp': clean_corp, 'amount': int(item.findtext('totCntrctAmt', '0')), 'date': target_dt.strftime("%Y-%m-%d"), 'end_date': item.findtext('ttalScmpltDate', '-')})
         except: pass
-
     unique_servc = {f"{d['demand']}_{d['name']}": d for d in collected_data}.values()
-    
     html = f"<div style='margin-top: 20px;'><h4 style='color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 5px;'>🏛️ 나라장터 용역 계약 내역 ({display_date_str})</h4>"
     if not unique_servc:
         html += f"<p style='color: #666;'>- {display_date_str}에 해당 키워드 내역이 없습니다.</p></div>"
         return html
-
     html += "<table border='1' style='border-collapse: collapse; width: 100%; font-size: 11px;'> <tr style='background-color: #f8f9fa;'><th>수요기관</th><th>계약명</th><th>업체명</th><th>금액</th></tr>"
     for row in unique_servc:
         bg = "background-color: #FFF9C4;" if "이노뎁" in row['corp'] else ""
@@ -117,15 +84,19 @@ def fetch_and_generate_servc_html(target_dt):
 def main():
     if not MY_DIRECT_KEY or not AUTH_JSON_STR:
         print("❌ 환경변수 누락"); return
-
     target_dt = get_target_date()
     d_str = target_dt.strftime("%Y%m%d")
-    
-    # 1. 시트 연결 (변경된 저장 로직 적용)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(AUTH_JSON_STR), ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
-    ws = get_target_worksheet(client)
-    
+
+    # [핵심 수정] 새 파일을 만들지 않고 무조건 열기만 함
+    try:
+        sh = client.open(TARGET_FILE_NAME)
+        ws = sh.get_worksheet(0)
+    except Exception as e:
+        print(f"❌ 파일을 열 수 없습니다: {e}")
+        return
+
     final_data = []
     for kw in keywords:
         data = fetch_data(kw, d_str)
@@ -133,66 +104,45 @@ def main():
         time.sleep(0.5)
     
     if final_data:
-        # 구글 시트 저장
         ws.append_rows(final_data)
-        print(f"✅ {d_str} 데이터 {len(final_data)}건 {TARGET_FILE_NAME}에 저장 완료")
-
-        # [기존 분석 로직 유지]
+        print(f"✅ {d_str} 데이터 {len(final_data)}건 저장 완료")
+        
+        # [기존 분석 로직 그대로 유지]
         unique_final_data = {}
         for row in final_data:
             try:
                 key = (str(row[7]), str(row[21]), str(row[20]), str(row[14]))
-                if key not in unique_final_data:
-                    unique_final_data[key] = row
+                if key not in unique_final_data: unique_final_data[key] = row
             except IndexError: continue
-        
         deduplicated_data = list(unique_final_data.values())
-
-        school_stats = {} 
-        innodep_today_dict = {} 
-        innodep_total_amt = 0
-
+        school_stats = {}; innodep_today_dict = {}; innodep_total_amt = 0
         for row in deduplicated_data:
             try:
-                org_name = str(row[7])
-                item_name = str(row[14])
-                amt_val = str(row[20])
-                comp_name = str(row[21])
-                contract_name = str(row[23])
+                org_name = str(row[7]); item_name = str(row[14]); amt_val = str(row[20]); comp_name = str(row[21]); contract_name = str(row[23])
                 amt_raw = amt_val.replace(',', '').split('.')[0]
                 amt = int(amt_raw) if amt_raw else 0
             except: continue
-
             if '학교' in org_name and '지능형' in contract_name and 'CCTV' in contract_name:
-                if org_name not in school_stats:
-                    school_stats[org_name] = {'total_amt': 0, 'main_vendor': '', 'vendor_priority': 3}
+                if org_name not in school_stats: school_stats[org_name] = {'total_amt': 0, 'main_vendor': '', 'vendor_priority': 3}
                 school_stats[org_name]['total_amt'] += amt
                 priority = 1 if '영상감시장치' in item_name else 2 if '보안용카메라' in item_name else 3
                 if priority < school_stats[org_name]['vendor_priority']:
                     school_stats[org_name]['main_vendor'] = comp_name
                     school_stats[org_name]['vendor_priority'] = priority
-
             if '이노뎁' in comp_name:
                 if org_name in innodep_today_dict: innodep_today_dict[org_name] += amt
                 else: innodep_today_dict[org_name] = amt
                 innodep_total_amt += amt
-
         summary_lines = [f"⭐ {d_str} 학교 지능형 CCTV 납품 현황:"]
         if school_stats:
-            for school, info in school_stats.items():
-                summary_lines.append(f"- {school} [{info['main_vendor']}]: {info['total_amt']:,}원")
+            for school, info in school_stats.items(): summary_lines.append(f"- {school} [{info['main_vendor']}]: {info['total_amt']:,}원")
         else: summary_lines.append(" 0건")
-        
-        summary_lines.append(" ") 
-        summary_lines.append(f"🏢 {d_str} 이노뎁 실적:")
+        summary_lines.append(" "); summary_lines.append(f"🏢 {d_str} 이노뎁 실적:")
         if innodep_today_dict:
-            for org, amt in innodep_today_dict.items():
-                summary_lines.append(f"- {org}: {amt:,}원")
+            for org, amt in innodep_today_dict.items(): summary_lines.append(f"- {org}: {amt:,}원")
             summary_lines.append(f"** 총합계: {innodep_total_amt:,}원")
         else: summary_lines.append(" 0건")
-
         servc_html = fetch_and_generate_servc_html(target_dt)
-
         if "GITHUB_OUTPUT" in os.environ:
             with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
                 f.write(f"collect_date={d_str}\n")
@@ -203,8 +153,7 @@ def main():
                 f.write("servc_info<<EOF\n")
                 f.write(f"{servc_html}\n")
                 f.write("EOF\n")
-    else:
-        print(f"ℹ️ {d_str} 수집된 데이터가 없습니다.")
+    else: print(f"ℹ️ {d_str} 수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
     main()
