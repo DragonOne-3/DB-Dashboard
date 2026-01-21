@@ -10,30 +10,31 @@ from googleapiclient.discovery import build
 from dateutil.relativedelta import relativedelta
 
 # --- [1] 페이지 설정 및 디자인 (불필요한 박스 제거) ---
+# 제목 짤림 방지 및 깨끗한 레이아웃을 위해 CSS를 설정합니다.
 st.set_page_config(page_title="공공조달 DATA 통합검색 시스템", layout="wide")
 
 st.markdown("""
     <style>
-    /* 제목 짤림 방지 및 배경 설정 */
+    /* 상단 여백 설정 */
     .block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
     .main { background-color: #f4f4f4; font-size: 13px !important; }
     .title-text { font-size: 24px !important; font-weight: bold; color: #333; margin: 0; padding: 0; }
     
-    /* [수정] 검색조건 위 네모칸 제거를 위해 상단 테두리 및 그림자 제거 */
-    .search-container { background-color: white; border: 1px solid #ccc; padding: 10px; margin-bottom: 0px; }
+    /* 검색조건 박스: 위쪽 불필요한 네모(그림자/외부마진)를 제거합니다. */
+    .search-container { background-color: white; border: 1px solid #ccc; padding: 10px; margin-top: 0px; }
     .search-label { background-color: #f9f9f9; width: 120px; padding: 8px; font-weight: bold; border-right: 1px solid #eee; text-align: center; }
     
-    /* 탭 메뉴 스타일 */
+    /* 탭 스타일 */
     .stTabs [aria-selected="true"] { background-color: #00b050 !important; color: white !important; }
     
-    /* 퀵버튼 간격 및 수평 정렬 */
+    /* 퀵버튼 밀착 정렬 (간격 축소) */
     div[data-testid="column"] { padding-left: 0.5px !important; padding-right: 0.5px !important; }
     .stButton > button { height: 35px !important; font-size: 12px !important; border-radius: 2px !important; margin-top: 0px !important; }
     
-    /* [수정] 결과 위 회색 배경(정렬바) 디자인 깔끔하게 변경 (색칠된 네모 제거) */
-    .data-info-bar { background-color: transparent; padding: 10px 0px; border-top: 1px solid #ddd; margin-top: 10px; }
+    /* 결과 정보바: 색칠된 네모를 없애고 투명하게 배경 설정 */
+    .data-info-bar { background-color: transparent; padding: 5px 0px; border-top: 1px solid #ddd; margin-top: 10px; }
     
-    /* 페이지네이션 버튼 */
+    /* 페이지네이션 버튼 크게 설정 */
     .page-ctrl-row button { height: 45px !important; min-width: 45px !important; font-size: 15px !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -41,12 +42,14 @@ st.markdown("""
 # --- [2] 구글 데이터 연결 함수 ---
 @st.cache_resource
 def get_drive_service():
+    """구글 인증을 통해 드라이브 API 서비스를 반환합니다."""
     auth_json_str = st.secrets["GOOGLE_AUTH_JSON"]
     info = json.loads(auth_json_str)
     creds = service_account.Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/spreadsheets.readonly'])
     return build('drive', 'v3', credentials=creds), creds
 
 def fetch_data(file_id, is_sheet=True):
+    """지정된 ID의 구글 시트 혹은 드라이브 폴더 데이터를 Pandas로 로드합니다."""
     drive_service, credentials = get_drive_service()
     auth_req = google.auth.transport.requests.Request()
     credentials.refresh(auth_req)
@@ -59,7 +62,7 @@ def fetch_data(file_id, is_sheet=True):
         dfs = [pd.read_csv(io.BytesIO(requests.get(f"https://www.googleapis.com/drive/v3/files/{f['id']}?alt=media", headers=headers).content), low_memory=False) for f in results.get('files', [])]
         return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-# --- [3] 매핑 데이터 설정 ---
+# --- [3] 데이터 소스 매핑 설정 ---
 SHEET_FILE_IDS = {'나라장터_발주': '1pGnb6O5Z1ahaHYuQdydyoY1Ayf147IoGmLRdA3WAHi4', '나라장터_계약': '15Hsr_nup4ZteIZ4Jyov8wG2s_rKoZ25muqRE3-sRnaw', '군수품_발주': '1pzW51Z29SSoQk7al_GvN_tj5smuhOR3J2HWnL_16fcI', '군수품_계약': '1KPMUz0IKM6AQvqwfAkvW96WNvzbycN56vNlFnDmfRTw', '군수품_공고': '1opuA_UzNm27U9QkbMay5UsyQqcwfxiEmIHNRdc4MyHM', '군수품_수의': '1aYA18kPrSkpbayzbn16EdKUScVRwr2Nutyid5No5qjk', '종합쇼핑몰': '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr'}
 DISPLAY_INDEX_MAP = {'군수품_계약': [7, 5, 3, 1, 12], '군수품_수의': [12, 10, 8, 3], '군수품_발주': [7, 8, 12, 2, 3], '군수품_공고': [0, 17, 15, 22], '나라장터_발주': [9, 13, 20], '나라장터_계약': [0, 3, 4, 5, 6], '종합쇼핑몰': ["수요기관명", "계약납품요구일자", "세부품명", "계약명", "업체명", "수량", "금액"]}
 DATE_COL_MAP = {'군수품_발주': '발주예정월', '군수품_수의': '개찰일자', '군수품_계약': '계약일자', '군수품_공고': '공고일자', '나라장터_계약': '★가공_계약일', '종합쇼핑몰': '계약납품요구일자'}
@@ -75,13 +78,13 @@ st.markdown("<hr style='margin: 10px 0px; border-top: 2px solid #333;'>", unsafe
 # --- [5] 결과 테이블 조각 (Fragment) ---
 @st.fragment
 def show_result_table(cat, df, idx_list):
-    """결과 정보바, 다운로드 버튼, 테이블 출력을 담당합니다."""
+    """결과 정보와 테이블을 렌더링합니다."""
     df = st.session_state[f"df_{cat}"]
     if df is None: return
 
-    # [수정] 결과 수 - 정렬 도구 - 표시개수 - 다운로드 버튼들을 한 줄로 배치
+    # [수정] 다운로드 버튼을 개수 드롭박스 오른쪽 끝으로 이동
     st.markdown('<div class="data-info-bar">', unsafe_allow_html=True)
-    res_col, sort_col1, sort_col2, sort_col3, limit_col, dl_col = st.columns([1.2, 1.8, 1.8, 0.7, 1.2, 2.2])
+    res_col, sort_col1, sort_col2, sort_col3, limit_col, dl_col = st.columns([1.2, 1.8, 1.8, 0.7, 1.2, 2.3])
     
     res_col.markdown(f"**✅ 결과: {len(df):,}건**")
     
@@ -89,30 +92,28 @@ def show_result_table(cat, df, idx_list):
     sort_target = sort_col1.selectbox("정렬기준", ["날짜순"] + show_cols, key=f"st_{cat}", label_visibility="collapsed")
     sort_dir = sort_col2.selectbox("순서", ["내림차순", "오름차순"], key=f"sd_{cat}", label_visibility="collapsed")
     
-    if sort_col3.button("정렬 적용", key=f"sb_{cat}", use_container_width=True):
+    if sort_col3.button("정렬", key=f"sb_{cat}", use_container_width=True):
         ascending = (sort_dir == "오름차순")
         st.session_state[f"df_{cat}"] = df.sort_values(by=('tmp_dt' if sort_target == "날짜순" else sort_target), ascending=ascending)
         st.rerun()
 
     p_limit = limit_col.selectbox("개수", [50, 100, 150, 200], key=f"ps_{cat}", label_visibility="collapsed")
 
-    # [수정] 표시개수 드롭박스 오른쪽에 다운로드 버튼 밀착 배치
+    # 드롭박스 오른쪽에 CSV/Excel 다운로드 배치
     with dl_col:
         d_csv, d_xl = st.columns(2)
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        excel_data = output.getvalue()
         d_csv.download_button("📑 CSV", df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig'), f"{cat}.csv", "text/csv")
-        d_xl.download_button("📊 Excel", excel_data, f"{cat}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        d_xl.download_button("📊 Excel", output.getvalue(), f"{cat}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 테이블 표시
+    # 테이블 및 페이지네이션
     total_pages = max((len(df) - 1) // p_limit + 1, 1)
     curr_p = st.session_state.get(f"p_num_{cat}", 1)
     st.dataframe(df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], use_container_width=True, height=520)
 
-    # 페이지네이션
     pg_cols = st.columns([1, 8, 1])
     with pg_cols[1]:
         st.markdown('<div class="page-ctrl-row">', unsafe_allow_html=True)
@@ -127,13 +128,13 @@ def show_result_table(cat, df, idx_list):
         if btn_cols[13].button("»", key=f"n10_{cat}"): st.session_state[f"p_num_{cat}"] = min(total_pages, curr_p + 10); st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-# --- [6] 메인 루프 ---
+# --- [6] 메인 루프 (검색 영역) ---
 tabs = st.tabs(list(SHEET_FILE_IDS.keys()))
 
 for i, tab in enumerate(tabs):
     cat = list(SHEET_FILE_IDS.keys())[i]
     with tab:
-        # [에러 해결] 날짜 초기화 시 .date()를 명시적으로 사용하여 객체 타입 일치시킴
+        # 날짜 초기화 (에러 방지를 위해 명시적으로 .date() 사용)
         today = date.today()
         if f"sd_{cat}" not in st.session_state: st.session_state[f"sd_{cat}"] = today - relativedelta(months=6)
         if f"ed_{cat}" not in st.session_state: st.session_state[f"ed_{cat}"] = today
@@ -143,7 +144,7 @@ for i, tab in enumerate(tabs):
         _, center_area, _ = st.columns([0.1, 9.8, 0.1])
         with center_area:
             st.markdown('<div class="search-container">', unsafe_allow_html=True)
-            # 행1: 검색조건
+            # 행1: 필드/검색어
             r1_l, r1_r = st.columns([1, 8.5])
             with r1_l: st.markdown('<div class="search-label">검색조건</div>', unsafe_allow_html=True)
             with r1_r:
@@ -153,25 +154,24 @@ for i, tab in enumerate(tabs):
                 l_val = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
                 k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val=="NONE"), placeholder="검색어2")
 
-            # 행2: 조회기간
+            # 행2: 날짜/퀵버튼/검색실행
             r2_l, r2_r = st.columns([1, 8.5])
             with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
             with r2_r:
                 d1, d2, d3, d4 = st.columns([1.3, 1.3, 5.8, 1.2])
-                
-                # date_input의 value는 반드시 date 또는 datetime 객체여야 함
-                sd_in = d1.date_input("시작", value=st.session_state[f"sd_{cat}"], key=f"sd_w_{cat}_{st.session_state[f'ver_{cat}']}", label_visibility="collapsed")
-                ed_in = d2.date_input("종료", value=st.session_state[f"ed_{cat}"], key=f"ed_w_{cat}_{st.session_state[f'ver_{Ver_{cat}']}", label_visibility="collapsed")
+                # Key-Switching 적용 (오타 수정됨)
+                v_num = st.session_state[f"ver_{cat}"]
+                sd_in = d1.date_input("시작", value=st.session_state[f"sd_{cat}"], key=f"sd_w_{cat}_{v_num}", label_visibility="collapsed")
+                ed_in = d2.date_input("종료", value=st.session_state[f"ed_{cat}"], key=f"ed_w_{cat}_{v_num}", label_visibility="collapsed")
                 st.session_state[f"sd_{cat}"], st.session_state[f"ed_{cat}"] = sd_in, ed_in
 
                 # 퀵버튼 영역
                 with d3:
                     q_cols = st.columns(6)
                     def set_period(m=0, y=0):
-                        # [에러 해결] 날짜 계산 결과를 date 객체로 강제 변환
-                        current_date = date.today()
-                        st.session_state[f"sd_{cat}"] = current_date - relativedelta(months=m, years=y)
-                        st.session_state[f"ed_{cat}"] = current_date
+                        cur = date.today()
+                        st.session_state[f"sd_{cat}"] = cur - relativedelta(months=m, years=y)
+                        st.session_state[f"ed_{cat}"] = cur
                         st.session_state[f"ver_{cat}"] += 1
                         st.rerun()
 
@@ -186,9 +186,9 @@ for i, tab in enumerate(tabs):
                     search_exe = st.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
-        # 데이터 필터링 실행
+        # 필터링 실행
         if search_exe:
-            with st.spinner("조회 중..."):
+            with st.spinner("데이터 분석 중..."):
                 df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
                 if not df_raw.empty:
                     s_s, e_s = sd_in.strftime('%Y%m%d'), ed_in.strftime('%Y%m%d')
