@@ -15,7 +15,7 @@ st.set_page_config(page_title="공공조달 DATA 통합검색 시스템", layout
 st.markdown("""
     <style>
     /* 상단 여백 및 배경 */
-    .block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
+    .block-container { padding-top: 4rem !important; padding-bottom: 0rem !important; }
     .main { background-color: #f4f4f4; }
     
     /* [수정] 검색조건 위 네모칸(공백 및 테두리) 제거 */
