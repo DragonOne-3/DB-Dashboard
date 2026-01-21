@@ -7,4 +7,3 @@ streamlit
 pytimekr
 st-files-connection
 gcsfs
-gdrive-fs
