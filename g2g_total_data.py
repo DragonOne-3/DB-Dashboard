@@ -147,7 +147,7 @@ for i, tab in enumerate(tabs):
             with r2_r:
                 d1, d2, d_empty, d3 = st.columns([2, 2, 4.5, 1.5])
                 # 버튼을 다 뺐으므로 기본 날짜 설정은 직접 입력받음
-                sd_in = d1.date_input("시작", value=datetime(2025, 1, 1), key=f"sd_{cat}", label_visibility="collapsed")
+                sd_in = d1.date_input("시작", value=datetime.now()-relativedelta(months=6), key=f"sd_{cat}", label_visibility="collapsed")
                 ed_in = d2.date_input("종료", value=datetime.now(), key=f"ed_{cat}", label_visibility="collapsed")
                 
                 search_exe = d3.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
