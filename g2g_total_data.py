@@ -15,7 +15,7 @@ st.set_page_config(page_title="공공조달 DATA 통합검색 시스템", layout
 st.markdown("""
     <style>
     /* 1. 제목 짤림 방지 */
-    .block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
+    .block-container { padding-top: 3rem !important; padding-bottom: 0rem !important; }
     .main { background-color: #f4f4f4; }
     .title-text { font-size: 24px !important; font-weight: bold; color: #333; margin: 0; padding: 0; }
     
@@ -34,14 +34,14 @@ st.markdown("""
     div.q-btn-container .stButton > button {
         height: 28px !important;     /* 높이 축소 */
         font-size: 11px !important;   /* 글자 크기 축소 */
-        padding: 0px 5px !important;  /* 내부 여백 최소화 */
+        padding: 0px 7px !important;  /* 내부 여백 최소화 */
         margin-top: 0px !important;
     }
 
     /* 퀵 버튼 6개가 들어있는 stHorizontalBlock 내부의 각 stColumn 타겟팅 */
     .q-btn-container > div > div > div[data-testid="stHorizontalBlock"] > div.stColumn {
         padding-left: 1px !important; /* 왼쪽 패딩을 최소화 */
-        padding-right: 1px !important; /* 오른쪽 패딩을 최소화 */
+        padding-right: 0px !important; /* 오른쪽 패딩을 최소화 */
         margin-left: 0px !important;
         margin-right: 0px !important;
     }
