@@ -187,8 +187,10 @@ for i, tab in enumerate(tabs):
     with tab:
         # [에러 해결] 날짜 값을 명시적으로 date 객체로 변환하여 세션 초기화
         today = date.today()
-        if f"sd_{cat}" not in st.session_state: st.session_state[f"sd_{cat}"] = today - relativedelta(months=6)
-        if f"ed_{cat}" not in st.session_state: st.session_state[f"ed_{cat}"] = today
+        if f"sd_{cat}" not in st.session_state or not isinstance(st.session_state[f"sd_{cat}"], date):
+            st.session_state[f"sd_{cat}"] = today - relativedelta(months=6)
+        if f"ed_{cat}" not in st.session_state or not isinstance(st.session_state[f"ed_{cat}"], date):
+            st.session_state[f"ed_{cat}"] = today
         if f"ver_{cat}" not in st.session_state: st.session_state[f"ver_{cat}"] = 0
         if f"df_{cat}" not in st.session_state: st.session_state[f"df_{cat}"] = None
 
@@ -218,10 +220,15 @@ for i, tab in enumerate(tabs):
                 # 만약 날짜가 datetime 형태면 date로 변환
                 if isinstance(s_val, datetime): s_val = s_val.date()
                 if isinstance(e_val, datetime): e_val = e_val.date()
+                # 💡 [루이튼 제안] date_input에 넘겨주기 전에 최종적으로 date 객체인지 확인 (안전장치!)
+                # 만약 date 객체가 아니라면 None으로 변경해서 에러를 방지함
+                valid_s_val = s_val if isinstance(s_val, date) else None
+                valid_e_val = e_val if isinstance(e_val, date) else None
 
-                sd_in = d1.date_input("시작", value=s_val, key=f"sd_w_{cat}_{v_num}", label_visibility="collapsed")
-                ed_in = d2.date_input("종료", value=e_val, key=f"ed_w_{cat}_{v_num}", label_visibility="collapsed")
+                sd_in = d1.date_input("시작", value=valid_s_val, key=f"sd_w_{cat}_{v_num}", label_visibility="collapsed")
+                ed_in = d2.date_input("종료", value=valid_e_val, key=f"ed_w_{cat}_{v_num}", label_visibility="collapsed")
                 st.session_state[f"sd_{cat}"], st.session_state[f"ed_{cat}"] = sd_in, ed_in
+                
 
                 # 퀵버튼 (사이즈 조정 CSS 적용됨)
                 with d3:
