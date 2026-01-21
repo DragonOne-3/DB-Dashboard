@@ -42,15 +42,20 @@ def get_quarter(month):
 
 # [수정] 고정된 파일 및 폴더를 사용하는 함수로 변경
 def get_target_worksheet(client):
+    """지정된 폴더 내의 2026.csv 파일을 열기만 함 (생성 로직 제거)"""
     try:
+        # TARGET_FILE_NAME('2026.csv')으로 파일을 엽니다.
         sh = client.open(TARGET_FILE_NAME)
+        ws = sh.get_worksheet(0)
+        
+        # 만약 시트가 완전히 비어있다면 헤더 추가
+        if not ws.get_all_values():
+            ws.append_row(HEADER_KOR)
+        return ws
     except gspread.exceptions.SpreadsheetNotFound:
-        sh = client.create(TARGET_FILE_NAME, folder_id=TARGET_FOLDER_ID)
-    
-    ws = sh.get_worksheet(0)
-    if not ws.get_all_values():
-        ws.append_row(HEADER_KOR)
-    return ws
+        print(f"❌ 에러: '{TARGET_FILE_NAME}' 파일을 찾을 수 없습니다.")
+        print("서비스 계정 이메일이 해당 시트에 '편집자'로 공유되어 있는지 확인해주세요.")
+        raise  # 에러를 발생시켜 중단 (용량 부족을 일으키는 create 방지)
 
 def fetch_data(kw, d_str):
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
