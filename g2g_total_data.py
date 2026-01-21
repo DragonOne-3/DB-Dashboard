@@ -16,7 +16,7 @@ st.set_page_config(page_title="공공조달 DATA 통합검색 시스템", layout
 st.markdown("""
     <style>
     /* 상단 여백 설정 */
-    .block-container { padding-top: 2rem !important; padding-bottom: 0rem !important; }
+    .block-container { padding-top: 4rem !important; padding-bottom: 0rem !important; }
     .main { background-color: #f4f4f4; font-size: 13px !important; }
     .title-text { font-size: 24px !important; font-weight: bold; color: #333; margin: 0; padding: 0; }
     
