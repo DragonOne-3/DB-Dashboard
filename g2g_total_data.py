@@ -38,7 +38,19 @@ st.markdown("""
         padding: 0px 5px !important;  /* 내부 여백 최소화 */
         margin-top: 0px !important;
     }
-
+    /* 💡 빠른 버튼 컨테이너 정렬 CSS 추가 */
+    .q-btn-container {
+        display: flex; /* 플렉스박스 레이아웃 적용 */
+        align-items: center; /* 내부 아이템들을 세로 중앙으로 정렬 */
+        height: 100%;       /* 부모 요소(컬럼)의 높이에 맞춤 */
+    }
+    /* 💡 date_input 위젯 자체의 높이/정렬 보정 (필요 시 주석 해제) */
+    /* st.date_input이 button과 높이가 잘 안맞으면 이거도 추가해봐! */
+    .stDateInput > div:first-child { /* date_input 내부의 첫 번째 div (실제 입력 필드) */
+        display: flex;
+        align-items: center;
+        height: 100%;
+    }
     /* 4. 결과 위 정보바 (투명하게) */
     .data-info-bar { 
         background-color: transparent !important; 
