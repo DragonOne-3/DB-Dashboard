@@ -9,7 +9,7 @@ import google.auth.transport.requests
 from googleapiclient.discovery import build
 from dateutil.relativedelta import relativedelta
 
-# --- [1] 페이지 설정 및 디자인 (버튼 크기 및 여백 조정) ---
+# --- [1] 페이지 설정 및 디자인 (버튼 간격 3px 및 레이아웃) ---
 st.set_page_config(page_title="공공조달 DATA 통합검색 시스템", layout="wide")
 
 st.markdown("""
@@ -21,24 +21,16 @@ st.markdown("""
     .search-label { background-color: #f9f9f9; width: 120px; padding: 8px; font-weight: bold; border-right: 1px solid #eee; text-align: center; }
     .stTabs [aria-selected="true"] { background-color: #00b050 !important; color: white !important; }
     
-    /* 퀵버튼 크기 키우기 */
-    .q-btn-row div[data-testid="column"] button { height: 35px !important; font-size: 13px !important; font-weight: bold; }
+    /* 퀵버튼 간격 3px로 정밀 조정 */
+    [data-testid="column"] { padding-left: 1.5px !important; padding-right: 1.5px !important; }
+    .q-btn-container button { height: 32px !important; font-size: 12px !important; white-space: nowrap !important; }
     
-    /* 페이지네이션 버튼 크게 & 간격 좁게 */
-    .page-ctrl-row button { 
-        height: 45px !important; 
-        min-width: 45px !important; 
-        font-size: 15px !important; 
-        font-weight: bold !important;
-        margin: 0 -5px !important; /* 버튼 사이 여백 줄임 */
-    }
-    
-    /* 검색실행 버튼 왼쪽 여백(Margin) 추가 */
-    .search-exe-btn { margin-left: 20px !important; }
+    /* 페이지네이션 버튼 크게 */
+    .page-ctrl-row button { height: 45px !important; min-width: 45px !important; font-size: 15px !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- [2] 데이터 연결 함수 ---
+# --- [2] 구글 인증 및 데이터 연결 ---
 @st.cache_resource
 def get_drive_service():
     auth_json_str = st.secrets["GOOGLE_AUTH_JSON"]
@@ -60,18 +52,18 @@ def fetch_data(file_id, is_sheet=True):
         dfs = [pd.read_csv(io.BytesIO(requests.get(f"https://www.googleapis.com/drive/v3/files/{f['id']}?alt=media", headers=headers).content), low_memory=False) for f in results.get('files', [])]
         return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-# --- [3] 매핑 데이터 ---
+# --- [3] 데이터 소스 및 매핑 ---
 SHEET_FILE_IDS = {'나라장터_발주': '1pGnb6O5Z1ahaHYuQdydyoY1Ayf147IoGmLRdA3WAHi4', '나라장터_계약': '15Hsr_nup4ZteIZ4Jyov8wG2s_rKoZ25muqRE3-sRnaw', '군수품_발주': '1pzW51Z29SSoQk7al_GvN_tj5smuhOR3J2HWnL_16fcI', '군수품_계약': '1KPMUz0IKM6AQvqwfAkvW96WNvzbycN56vNlFnDmfRTw', '군수품_공고': '1opuA_UzNm27U9QkbMay5UsyQqcwfxiEmIHNRdc4MyHM', '군수품_수의': '1aYA18kPrSkpbayzbn16EdKUScVRwr2Nutyid5No5qjk', '종합쇼핑몰': '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr'}
 DISPLAY_INDEX_MAP = {'군수품_계약': [7, 5, 3, 1, 12], '군수품_수의': [12, 10, 8, 3], '군수품_발주': [7, 8, 12, 2, 3], '군수품_공고': [0, 17, 15, 22], '나라장터_발주': [9, 13, 20], '나라장터_계약': [0, 3, 4, 5, 6], '종합쇼핑몰': ["수요기관명", "계약납품요구일자", "세부품명", "계약명", "업체명", "수량", "금액"]}
 DATE_COL_MAP = {'군수품_발주': '발주예정월', '군수품_수의': '개찰일자', '군수품_계약': '계약일자', '군수품_공고': '공고일자', '나라장터_계약': '★가공_계약일', '종합쇼핑몰': '계약납품요구일자'}
 
-# --- [4] 상단 헤더 ---
+# --- [4] 제목 ---
 h1, h2 = st.columns([3, 1])
 with h1: st.markdown('<p class="title-text">🏛 공공조달 DATA 통합검색 시스템</p>', unsafe_allow_html=True)
 with h2: st.link_button("⛓️ 지자체 유지보수 내역", "https://g2b-info.streamlit.app/", use_container_width=True)
 st.markdown("<hr style='margin: 0px 0px 10px 0px; border-top: 2px solid #333;'>", unsafe_allow_html=True)
 
-# --- [5] 결과 테이블 조각 (Fragment) ---
+# --- [5] 결과 테이블 조각 ---
 @st.fragment
 def show_result_table(cat, df, idx_list):
     st.markdown("<br>", unsafe_allow_html=True)
@@ -79,51 +71,34 @@ def show_result_table(cat, df, idx_list):
     with ctrl_r:
         c1, c2, c3 = st.columns([1.5, 1, 1])
         p_limit = c1.selectbox("표시개수", [50, 100, 150, 200], key=f"ps_sel_{cat}", label_visibility="collapsed")
-        
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False)
-        excel_data = output.getvalue()
         c2.download_button("📑 CSV", df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig'), f"{cat}.csv", "text/csv", key=f"dl_csv_{cat}")
-        c3.download_button("📊 Excel", excel_data, f"{cat}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_xl_{cat}")
+        c3.download_button("📊 Excel", output.getvalue(), f"{cat}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_xl_{cat}")
     
-    with ctrl_l: st.markdown(f"**✅ 조회결과: {len(df):,}건** (전체 데이터 기준으로 정렬됨)")
+    with ctrl_l: st.markdown(f"**✅ 조회결과: {len(df):,}건**")
 
     total_pages = max((len(df) - 1) // p_limit + 1, 1)
     if f"p_num_{cat}" not in st.session_state: st.session_state[f"p_num_{cat}"] = 1
     curr_p = st.session_state[f"p_num_{cat}"]
-    if curr_p > total_pages: curr_p = total_pages
-
-    show_cols = [df.columns[idx] if isinstance(idx, int) else idx for idx in idx_list if (isinstance(idx, int) and idx < len(df.columns)) or (isinstance(idx, str) and idx in df.columns)]
     
-    # [정렬 로직] st.dataframe의 정렬은 화면만 되므로, 세션에 정렬 상태를 저장하고 수동 정렬
-    # (주의: 사용자가 헤더 클릭 시 rerun되는 기능을 활용)
+    show_cols = [df.columns[idx] if isinstance(idx, int) else idx for idx in idx_list if (isinstance(idx, int) and idx < len(df.columns)) or (isinstance(idx, str) and idx in df.columns)]
     st.dataframe(df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], use_container_width=True, height=520)
 
-    # [페이지네이션 숫자형 버튼 확대 버전]
-    st.write("")
-    _, pg_area, _ = st.columns([0.5, 9, 0.5])
-    with pg_area:
-        st.markdown('<div class="page-ctrl-row">', unsafe_allow_html=True)
+    pg_cols = st.columns([1, 8, 1])
+    with pg_cols[1]:
         start_p = max(1, curr_p - 4)
         end_p = min(total_pages, start_p + 9)
         if end_p - start_p < 9: start_p = max(1, end_p - 9)
-        
         btn_cols = st.columns(14)
-        if btn_cols[0].button("«", key=f"f10_{cat}", disabled=curr_p <= 10): 
-            st.session_state[f"p_num_{cat}"] = max(1, curr_p - 10); st.rerun()
-        if btn_cols[1].button("‹", key=f"prev_{cat}", disabled=curr_p == 1): 
-            st.session_state[f"p_num_{cat}"] = max(1, curr_p - 1); st.rerun()
-        
+        if btn_cols[0].button("«", key=f"f10_{cat}"): st.session_state[f"p_num_{cat}"] = max(1, curr_p - 10); st.rerun()
+        if btn_cols[1].button("‹", key=f"f1_{cat}"): st.session_state[f"p_num_{cat}"] = max(1, curr_p - 1); st.rerun()
         for i, p in enumerate(range(start_p, end_p + 1)):
-            if btn_cols[i+2].button(str(p), key=f"page_{cat}_{p}", type="primary" if p == curr_p else "secondary"):
+            if btn_cols[i+2].button(str(p), key=f"pg_{cat}_{p}", type="primary" if p == curr_p else "secondary"):
                 st.session_state[f"p_num_{cat}"] = p; st.rerun()
-        
-        if btn_cols[12].button("›", key=f"next_{cat}", disabled=curr_p == total_pages):
-            st.session_state[f"p_num_{cat}"] = min(total_pages, curr_p + 1); st.rerun()
-        if btn_cols[13].button("»", key=f"last_{cat}", disabled=curr_p > total_pages - 10):
-            st.session_state[f"p_num_{cat}"] = min(total_pages, curr_p + 10); st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+        if btn_cols[12].button("›", key=f"n1_{cat}"): st.session_state[f"p_num_{cat}"] = min(total_pages, curr_p + 1); st.rerun()
+        if btn_cols[13].button("»", key=f"n10_{cat}"): st.session_state[f"p_num_{cat}"] = min(total_pages, curr_p + 10); st.rerun()
 
 # --- [6] 메인 루프 ---
 tabs = st.tabs(list(SHEET_FILE_IDS.keys()))
@@ -131,12 +106,13 @@ tabs = st.tabs(list(SHEET_FILE_IDS.keys()))
 for i, tab in enumerate(tabs):
     cat = list(SHEET_FILE_IDS.keys())[i]
     with tab:
+        # 상태값 초기화
         if f"sd_{cat}" not in st.session_state: st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=6)
         if f"ed_{cat}" not in st.session_state: st.session_state[f"ed_{cat}"] = datetime.now().date()
         if f"ver_{cat}" not in st.session_state: st.session_state[f"ver_{cat}"] = 0
         if f"df_{cat}" not in st.session_state: st.session_state[f"df_{cat}"] = None
 
-        _, center_area, _ = st.columns([0.5, 9, 0.5])
+        _, center_area, _ = st.columns([0.2, 9.6, 0.2])
         with center_area:
             st.markdown('<div class="search-container">', unsafe_allow_html=True)
             # 행1: 검색조건
@@ -145,66 +121,73 @@ for i, tab in enumerate(tabs):
             with r1_r:
                 sc1, sc2, sc3, sc4 = st.columns([1.5, 3, 1, 3])
                 f_val = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"], key=f"f_{cat}", label_visibility="collapsed")
-                k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed", placeholder="검색어")
+                k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed")
                 l_val = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
-                k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val=="NONE"), placeholder="검색어2")
+                k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val=="NONE"))
 
-            # 행2: 조회기간
+            # 행2: 조회기간 (종료일 옆에 버튼 배치)
             r2_l, r2_r = st.columns([1, 8.5])
             with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
             with r2_r:
-                # 시작/종료일 및 검색실행 버튼 레이아웃 조정 (여백 추가)
-                d1, d2, d_space, d_search = st.columns([1.5, 1.5, 5, 1.8])
+                # [레이아웃 핵심] 시작일(d1), 종료일(d2), 버튼들(d3), 검색실행(d4)
+                d1, d2, d3, d4 = st.columns([1.2, 1.2, 5.8, 1.2])
+                
+                # 시작/종료일
                 sd_in = d1.date_input("시작", value=st.session_state[f"sd_{cat}"], key=f"sd_w_{cat}_{st.session_state[f'ver_{cat}']}", label_visibility="collapsed")
                 ed_in = d2.date_input("종료", value=st.session_state[f"ed_{cat}"], key=f"ed_w_{cat}_{st.session_state[f'ver_{cat}']}", label_visibility="collapsed")
-                st.session_state[f"sd_{cat}"] = sd_in
-                st.session_state[f"ed_{cat}"] = ed_in
+                st.session_state[f"sd_{cat}"], st.session_state[f"ed_{cat}"] = sd_in, ed_in
 
-                # [여백 확보 후 검색 버튼 배치]
-                with d_search:
-                    st.markdown('<div class="search-exe-btn">', unsafe_allow_html=True)
-                    search_exe = st.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
+                # 퀵버튼 (종료일 바로 옆 위치, 간격 3px는 CSS로 조절됨)
+                with d3:
+                    st.markdown('<div class="q-btn-container">', unsafe_allow_html=True)
+                    q_cols = st.columns(6)
+                    def set_period(m=0, y=0):
+                        st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=m, years=y)
+                        st.session_state[f"ed_{cat}"] = datetime.now().date()
+                        st.session_state[f"ver_{cat}"] += 1
+                        st.rerun()
+
+                    if q_cols[0].button("1개월", key=f"m1_{cat}"): set_period(m=1)
+                    if q_cols[1].button("3개월", key=f"m3_{cat}"): set_period(m=3)
+                    if q_cols[2].button("6개월", key=f"m6_{cat}"): set_period(m=6)
+                    if q_cols[3].button("9개월", key=f"m9_{cat}"): set_period(m=9)
+                    if q_cols[4].button("1년", key=f"y1_{cat}"): set_period(y=1)
+                    if q_cols[5].button("2년", key=f"y2_{cat}"): set_period(y=2)
                     st.markdown('</div>', unsafe_allow_html=True)
 
-                # 퀵 버튼 (크기 확대 반영)
-                st.markdown('<div class="q-btn-row">', unsafe_allow_html=True)
-                q_cols = st.columns(10)
-                def set_period(m=0, y=0):
-                    st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=m, years=y)
-                    st.session_state[f"ed_{cat}"] = datetime.now().date()
-                    st.session_state[f"ver_{cat}"] += 1
-                    st.rerun()
-
-                if q_cols[0].button("1개월", key=f"m1_{cat}"): set_period(m=1)
-                if q_cols[1].button("3개월", key=f"m3_{cat}"): set_period(m=3)
-                if q_cols[2].button("6개월", key=f"m6_{cat}"): set_period(m=6)
-                if q_cols[3].button("9개월", key=f"m9_{cat}"): set_period(m=9)
-                if q_cols[4].button("1년", key=f"y1_{cat}"): set_period(y=1)
-                if q_cols[5].button("2년", key=f"y2_{cat}"): set_period(y=2)
-                st.markdown('</div>', unsafe_allow_html=True)
+                with d4:
+                    search_exe = st.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
         if search_exe:
-            with st.spinner("데이터 조회 중..."):
+            with st.spinner("조회 중..."):
                 df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
                 if not df_raw.empty:
                     s_s, e_s = sd_in.strftime('%Y%m%d'), ed_in.strftime('%Y%m%d')
+                    # 데이터 날짜 가공 로직 (버그 방지를 위한 정밀화)
                     if cat == '나라장터_발주':
                         df_raw['tmp_dt'] = df_raw.iloc[:,4].astype(str) + df_raw.iloc[:,12].astype(str).str.zfill(2) + "01"
                     else:
                         d_col = DATE_COL_MAP.get(cat)
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8] if d_col in df_raw.columns else "0"
                     
-                    df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s[:6]+"01") & (df_raw['tmp_dt'] <= e_s)]
-                    if k1_val and k1_val.strip():
-                        def get_mask(k): return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1) if f_val == "ALL" else df_filtered[f_val].astype(str).str.contains(k, case=False, na=False)
-                        if l_val == "AND" and k2_val: df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
-                        elif l_val == "OR" and k2_val: df_filtered = df_filtered[get_mask(k1_val) | get_mask(k2_val)]
-                        else: df_filtered = df_filtered[get_mask(k1_val)]
+                    # 필터링
+                    df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s[:6]+"01") & (df_raw['tmp_dt'] <= e_s)].copy()
                     
-                    # [최초 검색 시 전체 데이터 정렬 적용]
-                    st.session_state[f"df_{cat}"] = df_filtered.sort_values(by='tmp_dt', ascending=False)
-                    st.session_state[f"p_num_{cat}"] = 1
+                    if k1_val and k1_val.strip():
+                        def get_m(k): return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1) if f_val == "ALL" else df_filtered[f_val].astype(str).str.contains(k, case=False, na=False)
+                        if l_val == "AND" and k2_val: df_filtered = df_filtered[get_m(k1_val) & get_m(k2_val)]
+                        elif l_val == "OR" and k2_val: df_filtered = df_filtered[get_m(k1_val) | get_m(k2_val)]
+                        else: df_filtered = df_filtered[get_m(k1_val)]
+                    
+                    if not df_filtered.empty:
+                        st.session_state[f"df_{cat}"] = df_filtered.sort_values(by='tmp_dt', ascending=False)
+                        st.session_state[f"p_num_{cat}"] = 1
+                    else:
+                        st.session_state[f"df_{cat}"] = None
+                        st.warning("⚠️ 선택한 날짜와 검색 조건에 맞는 데이터가 없습니다. 기간을 넓혀보세요.")
+                else:
+                    st.error("❌ 구글 드라이브에서 데이터를 불러오지 못했습니다.")
 
         if st.session_state[f"df_{cat}"] is not None:
             show_result_table(cat, st.session_state[f"df_{cat}"], DISPLAY_INDEX_MAP.get(cat, []))
