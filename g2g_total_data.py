@@ -65,16 +65,21 @@ tabs = st.tabs(list(SHEET_FILE_IDS.keys()))
 for i, tab in enumerate(tabs):
     cat = list(SHEET_FILE_IDS.keys())[i]
     with tab:
-        # 상태값 초기화
-        if f"ed_{cat}" not in st.session_state: st.session_state[f"ed_{cat}"] = datetime.now().date()
-        if f"sd_{cat}" not in st.session_state: st.session_state[f"sd_{cat}"] = datetime.now().date() + relativedelta(months=-4)
-        if f"result_{cat}" not in st.session_state: st.session_state[f"result_{cat}"] = None
-        if f"page_{cat}" not in st.session_state: st.session_state[f"page_{cat}"] = 1
+        # [A] 상태값 초기화 (relativedelta 적용)
+        if f"ed_{cat}" not in st.session_state: 
+            st.session_state[f"ed_{cat}"] = datetime.now().date()
+        if f"sd_{cat}" not in st.session_state: 
+            st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=6)
+        if f"result_{cat}" not in st.session_state: 
+            st.session_state[f"result_{cat}"] = None
+        if f"page_{cat}" not in st.session_state: 
+            st.session_state[f"page_{cat}"] = 1
 
-        # 검색창 중앙 정렬
+        # [B] 검색창 중앙 정렬
         _, center_area, _ = st.columns([1, 8, 1])
         with center_area:
             st.markdown('<div class="search-container">', unsafe_allow_html=True)
+            
             # 행1: 필드/키워드
             r1_l, r1_r = st.columns([1, 8.5])
             with r1_l: st.markdown('<div class="search-label">검색조건</div>', unsafe_allow_html=True)
@@ -85,32 +90,46 @@ for i, tab in enumerate(tabs):
                 l_val = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
                 k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val=="NONE"))
 
-            # 행2: 날짜 및 퀵버튼 (수정 완료)
+            # 행2: 날짜 및 퀵버튼
             r2_l, r2_r = st.columns([1, 8.5])
             with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
             with r2_r:
                 d1, d2, d3, d4 = st.columns([1.5, 1.5, 5.2, 1.3])
-                # 시작일/종료일 동기화
-                def update_date(): 
-                    st.session_state[f"sd_{cat}"] = st.session_state[f"sd_w_{cat}"]
-                    st.session_state[f"ed_{cat}"] = st.session_state[f"ed_w_{cat}"]
-
-                sd_val = d1.date_input("시작", value=st.session_state[f"sd_{cat}"], key=f"sd_w_{cat}", on_change=update_date, label_visibility="collapsed")
-                ed_val = d2.date_input("종료", value=st.session_state[f"ed_{cat}"], key=f"ed_w_{cat}", on_change=update_date, label_visibility="collapsed")
+                
+                # [중요] 세션값을 직접 value로 할당하여 버튼 클릭과 동기화
+                sd_val = d1.date_input("시작", value=st.session_state[f"sd_{cat}"], key=f"sd_w_{cat}", label_visibility="collapsed")
+                ed_val = d2.date_input("종료", value=st.session_state[f"ed_{cat}"], key=f"ed_w_{cat}", label_visibility="collapsed")
+                
+                # 사용자가 수동으로 날짜를 변경했을 때 세션 업데이트
+                st.session_state[f"sd_{cat}"] = sd_val
+                st.session_state[f"ed_{cat}"] = ed_val
                 
                 q_cols = d3.columns(6)
-                # 버튼 로직: 클릭 시 세션 직접 수정 후 rerun
-                def set_period(m=0, y=0):
+                # 버튼 클릭 시 즉시 세션을 바꾸고 rerun() 호출 (버튼 작동 보장)
+                if q_cols[0].button("1개월", key=f"m1_{cat}"):
+                    st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=1)
                     st.session_state[f"ed_{cat}"] = datetime.now().date()
-                    st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=m, years=y)
                     st.rerun()
-
-                if q_cols[0].button("1개월", key=f"m1_{cat}"): set_period(m=1)
-                if q_cols[1].button("3개월", key=f"m3_{cat}"): set_period(m=3)
-                if q_cols[2].button("6개월", key=f"m6_{cat}"): set_period(m=6)
-                if q_cols[3].button("9개월", key=f"m9_{cat}"): set_period(m=9)
-                if q_cols[4].button("1년", key=f"y1_{cat}"): set_period(y=1)
-                if q_cols[5].button("2년", key=f"y2_{cat}"): set_period(y=2)
+                if q_cols[1].button("3개월", key=f"m3_{cat}"):
+                    st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=3)
+                    st.session_state[f"ed_{cat}"] = datetime.now().date()
+                    st.rerun()
+                if q_cols[2].button("6개월", key=f"m6_{cat}"):
+                    st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=6)
+                    st.session_state[f"ed_{cat}"] = datetime.now().date()
+                    st.rerun()
+                if q_cols[3].button("9개월", key=f"m9_{cat}"):
+                    st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(months=9)
+                    st.session_state[f"ed_{cat}"] = datetime.now().date()
+                    st.rerun()
+                if q_cols[4].button("1년", key=f"y1_{cat}"):
+                    st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(years=1)
+                    st.session_state[f"ed_{cat}"] = datetime.now().date()
+                    st.rerun()
+                if q_cols[5].button("2년", key=f"y2_{cat}"):
+                    st.session_state[f"sd_{cat}"] = datetime.now().date() - relativedelta(years=2)
+                    st.session_state[f"ed_{cat}"] = datetime.now().date()
+                    st.rerun()
                 
                 search_exe = d4.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
@@ -121,18 +140,33 @@ for i, tab in enumerate(tabs):
                 df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
                 if not df_raw.empty:
                     s_s, e_s = sd_val.strftime('%Y%m%d'), ed_val.strftime('%Y%m%d')
+                    
+                    # 날짜 가공 로직
                     if cat == '나라장터_발주':
                         df_raw['tmp_dt'] = df_raw.iloc[:,4].astype(str) + df_raw.iloc[:,12].astype(str).str.zfill(2) + "01"
                     else:
                         d_col = DATE_COL_MAP.get(cat)
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8] if d_col in df_raw.columns else "0"
                     
+                    # 1차 날짜 필터링
                     df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s[:6]+"01") & (df_raw['tmp_dt'] <= e_s)]
-                    if k1_val:
-                        def get_m(k): return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1) if f_val == "ALL" else df_filtered[f_val].astype(str).str.contains(k, case=False, na=False)
-                        if l_val == "AND" and k2_val: df_filtered = df_filtered[get_m(k1_val) & get_m(k2_val)]
-                        elif l_val == "OR" and k2_val: df_filtered = df_filtered[get_m(k1_val) | get_m(k2_val)]
-                        else: df_filtered = df_filtered[get_m(k1_val)]
+                    
+                    # [수정된 키워드 필터링 로직] 검색어가 있을 때만 필터링 수행
+                    if k1_val and k1_val.strip() != "":
+                        def get_m(k): 
+                            if f_val == "ALL": 
+                                return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1)
+                            return df_filtered[f_val].astype(str).str.contains(k, case=False, na=False)
+                        
+                        mask1 = get_m(k1_val)
+                        if l_val == "AND" and k2_val:
+                            df_filtered = df_filtered[mask1 & get_m(k2_val)]
+                        elif l_val == "OR" and k2_val:
+                            df_filtered = df_filtered[mask1 | get_m(k2_val)]
+                        else:
+                            df_filtered = df_filtered[mask1]
+                    # k1_val이 비어있으면 위 과정을 생략하므로 날짜 필터링된 전체 데이터가 남습니다.
+
                     st.session_state[f"result_{cat}"] = df_filtered
                     st.session_state[f"page_{cat}"] = 1
 
