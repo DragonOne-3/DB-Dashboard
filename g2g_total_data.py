@@ -38,18 +38,38 @@ st.markdown("""
         padding: 0px 5px !important;  /* 내부 여백 최소화 */
         margin-top: 0px !important;
     }
-    /* 💡 빠른 버튼 컨테이너 정렬 CSS 추가 */
-    .q-btn-container {
-        display: flex; /* 플렉스박스 레이아웃 적용 */
-        align-items: center; /* 내부 아이템들을 세로 중앙으로 정렬 */
-        height: 100%;       /* 부모 요소(컬럼)의 높이에 맞춤 */
+    /* 💡 [루이튼 제안] '조회기간' 옆 컬럼들(d1, d2, d3, d4)의 정렬 */
+    /* st.columns가 만드는 상위 div를 타겟팅해서 align-items를 적용 */
+    /* 정확한 CSS 셀렉터는 브라우저 개발자 도구(F12)로 확인하는 게 제일 정확해! */
+    /* 일단 이 방식으로 시도해보자! */
+    [data-testid="stVerticalBlock"] > div > [data-testid="stColumns"] > div:nth-child(2) > [data-testid="stColumns"] {
+        align-items: center; /* 내부 컬럼들의 내용을 세로 중앙 정렬 */
     }
-    /* 💡 date_input 위젯 자체의 높이/정렬 보정 (필요 시 주석 해제) */
-    /* st.date_input이 button과 높이가 잘 안맞으면 이거도 추가해봐! */
-    .stDateInput > div:first-child { /* date_input 내부의 첫 번째 div (실제 입력 필드) */
+
+    /* 퀵 버튼 컨테이너 */
+    .q-btn-container {
         display: flex;
-        align-items: center;
+        align-items: center; /* 퀵 버튼들을 세로 중앙에 정렬 */
+        height: 100%;       /* 부모(d3) 높이에 맞춤 */
+        /* margin-top: 5px; */ /* 필요하다면 미세 조정을 위해 이 값을 조절 */
+    }
+
+    /* 퀵 버튼 내부의 각 버튼 컨테이너도 세로 중앙 정렬 */
+    .q-btn-container > [data-testid="stColumns"] {
         height: 100%;
+        align-items: center;
+    }
+
+    /* date_input 위젯의 높이도 명확히 지정하거나 세로 중앙 정렬 */
+    /* 이거는 지난번에 제안했던 stDateInput 관련 CSS였지? 같이 넣어두면 좋아 */
+    .stDateInput {
+        height: 100%; /* date_input 자체도 높이를 늘려서 옆과 맞추기 */
+        display: flex;
+        align-items: center; /* 내부 요소를 중앙에! */
+    }
+    .stDateInput > div { /* date_input 내부의 실제 입력 필드 */
+        margin-top: 0px !important;
+        margin-bottom: 0px !important;
     }
     /* 4. 결과 위 정보바 (투명하게) */
     .data-info-bar { 
