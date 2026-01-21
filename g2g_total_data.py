@@ -20,14 +20,13 @@ st.markdown("""
     .title-text { font-size: 24px !important; font-weight: bold; color: #333; margin: 0; padding: 0; }
     
     /* 2. 검색조건 위 네모칸(공백) 제거 핵심 코드 */
-    /* 마크다운 컨테이너 중 비어있는 박스를 숨깁니다. */
     div[data-testid="stElementContainer"]:has(.search-container) { display: none !important; }
     
     .search-container { 
         background-color: white; 
         border: 1px solid #ccc; 
         padding: 10px; 
-        margin-top: -25px !important; /* 위로 바짝 붙여서 네모칸 제거 */
+        margin-top: -25px !important; 
     }
     .search-label { background-color: #f9f9f9; width: 120px; padding: 8px; font-weight: bold; border-right: 1px solid #eee; text-align: center; }
     
@@ -38,39 +37,41 @@ st.markdown("""
         padding: 0px 5px !important;  /* 내부 여백 최소화 */
         margin-top: 0px !important;
     }
-    /* 💡 [루이튼 제안] '조회기간' 옆 컬럼들(d1, d2, d3, d4)의 정렬 */
-    /* st.columns가 만드는 상위 div를 타겟팅해서 align-items를 적용 */
-    /* 정확한 CSS 셀렉터는 브라우저 개발자 도구(F12)로 확인하는 게 제일 정확해! */
-    /* 일단 이 방식으로 시도해보자! */
-    [data-testid="stVerticalBlock"] > div > [data-testid="stColumns"] > div:nth-child(2) > [data-testid="stColumns"] {
-        align-items: center; /* 내부 컬럼들의 내용을 세로 중앙 정렬 */
+
+    /* 💡 [루이튼 제안] 조회 기간 input 및 퀵 버튼 라인 정렬 최종 개선 */
+    /* date_input과 퀵 버튼들이 있는 전체 가로줄(컬럼들 d1, d2, d3, d4)을 감싸는 stHorizontalBlock */
+    /* 네가 F12로 확인한 클래스 이름 (st-emotion-cache-1permvm) 사용! */
+    .stHorizontalBlock.st-emotion-cache-1permvm { 
+        align-items: center; /* 자식 컬럼들의 내용물을 세로 중앙에 정렬 */
     }
 
-    /* 퀵 버튼 컨테이너 */
-    .q-btn-container {
-        display: flex;
-        align-items: center; /* 퀵 버튼들을 세로 중앙에 정렬 */
-        height: 100%;       /* 부모(d3) 높이에 맞춤 */
-        /* margin-top: 5px; */ /* 필요하다면 미세 조정을 위해 이 값을 조절 */
-    }
-
-    /* 퀵 버튼 내부의 각 버튼 컨테이너도 세로 중앙 정렬 */
-    .q-btn-container > [data-testid="stColumns"] {
-        height: 100%;
-        align-items: center;
-    }
-
-    /* date_input 위젯의 높이도 명확히 지정하거나 세로 중앙 정렬 */
-    /* 이거는 지난번에 제안했던 stDateInput 관련 CSS였지? 같이 넣어두면 좋아 */
+    /* date_input 위젯의 높이와 내부 정렬 */
     .stDateInput {
-        height: 100%; /* date_input 자체도 높이를 늘려서 옆과 맞추기 */
-        display: flex;
-        align-items: center; /* 내부 요소를 중앙에! */
+        display: flex;       /* 플렉스 박스로 만들고 */
+        align-items: center; /* 내부 요소를 세로 중앙에! */
+        height: 100%;        /* 부모 컨테이너(d1, d2 컬럼) 높이에 꽉 채우도록 설정 */
     }
-    .stDateInput > div { /* date_input 내부의 실제 입력 필드 */
-        margin-top: 0px !important;
-        margin-bottom: 0px !important;
+    .stDateInput > div { /* date_input 내부의 실제 입력 필드(날짜 표시 및 달력 아이콘) */
+        margin-top: 0px !important;    /* 불필요한 마진 제거 */
+        margin-bottom: 0px !important; /* 불필요한 마진 제거 */
+        padding-top: 0px !important;    /* 불필요한 패딩 제거 */
+        padding-bottom: 0px !important; /* 불필요한 패딩 제거 */
     }
+
+    /* 퀵 버튼 컨테이너 (d3 컬럼 안의 사용자 정의 div) */
+    .q-btn-container {
+        display: flex;       /* 플렉스 박스로 만들고 */
+        align-items: center; /* 내부 아이템(q_cols로 만든 컬럼들)을 세로 중앙에 정렬 */
+        height: 100%;        /* 부모 컨테이너(d3 컬럼) 높이에 맞춤 */
+        margin-top: 0px !important;    /* 불필요한 마진 제거 */
+        margin-bottom: 0px !important; /* 불필요한 마진 제거 */
+    }
+    /* q_cols = st.columns(6)로 생성된 내부의 stHorizontalBlock도 중앙 정렬 */
+    .q-btn-container > div > div > div[data-testid="stHorizontalBlock"] {
+        height: 100%;       /* 부모(q-btn-container) 높이에 맞춤 */
+        align-items: center; /* 내부 버튼 컬럼들을 세로 중앙에! */
+    }
+
     /* 4. 결과 위 정보바 (투명하게) */
     .data-info-bar { 
         background-color: transparent !important; 
