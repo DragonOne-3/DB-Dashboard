@@ -7,28 +7,44 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # 환경 변수 로드
 SERVICE_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 GOOGLE_AUTH_JSON = os.environ.get('GOOGLE_AUTH_JSON')
-# 깃허브 액션에서 입력받은 날짜 로드
-INPUT_START = os.environ.get('START_DATE', '20240101')
-INPUT_END = os.environ.get('END_DATE', '20240107')
+INPUT_START = os.environ.get('START_DATE', '20190101')
+INPUT_END = os.environ.get('END_DATE', '20190331')
+
+def get_session():
+    """재시도 로직이 포함된 세션 생성"""
+    session = requests.Session()
+    retry = Retry(
+        total=3, # 최대 3번 재시도
+        backoff_factor=2, # 재시도 간격 지수적 증가 (2초, 4초, 8초...)
+        status_forcelist=[500, 502, 503, 504] # 해당 에러 발생 시 재시도
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
 def get_data_chunk(session, start_date, end_date):
-    """특정 구간의 데이터를 가져오는 함수"""
     url = 'http://openapi.d2b.go.kr/openapi/service/CntrctInfoService/getDmstcCntrctInfoList'
     
     params = {
         'serviceKey': SERVICE_KEY,
         'cntrctDateBegin': start_date,
         'cntrctDateEnd': end_date,
-        'numOfRows': '50000', 
+        'numOfRows': '5000',  # 50000에서 5000으로 하향 조정 (안정성 확보)
         'pageNo': '1'
     }
 
     try:
-        response = session.get(url, params=params, timeout=30)
+        # timeout을 60초로 연장
+        response = session.get(url, params=params, timeout=60)
+        response.raise_for_status()
+        
         root = ET.fromstring(response.content)
         items = root.findall('.//item')
         
@@ -39,12 +55,12 @@ def get_data_chunk(session, start_date, end_date):
         
         return data_list
     except Exception as e:
-        print(f"오류 발생 ({start_date} ~ {end_date}): {e}")
-        return []
+        print(f"\n❌ 오류 발생 ({start_date} ~ {end_date}): {e}")
+        return None # 오류 발생 시 None 반환
 
 def update_google_sheet(data_list):
-    """수집된 데이터를 구글 시트에 누적 추가"""
     if not data_list:
+        print("-> 추가할 데이터가 없습니다.")
         return
 
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -61,17 +77,15 @@ def update_google_sheet(data_list):
     print(f"-> {len(values)}건 추가 완료.")
 
 if __name__ == "__main__":
-    # 입력받은 문자열을 datetime 객체로 변환
     total_start = datetime.strptime(INPUT_START, "%Y%m%d")
     total_end = datetime.strptime(INPUT_END, "%Y%m%d")
     
     current_start = total_start
-    session = requests.Session() # 속도 최적화
+    session = get_session()
 
-    print(f"전체 수집 기간: {INPUT_START} ~ {INPUT_END}")
+    print(f"🚀 수집 시작: {INPUT_START} ~ {INPUT_END}")
 
     while current_start <= total_end:
-        # 7일 단위로 끊기
         current_end = current_start + timedelta(days=6)
         if current_end > total_end:
             current_end = total_end
@@ -79,13 +93,18 @@ if __name__ == "__main__":
         str_start = current_start.strftime('%Y%m%d')
         str_end = current_end.strftime('%Y%m%d')
         
-        print(f"진행 중: {str_start} ~ {str_end}...", end=" ")
+        print(f"📅 구간 수집: {str_start} ~ {str_end}", end=" ", flush=True)
         
         chunk_data = get_data_chunk(session, str_start, str_end)
-        update_google_sheet(chunk_data)
         
-        # 다음 구간으로 이동하기 전 아주 짧은 대기 (서버 부하 방지)
-        time.sleep(0.3)
+        if chunk_data is not None:
+            update_google_sheet(chunk_data)
+            # 서버 부하 방지를 위해 1.5초 대기
+            time.sleep(1.5)
+        else:
+            print("-> 스킵합니다 (서버 응답 없음)")
+            time.sleep(5) # 에러 시에는 좀 더 길게 대기
+            
         current_start = current_end + timedelta(days=1)
 
-    print("✅ 모든 작업이 완료되었습니다.")
+    print("✅ 모든 작업 완료!")
