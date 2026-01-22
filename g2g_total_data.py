@@ -264,13 +264,36 @@ for i, tab in enumerate(tabs):
                 df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
                 if not df_raw.empty:
                     s_s, e_s = sd_in.strftime('%Y%m%d'), ed_in.strftime('%Y%m%d')
-                    if cat == '나라장터_발주':
-                        df_raw['tmp_dt'] = df_raw.iloc[:,4].astype(str) + df_raw.iloc[:,12].astype(str).str.zfill(2) + "01"
-                    else:
-                        d_col = DATE_COL_MAP.get(cat)
-                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8] if d_col in df_raw.columns else "0"
                     
-                    df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s[:6]+"01") & (df_raw['tmp_dt'] <= e_s)].copy()
+                    # 1. 카테고리별 날짜 처리 (tmp_dt 생성)
+                    d_col = DATE_COL_MAP.get(cat)
+                    
+                    if cat == '나라장터_발주':
+                        # 나라장터 발주는 날짜 필터링을 하지 않기 위해 모든 행을 통과시키는 값 설정
+                        df_raw['tmp_dt'] = s_s 
+                    
+                    elif cat == '군수품_발주':
+                        # 발주예정월(YYYYMM)인 경우: 검색 시작일의 월과 종료일의 월 비교
+                        # 데이터가 202601 형태라면 비교를 위해 뒤에 01을 붙여 8자리로 만듦
+                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
+                        # 시작일도 해당 월의 1일로 보정하여 비교
+                        s_s = s_s[:6] + "01"
+                        
+                    elif cat == '나라장터_계약':
+                        # YYYY-MM-DD 형태이므로 하이픈 제거 후 8자리 숫자로 변환
+                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+                    
+                    else:
+                        # 나머지(YYYYMMDD 형식들): 숫자만 남기고 8자리로 처리
+                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8] if d_col in df_raw.columns else "0"
+
+                    # 2. 날짜 필터링 적용
+                    if cat == '나라장터_발주':
+                        df_filtered = df_raw.copy() # 날짜 조건 무시
+                    else:
+                        df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
+
+                    # 3. 키워드 검색 (기존 로직 유지)
                     if k1_val and k1_val.strip():
                         def get_mask(k): return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1) if f_val == "ALL" else df_filtered[f_val].astype(str).str.contains(k, case=False, na=False)
                         if l_val == "AND" and k2_val: df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
