@@ -279,11 +279,39 @@ for i, tab in enumerate(tabs):
                     else:
                         df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
+                    # 3. 키워드 검색 (컬럼명 불일치 해결 및 유사 검색 유지)
                     if k1_val and k1_val.strip():
-                        def get_mask(k): return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1) if f_val == "ALL" else df_filtered[f_val].astype(str).str.contains(k, case=False, na=False)
-                        if l_val == "AND" and k2_val: df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
-                        elif l_val == "OR" and k2_val: df_filtered = df_filtered[get_mask(k1_val) | get_mask(k2_val)]
-                        else: df_filtered = df_filtered[get_mask(k1_val)]
+                        def get_mask(k):
+                            # [유연한 필드 매핑] 사용자가 '업체명'을 선택했을 때 시트마다 다른 컬럼명 대응
+                            target_col = f_val
+                            if f_val == "업체명":
+                                # 시트별로 업체명을 뜻하는 실제 컬럼명 후보들
+                                candidates = ["업체명", "상호", "상호명", "계약상대자", "업체 명", "계약상대자명"]
+                                for cand in candidates:
+                                    if cand in df_filtered.columns:
+                                        target_col = cand
+                                        break
+                            elif f_val == "수요기관명":
+                                candidates = ["수요기관명", "수요기관", "발주기관", "공고기관"]
+                                for cand in candidates:
+                                    if cand in df_filtered.columns:
+                                        target_col = cand
+                                        break
+                    
+                            # 1. 최종 결정된 필드가 실제 컬럼에 존재하는지 확인하여 검색
+                            if target_col in df_filtered.columns:
+                                return df_filtered[target_col].astype(str).str.contains(k, case=False, na=False)
+                            # 2. 필드가 없거나 "ALL"인 경우 전체 컬럼에서 유사 검색(포함 검색) 수행
+                            else:
+                                return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1)
+                    
+                        # AND/OR 논리 적용 필터링
+                        if l_val == "AND" and k2_val: 
+                            df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
+                        elif l_val == "OR" and k2_val: 
+                            df_filtered = df_filtered[get_mask(k1_val) | get_mask(k2_val)]
+                        else: 
+                            df_filtered = df_filtered[get_mask(k1_val)]
                     
                     st.session_state[f"df_{cat}"] = df_filtered.sort_values(by='tmp_dt', ascending=False)
                     st.session_state[f"p_num_{cat}"] = 1
