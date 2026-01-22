@@ -7,6 +7,7 @@ import pandas as pd
 import io
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
+from googleapiclient.http import MediaIoBaseUpload # 💡 [루이튼 반영] 이 import가 추가되었습니다!
 
 # 기타 스크립트에서 필요한 모듈들
 from pytimekr import pytimekr # 공휴일 계산용
@@ -155,7 +156,7 @@ def main():
         DRIVE_FOLDER_ID = '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr' # 당신이 지정한 구글 드라이브 폴더 ID!
         FILE_NAME_FOR_YEAR = f"{target_dt.year}.csv"          # 저장할 CSV 파일 이름 (예: 2026.csv)
 
-        # --- 디버깅 정보 (추가) ---
+        # --- 디버깅 정보 ---
         print(f"DEBUG: 스크립트가 사용하려는 폴더 ID: '{DRIVE_FOLDER_ID}'")
         print(f"DEBUG: 스크립트가 찾으려는 파일명: '{FILE_NAME_FOR_YEAR}'")
         # --- 디버깅 정보 끝 ---
@@ -164,21 +165,21 @@ def main():
         file_id = None
         
         # Drive API로 타겟 폴더 내에서 파일 검색
-        query = f"name='{FILE_NAME_FOR_YEAR}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
+        # mimeType='text/csv'로 검색합니다. 만약 파일 유형이 'Google 스프레드시트'라면 이 쿼리로는 찾지 못합니다.
+        # 이 경우 해당 파일을 실제 CSV 파일로 업로드하거나, mimeType을 'application/vnd.google-apps.spreadsheet'로 변경해야 합니다.
+        query = f"name='{FILE_NAME_FOR_YEAR}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false and mimeType='text/csv'" 
         print(f"DEBUG: Drive API 실행 쿼리: '{query}'") # 이 쿼리 문자열도 중요!
         results = drive_service.files().list(q=query, spaces='drive', fields='files(id)').execute()
         items = results.get('files', [])
 
         print(f"DEBUG: Drive API 쿼리 결과 items: {items}") # items가 비어있으면 []가 출력될 것입니다.
         
-        if items:
-            # 파일이 존재하면 첫 번째 파일 ID 사용
+        if items: # 파일이 존재할 경우 (items가 비어있지 않은 경우)
             file_id = items[0]['id']
             print(f"🔄 기존 파일 '{FILE_NAME_FOR_YEAR}' (ID: {file_id})에 데이터 추가 중...")
             
             # 기존 파일 내용 다운로드
             download_url = f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media'
-            # 인증 헤더를 drive_creds.token으로 사용하여 다운로드
             response = requests.get(download_url, headers={'Authorization': f'Bearer {drive_creds.token}'})
             
             if response.status_code == 200:
@@ -200,7 +201,7 @@ def main():
             else:
                 print(f"⚠️ 기존 파일 '{FILE_NAME_FOR_YEAR}' 다운로드 실패 (상태 코드: {response.status_code}). 오늘 데이터만으로 파일 업데이트/생성 시도.")
                 df_to_upload = new_df # 다운로드 실패 시 새 데이터만으로 업로드
-        else:
+        else: # 파일이 존재하지 않을 경우 (items가 비어있는 경우)
             print(f"🆕 파일 '{FILE_NAME_FOR_YEAR}'이(가) 없어 새로 생성합니다. 오늘 데이터를 저장합니다.")
             df_to_upload = new_df
 
@@ -210,26 +211,24 @@ def main():
         csv_bytes = csv_buffer.getvalue().encode('utf-8-sig') # BytesIO에 넣기 위해 다시 바이트로 인코딩
 
         # --- 구글 드라이브에 파일 업로드/업데이트 ---
-        if file_id:
-            # 기존 파일 업데이트 (덮어쓰기)
-            media_body = io.BytesIO(csv_bytes)
+        # 💡 [루이튼 반영] media_body를 MediaIoBaseUpload로 감싸줍니다.
+        media_body = MediaIoBaseUpload(io.BytesIO(csv_bytes), mimetype='text/csv', resumable=True)
+
+        if file_id: # 기존 파일 업데이트
             drive_service.files().update(
                 fileId=file_id,
-                media_body=media_body,
-                media_mime_type='text/csv' # 미디어 타입 명시
+                media_body=media_body, # 💡 [루이튼 반영] 수정된 media_body 사용
             ).execute()
             print(f"✅ '{FILE_NAME_FOR_YEAR}' 업데이트 완료!")
-        else:
-            # 새 파일 생성
+        else: # 새 파일 생성
             file_metadata = {
                 'name': FILE_NAME_FOR_YEAR,
                 'parents': [DRIVE_FOLDER_ID], # 여기에 폴더 ID 지정!
                 'mimeType': 'text/csv'
             }
-            media_body = io.BytesIO(csv_bytes)
             drive_service.files().create(
                 body=file_metadata,
-                media_body=media_body,
+                media_body=media_body, # 💡 [루이튼 반영] 수정된 media_body 사용
                 fields='id' # 생성된 파일 ID를 받기 위함
             ).execute()
             print(f"✅ '{FILE_NAME_FOR_YEAR}' 생성 및 업로드 완료!")
