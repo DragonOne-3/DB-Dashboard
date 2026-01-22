@@ -1,7 +1,16 @@
 name: Manual Procurement Data Add
 
 on:
-  workflow_dispatch: # 수동으로 실행하고 싶을 때 버튼 클릭
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: '시작 날짜 (YYYYMMDD)'
+        required: true
+        default: '20240101'
+      end_date:
+        description: '종료 날짜 (YYYYMMDD)'
+        required: true
+        default: '20240107'
 
 jobs:
   build:
@@ -24,4 +33,7 @@ jobs:
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          # 사용자가 입력한 날짜를 환경 변수로 전달
+          START_DATE: ${{ github.event.inputs.start_date }}
+          END_DATE: ${{ github.event.inputs.end_date }}
         run: python mli_data_add.py
