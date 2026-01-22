@@ -145,8 +145,22 @@ def show_result_table(cat, idx_list):
     if sort_col3.button("정렬", key=f"sb_{cat}", use_container_width=True):
         ascending = (sort_dir == "오름차순")
         sort_key = 'tmp_dt' if sort_target == "날짜순" else sort_target
-        st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending)
-        st.rerun()
+        
+        try:
+            # 💡 금액/수량 정렬 시 숫자 크기대로 정렬하기 위한 처리
+            if any(x in str(sort_key) for x in ["금액", "액", "수량", "가"]):
+                temp_df = df.copy()
+                # 숫자 외 문자 제거 후 숫자형으로 변환 (정렬용)
+                temp_df[sort_key] = pd.to_numeric(temp_df[sort_key].astype(str).str.replace(r'[^0-9.-]', '', regex=True), errors='coerce')
+                st.session_state[f"df_{cat}"] = temp_df.sort_values(by=sort_key, ascending=ascending, na_position='last')
+            else:
+                # 일반 텍스트 정렬 (공백은 항상 뒤로)
+                st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending, na_position='last')
+            st.rerun()
+        except:
+            # 만약 에러 발생 시 가장 기본 정렬로 안전하게 처리
+            st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending, na_position='last')
+            st.rerun()
 
     p_limit = limit_col.selectbox("개수", [50, 100, 150, 200], key=f"ps_{cat}", label_visibility="collapsed")
 
@@ -163,14 +177,16 @@ def show_result_table(cat, idx_list):
     # 테이블 및 페이지네이션
     total_pages = max((len(df) - 1) // p_limit + 1, 1)
     curr_p = st.session_state.get(f"p_num_{cat}", 1)
+
+    # 💡 금액, 수량 등이 포함된 컬럼은 화면에 콤마(,)를 찍어서 보여줌
+    amt_cols = [col for col in show_cols if any(x in str(col) for x in ["금액", "수량", "액", "가"])]
+    config = {col: st.column_config.NumberColumn(format="%,d") for col in amt_cols}
+
     st.dataframe(
         df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], 
         use_container_width=True, 
         height=520,
-        column_config={
-            "금액": st.column_config.NumberColumn(format="%d"),
-            "수량": st.column_config.NumberColumn(format="%d")
-        }
+        column_config=config  # 콤마 설정 적용
     )
 
     pg_cols = st.columns([1, 8, 1])
