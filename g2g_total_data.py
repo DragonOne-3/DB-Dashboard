@@ -168,21 +168,15 @@ def show_result_table(cat, idx_list):
         d_xl.download_button("📊 Excel", excel_data, f"{cat}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 테이블 및 페이지네이션
+    # 테이블 및 페이지네이션 (L150 부근)
     total_pages = max((len(df) - 1) // p_limit + 1, 1)
     curr_p = st.session_state.get(f"p_num_{cat}", 1)
 
-    # ✅ 숫자형으로 바뀐 컬럼들에 천 단위 콤마(%,d)를 찍어줍니다.
-    amt_keywords = ["금액", "가격", "예가", "예산"]
-    config = {col: st.column_config.NumberColumn(format="%,d") 
-              for col in show_cols 
-              if any(kw in str(col) for kw in amt_keywords)}
-
+    # 콤마 설정 등을 모두 제거한 순수 출력 코드
     st.dataframe(
         df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], 
         use_container_width=True, 
-        height=520,
-        column_config=config  # 설정 적용
+        height=520
     )
 
     pg_cols = st.columns([1, 8, 1])
@@ -286,7 +280,6 @@ for i, tab in enumerate(tabs):
                     d_col = DATE_COL_MAP.get(cat)
                     
                     if cat == '나라장터_발주':
-                        # 나라장터 발주는 날짜 필터링을 하지 않기 위해 모든 행을 통과시키는 값 설정
                         df_raw['tmp_dt'] = s_s 
                     elif cat == '군수품_발주':
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
@@ -294,37 +287,14 @@ for i, tab in enumerate(tabs):
                     elif cat == '나라장터_계약':
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
                     else:
-                        # 나머지: 날짜 컬럼이 존재할 때만 생성, 없으면 기본값
-                        if d_col in df_raw.columns:
-                            df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
-                        else:
-                            df_raw['tmp_dt'] = "00000000"
+                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8] if d_col in df_raw.columns else "0"
 
-                    # 2. 날짜 필터링 적용 (KeyError 방지를 위해 tmp_dt 존재 확인)
                     if cat == '나라장터_발주':
                         df_filtered = df_raw.copy()
                     else:
                         df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
-                    # ⭐ 금액 컬럼 숫자 변환 (알려주신 명칭 반영)
-                    amt_map = {
-                        '군수품_계약': '계약가격', 
-                        '군수품_수의': '예산금액', 
-                        '군수품_발주': '예산금액', 
-                        '군수품_공고': '기초예가', 
-                        '나라장터_발주': '합계발주금액', 
-                        '나라장터_계약': '★가공_계약금액', 
-                        '종합쇼핑몰': '금액'
-                    }
-                    target_amt_col = amt_map.get(cat)
-                    if target_amt_col in df_filtered.columns:
-                        # 숫자 외 문자 제거 후 숫자형 변환
-                        df_filtered[target_amt_col] = pd.to_numeric(
-                            df_filtered[target_amt_col].astype(str).str.replace(r'[^0-9.-]', '', regex=True), 
-                            errors='coerce'
-                        )
-
-                    # 3. 키워드 검색 (기존 로직 유지)
+                    # 3. 키워드 검색 (가장 안정적인 기본 로직)
                     if k1_val and k1_val.strip():
                         def get_mask(k):
                             target_col = f_val
