@@ -190,7 +190,7 @@ for i, tab in enumerate(tabs):
         if f"sd_{cat}" not in st.session_state or not isinstance(st.session_state[f"sd_{cat}"], date):
             st.session_state[f"sd_{cat}"] = today - relativedelta(months=6)
         if f"ed_{cat}" not in st.session_state or not isinstance(st.session_state[f"ed_{cat}"], date):
-            st.session_state[f"ed_{cat}"] = today
+            st.session_state[f"ed_{cat}"] = today - relativedelta(days=1)
         if f"ver_{cat}" not in st.session_state: st.session_state[f"ver_{cat}"] = 0
         if f"df_{cat}" not in st.session_state: st.session_state[f"df_{cat}"] = None
 
