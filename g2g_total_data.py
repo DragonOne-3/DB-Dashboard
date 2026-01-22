@@ -244,6 +244,8 @@ for i, tab in enumerate(tabs):
                     if q_cols[0].button(" 어제 ", key=f"d1_{cat}"):
                         st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1)
                         st.session_state[f"sd_{cat}"] = date.today()-relativedelta(days=1)
+                        st.session_state[f"ver_{cat}"] += 1 # 다른 set_period와 동일하게 버전 증가
+                        st.rerun() # 🎉 딱 이 한 줄만 추가하면 돼! 🎉
                     if q_cols[1].button(" 1주일 ", key=f"d7_{cat}"): set_period(d=7)
                     if q_cols[2].button(" 1개월 ", key=f"m1_{cat}"): set_period(m=1)
                     if q_cols[3].button(" 3개월 ", key=f"m3_{cat}"): set_period(m=3)
