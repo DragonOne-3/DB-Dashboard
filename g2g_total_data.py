@@ -241,7 +241,9 @@ for i, tab in enumerate(tabs):
                         st.session_state[f"ver_{cat}"] += 1
                         st.rerun()
 
-                    if q_cols[0].button(" 어제 ", key=f"m1_{cat}"): st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1),st.session_state[f"sd_{cat}"] = date.today()-relativedelta(days=1)
+                    if q_cols[0].button(" 어제 ", key=f"m1_{cat}"):
+                        st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1)
+                        st.session_state[f"sd_{cat}"] = date.today()-relativedelta(days=1)
                     if q_cols[0].button(" 1주일 ", key=f"m1_{cat}"): set_period(d=7)
                     if q_cols[0].button(" 1개월 ", key=f"m1_{cat}"): set_period(m=1)
                     if q_cols[1].button(" 3개월 ", key=f"m3_{cat}"): set_period(m=3)
