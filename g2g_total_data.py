@@ -233,7 +233,7 @@ for i, tab in enumerate(tabs):
                 # 퀵버튼 (사이즈 조정 CSS 적용됨)
                 with d3:
                     st.markdown('<div class="q-btn-container">', unsafe_allow_html=True)
-                    q_cols = st.columns(6)
+                    q_cols = st.columns(8)
                     def set_period(d=0, m=0, y=0):
                         cur = date.today()
                         st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(days=d, months=m, years=y)
@@ -244,13 +244,13 @@ for i, tab in enumerate(tabs):
                     if q_cols[0].button(" 어제 ", key=f"m1_{cat}"):
                         st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1)
                         st.session_state[f"sd_{cat}"] = date.today()-relativedelta(days=1)
-                    if q_cols[0].button(" 1주일 ", key=f"m1_{cat}"): set_period(d=7)
-                    if q_cols[0].button(" 1개월 ", key=f"m1_{cat}"): set_period(m=1)
-                    if q_cols[1].button(" 3개월 ", key=f"m3_{cat}"): set_period(m=3)
-                    if q_cols[2].button(" 6개월 ", key=f"m6_{cat}"): set_period(m=6)
-                    if q_cols[3].button(" 9개월 ", key=f"m9_{cat}"): set_period(m=9)
-                    if q_cols[4].button("  1년  ", key=f"y1_{cat}"): set_period(y=1)
-                    if q_cols[5].button("  2년  ", key=f"y2_{cat}"): set_period(y=2)
+                    if q_cols[1].button(" 1주일 ", key=f"m1_{cat}"): set_period(d=7)
+                    if q_cols[2].button(" 1개월 ", key=f"m1_{cat}"): set_period(m=1)
+                    if q_cols[3].button(" 3개월 ", key=f"m3_{cat}"): set_period(m=3)
+                    if q_cols[4].button(" 6개월 ", key=f"m6_{cat}"): set_period(m=6)
+                    if q_cols[5].button(" 9개월 ", key=f"m9_{cat}"): set_period(m=9)
+                    if q_cols[6].button("  1년  ", key=f"y1_{cat}"): set_period(y=1)
+                    if q_cols[7].button("  2년  ", key=f"y2_{cat}"): set_period(y=2)
                     st.markdown('</div>', unsafe_allow_html=True)
                 
                 with d4:
