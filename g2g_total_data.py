@@ -145,15 +145,7 @@ def show_result_table(cat, idx_list):
     if sort_col3.button("정렬", key=f"sb_{cat}", use_container_width=True):
         ascending = (sort_dir == "오름차순")
         sort_key = 'tmp_dt' if sort_target == "날짜순" else sort_target
-        
-        try:
-            # 공백(NaN)은 항상 마지막에 배치
-            st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending, na_position='last')
-        except:
-            # 타입이 섞여서 에러날 경우 문자열로 안전하게 정렬
-            df_temp = df.copy()
-            df_temp[sort_key] = df_temp[sort_key].astype(str)
-            st.session_state[f"df_{cat}"] = df_temp.sort_values(by=sort_key, ascending=ascending, na_position='last')
+        st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending)
         st.rerun()
 
     p_limit = limit_col.selectbox("개수", [50, 100, 150, 200], key=f"ps_{cat}", label_visibility="collapsed")
@@ -168,16 +160,10 @@ def show_result_table(cat, idx_list):
         d_xl.download_button("📊 Excel", excel_data, f"{cat}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # 테이블 및 페이지네이션 (L150 부근)
+    # 테이블 및 페이지네이션
     total_pages = max((len(df) - 1) // p_limit + 1, 1)
     curr_p = st.session_state.get(f"p_num_{cat}", 1)
-
-    # 콤마 설정 등을 모두 제거한 순수 출력 코드
-    st.dataframe(
-        df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], 
-        use_container_width=True, 
-        height=520
-    )
+    st.dataframe(df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], use_container_width=True, height=520)
 
     pg_cols = st.columns([1, 8, 1])
     with pg_cols[1]:
@@ -268,7 +254,6 @@ for i, tab in enumerate(tabs):
             st.markdown('</div>', unsafe_allow_html=True)
 
         # 실제 데이터 처리는 search_exe 버튼이 눌린 '그 순간'에만 진행됨
-        # 실제 데이터 처리는 search_exe 버튼이 눌린 '그 순간'에만 진행됨
         if search_exe:
             with st.spinner("조회 중..."):
                 # 검색 버튼을 누른 시점의 날짜 정보를 다시 한번 업데이트하여 고정
@@ -294,11 +279,13 @@ for i, tab in enumerate(tabs):
                     else:
                         df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
-                    # 3. 키워드 검색 (가장 안정적인 기본 로직)
+                    # 3. 키워드 검색 (컬럼명 불일치 해결 및 유사 검색 유지)
                     if k1_val and k1_val.strip():
                         def get_mask(k):
+                            # [유연한 필드 매핑] 사용자가 '업체명'을 선택했을 때 시트마다 다른 컬럼명 대응
                             target_col = f_val
                             if f_val == "업체명":
+                                # 시트별로 업체명을 뜻하는 실제 컬럼명 후보들
                                 candidates = ["업체명", "상호", "상호명", "계약상대자", "업체 명", "계약상대자명"]
                                 for cand in candidates:
                                     if cand in df_filtered.columns:
@@ -310,12 +297,15 @@ for i, tab in enumerate(tabs):
                                     if cand in df_filtered.columns:
                                         target_col = cand
                                         break
-                            
+                    
+                            # 1. 최종 결정된 필드가 실제 컬럼에 존재하는지 확인하여 검색
                             if target_col in df_filtered.columns:
                                 return df_filtered[target_col].astype(str).str.contains(k, case=False, na=False)
+                            # 2. 필드가 없거나 "ALL"인 경우 전체 컬럼에서 유사 검색(포함 검색) 수행
                             else:
                                 return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1)
                     
+                        # AND/OR 논리 적용 필터링
                         if l_val == "AND" and k2_val: 
                             df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
                         elif l_val == "OR" and k2_val: 
@@ -325,3 +315,6 @@ for i, tab in enumerate(tabs):
                     
                     st.session_state[f"df_{cat}"] = df_filtered.sort_values(by='tmp_dt', ascending=False)
                     st.session_state[f"p_num_{cat}"] = 1
+        
+        if st.session_state[f"df_{cat}"] is not None:
+            show_result_table(cat, DISPLAY_INDEX_MAP.get(cat, []))
