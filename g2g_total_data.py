@@ -146,8 +146,14 @@ def show_result_table(cat, idx_list):
         ascending = (sort_dir == "오름차순")
         sort_key = 'tmp_dt' if sort_target == "날짜순" else sort_target
         
-        # ✅ 이미 데이터 로드 시 숫자로 변환했으므로, 단순 정렬만 해도 숫자 크기대로 정렬됩니다.
-        st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending, na_position='last')
+        try:
+            # 공백(NaN)은 항상 마지막에 배치
+            st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending, na_position='last')
+        except:
+            # 타입이 섞여서 에러날 경우 문자열로 안전하게 정렬
+            df_temp = df.copy()
+            df_temp[sort_key] = df_temp[sort_key].astype(str)
+            st.session_state[f"df_{cat}"] = df_temp.sort_values(by=sort_key, ascending=ascending, na_position='last')
         st.rerun()
 
     p_limit = limit_col.selectbox("개수", [50, 100, 150, 200], key=f"ps_{cat}", label_visibility="collapsed")
@@ -176,7 +182,7 @@ def show_result_table(cat, idx_list):
         df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], 
         use_container_width=True, 
         height=520,
-        column_config=config  # 여기에 콤마 설정 적용
+        column_config=config  # 설정 적용
     )
 
     pg_cols = st.columns([1, 8, 1])
@@ -280,37 +286,27 @@ for i, tab in enumerate(tabs):
                     d_col = DATE_COL_MAP.get(cat)
                     
                     if cat == '나라장터_발주':
-                        df_raw['tmp_dt'] = s_s 
-                    elif cat == '군수품_발주':
-                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
-                        s_s = s_s[:6] + "01"
-                    elif cat == '나라장터_계약':
-                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
-                    else:
-                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8] if d_col in df_raw.columns else "0"
-
-                    if cat == '나라장터_발주':
                         df_filtered = df_raw.copy()
                     else:
                         df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
-                    # ⭐ [금액 데이터 숫자 변환 로직 추가]
+                    # ⭐ 금액 컬럼 숫자 변환 (알려주신 명칭 정확히 반영)
                     amt_map = {
                         '군수품_계약': '계약가격', 
                         '군수품_수의': '예산금액', 
-                        '군수품_발주': '발주예정액', # 알려주신 C열
+                        '군수품_발주': '예산금액', 
                         '군수품_공고': '기초예가', 
                         '나라장터_발주': '합계발주금액', 
                         '나라장터_계약': '★가공_계약금액', 
                         '종합쇼핑몰': '금액'
                     }
                     target_amt_col = amt_map.get(cat)
-                    if target_amt_col and target_amt_col in df_filtered.columns:
-                        # 숫자 외 문자(,) 제거 후 실제 숫자형으로 변환하여 정렬 문제 해결
+                    if target_amt_col in df_filtered.columns:
+                        # 숫자 외 문자 제거 후 숫자형 변환 (에러 시 무시)
                         df_filtered[target_amt_col] = pd.to_numeric(
                             df_filtered[target_amt_col].astype(str).str.replace(r'[^0-9.-]', '', regex=True), 
                             errors='coerce'
-                        ).fillna(0)
+                        )
 
                     # 3. 키워드 검색 (기존 로직 유지)
                     if k1_val and k1_val.strip():
