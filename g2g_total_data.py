@@ -286,11 +286,27 @@ for i, tab in enumerate(tabs):
                     d_col = DATE_COL_MAP.get(cat)
                     
                     if cat == '나라장터_발주':
+                        # 나라장터 발주는 날짜 필터링을 하지 않기 위해 모든 행을 통과시키는 값 설정
+                        df_raw['tmp_dt'] = s_s 
+                    elif cat == '군수품_발주':
+                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
+                        s_s = s_s[:6] + "01"
+                    elif cat == '나라장터_계약':
+                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+                    else:
+                        # 나머지: 날짜 컬럼이 존재할 때만 생성, 없으면 기본값
+                        if d_col in df_raw.columns:
+                            df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+                        else:
+                            df_raw['tmp_dt'] = "00000000"
+
+                    # 2. 날짜 필터링 적용 (KeyError 방지를 위해 tmp_dt 존재 확인)
+                    if cat == '나라장터_발주':
                         df_filtered = df_raw.copy()
                     else:
                         df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
-                    # ⭐ 금액 컬럼 숫자 변환 (알려주신 명칭 정확히 반영)
+                    # ⭐ 금액 컬럼 숫자 변환 (알려주신 명칭 반영)
                     amt_map = {
                         '군수품_계약': '계약가격', 
                         '군수품_수의': '예산금액', 
@@ -302,7 +318,7 @@ for i, tab in enumerate(tabs):
                     }
                     target_amt_col = amt_map.get(cat)
                     if target_amt_col in df_filtered.columns:
-                        # 숫자 외 문자 제거 후 숫자형 변환 (에러 시 무시)
+                        # 숫자 외 문자 제거 후 숫자형 변환
                         df_filtered[target_amt_col] = pd.to_numeric(
                             df_filtered[target_amt_col].astype(str).str.replace(r'[^0-9.-]', '', regex=True), 
                             errors='coerce'
