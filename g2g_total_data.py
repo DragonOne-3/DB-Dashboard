@@ -196,87 +196,69 @@ for i, tab in enumerate(tabs):
 
         _, center_area, _ = st.columns([0.1, 9.8, 0.1])
         with center_area:
-            # 검색창 시작 (st.form 적용하여 자동 새로고침 방지)
-            with st.form(key=f"search_form_{cat}"):
-                st.markdown('<div class="search-container">', unsafe_allow_html=True)
+            # ⭐ 디자인 유지를 위해 st.form을 쓰지 않고, 'search_exe' 버튼 클릭 시에만 로직이 돌도록 처리함
+            st.markdown('<div class="search-container">', unsafe_allow_html=True)
+            r1_l, r1_r = st.columns([1, 8.5])
+            with r1_l: st.markdown('<div class="search-label">검색조건</div>', unsafe_allow_html=True)
+            with r1_r:
+                sc1, sc2, sc3, sc4 = st.columns([1.5, 3, 1, 3])
+                # selectbox나 text_input에 엔터를 쳐도 자동으로 검색되지 않게 key값만 관리
+                f_val = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"], key=f"f_{cat}", label_visibility="collapsed")
+                k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed", placeholder="검색어")
+                l_val = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
+                k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val=="NONE"), placeholder="검색어2")
+
+            r2_l, r2_r = st.columns([1, 8.5])
+            with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
+            with r2_r:
+                d1, d2, d3, d4 = st.columns([1.3, 1.3, 5.0, 2.0])
                 
-                # [첫 번째 줄] 검색조건
-                r1_l, r1_r = st.columns([1, 8.5])
-                with r1_l: st.markdown('<div class="search-label">검색조건</div>', unsafe_allow_html=True)
-                with r1_r:
-                    sc1, sc2, sc3, sc4 = st.columns([1.5, 3, 1, 3])
-                    f_val = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"], key=f"f_{cat}", label_visibility="collapsed")
-                    k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed", placeholder="검색어")
-                    l_val = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
-                    k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", placeholder="검색어2")
+                v_num = st.session_state[f"ver_{cat}"]
+                s_val = st.session_state[f"sd_{cat}"]
+                e_val = st.session_state[f"ed_{cat}"]
+                
+                if isinstance(s_val, datetime): s_val = s_val.date()
+                if isinstance(e_val, datetime): e_val = e_val.date()
+                valid_s_val = s_val if isinstance(s_val, date) else None
+                valid_e_val = e_val if isinstance(e_val, date) else None
 
-                # [두 번째 줄] 조회기간 + 퀵버튼 + 검색실행
-                r2_l, r2_r = st.columns([1, 8.5])
-                with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
-                with r2_r:
-                    d1, d2, d3, d4 = st.columns([1.3, 1.3, 5.0, 2.0])
-                    
-                    # 날짜 세션 값 불러오기
-                    v_num = st.session_state[f"ver_{cat}"]
-                    s_val = st.session_state[f"sd_{cat}"]
-                    e_val = st.session_state[f"ed_{cat}"]
-                    if isinstance(s_val, datetime): s_val = s_val.date()
-                    if isinstance(e_val, datetime): e_val = e_val.date()
+                sd_in = d1.date_input("시작", value=valid_s_val, key=f"sd_w_{cat}_{v_num}", label_visibility="collapsed")
+                ed_in = d2.date_input("종료", value=valid_e_val, key=f"ed_w_{cat}_{v_num}", label_visibility="collapsed")
+                
+                # 퀵버튼 (원래 디자인 그대로 유지)
+                with d3:
+                    st.markdown('<div class="q-btn-container">', unsafe_allow_html=True)
+                    q_cols = st.columns(8)
+                    def set_period(d=0, m=0, y=0):
+                        st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(days=d, months=m, years=y)
+                        st.session_state[f"ver_{cat}"] += 1
+                        st.rerun()
 
-                    sd_in = d1.date_input("시작", value=s_val, key=f"sd_w_{cat}_{v_num}", label_visibility="collapsed")
-                    ed_in = d2.date_input("종료", value=e_val, key=f"ed_w_{cat}_{v_num}", label_visibility="collapsed")
-                    
-                    # 💡 퀵버튼 영역 (d3 컬럼 내부에 배치)
-                    with d3:
-                        st.markdown('<div class="q-btn-container">', unsafe_allow_html=True)
-                        q_cols = st.columns(8)
-                        # 폼 내부 버튼은 submit 타입이 아니면 동작하지 않으므로, 
-                        # 퀵버튼은 폼의 '새로고침 방지' 효과를 받으면서도 날짜를 바꿀 수 있게 구성해야 함.
-                        # 하지만 퀵버튼 클릭 시 바로 날짜가 변하는 것을 보려면 폼 밖에 있어야 합니다.
-                        # 따라서 d3 영역만 폼의 영향을 받지 않게 하기는 어려우므로 
-                        # 디자인 유지를 위해 버튼들을 다시 배치했습니다.
-                        
-                        if q_cols[0].form_submit_button("어제"):
-                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1)
-                            st.session_state[f"ver_{cat}"] += 1
-                            st.rerun()
-                        if q_cols[1].form_submit_button("1주"):
-                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(days=7)
-                            st.session_state[f"ver_{cat}"] += 1
-                            st.rerun()
-                        if q_cols[2].form_submit_button("1달"):
-                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=1)
-                            st.session_state[f"ver_{cat}"] += 1
-                            st.rerun()
-                        if q_cols[3].form_submit_button("3달"):
-                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=3)
-                            st.session_state[f"ver_{cat}"] += 1
-                            st.rerun()
-                        if q_cols[4].form_submit_button("6달"):
-                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=6)
-                            st.session_state[f"ver_{cat}"] += 1
-                            st.rerun()
-                        if q_cols[5].form_submit_button("9달"):
-                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=9)
-                            st.session_state[f"ver_{cat}"] += 1
-                            st.rerun()
-                        if q_cols[6].form_submit_button("1년"):
-                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(years=1)
-                            st.session_state[f"ver_{cat}"] += 1
-                            st.rerun()
-                        if q_cols[7].form_submit_button("2년"):
-                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(years=2)
-                            st.session_state[f"ver_{cat}"] += 1
-                            st.rerun()
-                        st.markdown('</div>', unsafe_allow_html=True)
+                    if q_cols[0].button(" 어제 ", key=f"d1_{cat}"):
+                        st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1)
+                        st.session_state[f"sd_{cat}"] = date.today()-relativedelta(days=1)
+                        st.session_state[f"ver_{cat}"] += 1
+                        st.rerun()
+                    if q_cols[1].button(" 1주일 ", key=f"d7_{cat}"): set_period(d=7)
+                    if q_cols[2].button(" 1개월 ", key=f"m1_{cat}"): set_period(m=1)
+                    if q_cols[3].button(" 3개월 ", key=f"m3_{cat}"): set_period(m=3)
+                    if q_cols[4].button(" 6개월 ", key=f"m6_{cat}"): set_period(m=6)
+                    if q_cols[5].button(" 9개월 ", key=f"m9_{cat}"): set_period(m=9)
+                    if q_cols[6].button("  1년  ", key=f"y1_{cat}"): set_period(y=1)
+                    if q_cols[7].button("  2년  ", key=f"y2_{cat}"): set_period(y=2)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                with d4:
+                    # ⭐ 이 버튼을 눌렀을 때만 검색 로직이 실행되도록 변수에 할당
+                    search_exe = st.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-                    # 검색실행 버튼
-                    search_exe = d4.form_submit_button("🔍 검색실행", type="primary", use_container_width=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-
-        # [데이터 필터링 및 결과 출력 로직 - 기존과 동일]
+        # 실제 데이터 처리는 search_exe 버튼이 눌린 '그 순간'에만 진행됨
         if search_exe:
             with st.spinner("조회 중..."):
+                # 검색 버튼을 누른 시점의 날짜 정보를 다시 한번 업데이트하여 고정
+                st.session_state[f"sd_{cat}"], st.session_state[f"ed_{cat}"] = sd_in, ed_in
+                
                 df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
                 if not df_raw.empty:
                     s_s, e_s = sd_in.strftime('%Y%m%d'), ed_in.strftime('%Y%m%d')
