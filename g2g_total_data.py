@@ -234,13 +234,15 @@ for i, tab in enumerate(tabs):
                 with d3:
                     st.markdown('<div class="q-btn-container">', unsafe_allow_html=True)
                     q_cols = st.columns(6)
-                    def set_period(m=0, y=0):
+                    def set_period(d=0, m=0, y=0):
                         cur = date.today()
-                        st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=m, years=y)
+                        st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(days=d, months=m, years=y)
                         #st.session_state[f"ed_{cat}"] = cur
                         st.session_state[f"ver_{cat}"] += 1
                         st.rerun()
 
+                    if q_cols[0].button(" 어제 ", key=f"m1_{cat}"): st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1),st.session_state[f"sd_{cat}"] = date.today()-relativedelta(days=1)
+                    if q_cols[0].button(" 1주일 ", key=f"m1_{cat}"): set_period(d=7)
                     if q_cols[0].button(" 1개월 ", key=f"m1_{cat}"): set_period(m=1)
                     if q_cols[1].button(" 3개월 ", key=f"m3_{cat}"): set_period(m=3)
                     if q_cols[2].button(" 6개월 ", key=f"m6_{cat}"): set_period(m=6)
