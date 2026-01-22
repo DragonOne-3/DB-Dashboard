@@ -120,7 +120,7 @@ try:
         df = df[df['★가공_계약명'].str.contains("유지", na=False)]
         df = df[df['★가공_계약명'].str.contains("통합관제|통합|CCTV", na=False)]
         df = df[~df['★가공_계약명'].str.contains("상수도", na=False)]
-        df = df[~df['★가공_계약명'].str.contains("청사", na=False)]
+        df = df[~df['★가공_계약명'].str.contains("청사|악취|미세먼지", na=False)]
         
 
         # 3. 날짜 계산 및 데이터 정렬
