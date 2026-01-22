@@ -196,34 +196,11 @@ for i, tab in enumerate(tabs):
 
         _, center_area, _ = st.columns([0.1, 9.8, 0.1])
         with center_area:
-            # 퀵버튼 영역 (폼 외부 배치: 클릭 시 즉시 날짜 변경 반영)
-            r0_l, r0_r = st.columns([1, 8.5])
-            with r0_r:
-                st.markdown('<div class="q-btn-container" style="margin-bottom:5px;">', unsafe_allow_html=True)
-                q_cols = st.columns(8)
-                def set_period(d=0, m=0, y=0):
-                    cur = date.today()
-                    st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(days=d, months=m, years=y)
-                    st.session_state[f"ver_{cat}"] += 1
-                    st.rerun()
-
-                if q_cols[0].button(" 어제 ", key=f"d1_{cat}"):
-                    st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1)
-                    st.session_state[f"sd_{cat}"] = date.today()-relativedelta(days=1)
-                    st.session_state[f"ver_{cat}"] += 1 
-                    st.rerun() 
-                if q_cols[1].button(" 1주일 ", key=f"d7_{cat}"): set_period(d=7)
-                if q_cols[2].button(" 1개월 ", key=f"m1_{cat}"): set_period(m=1)
-                if q_cols[3].button(" 3개월 ", key=f"m3_{cat}"): set_period(m=3)
-                if q_cols[4].button(" 6개월 ", key=f"m6_{cat}"): set_period(m=6)
-                if q_cols[5].button(" 9개월 ", key=f"m9_{cat}"): set_period(m=9)
-                if q_cols[6].button("  1년  ", key=f"y1_{cat}"): set_period(y=1)
-                if q_cols[7].button("  2년  ", key=f"y2_{cat}"): set_period(y=2)
-                st.markdown('</div>', unsafe_allow_html=True)
-
             # 검색창 시작 (st.form 적용하여 자동 새로고침 방지)
             with st.form(key=f"search_form_{cat}"):
                 st.markdown('<div class="search-container">', unsafe_allow_html=True)
+                
+                # [첫 번째 줄] 검색조건
                 r1_l, r1_r = st.columns([1, 8.5])
                 with r1_l: st.markdown('<div class="search-label">검색조건</div>', unsafe_allow_html=True)
                 with r1_r:
@@ -233,64 +210,93 @@ for i, tab in enumerate(tabs):
                     l_val = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
                     k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", placeholder="검색어2")
 
+                # [두 번째 줄] 조회기간 + 퀵버튼 + 검색실행
                 r2_l, r2_r = st.columns([1, 8.5])
                 with r2_l: st.markdown('<div class="search-label" style="border-bottom:none;">조회기간</div>', unsafe_allow_html=True)
                 with r2_r:
-                    d1, d2, d4 = st.columns([1.3, 1.3, 7.4])
+                    d1, d2, d3, d4 = st.columns([1.3, 1.3, 5.0, 2.0])
                     
-                    # [에러 해결] 세션에서 날짜를 불러올 때 반드시 date 타입임을 보장
+                    # 날짜 세션 값 불러오기
                     v_num = st.session_state[f"ver_{cat}"]
                     s_val = st.session_state[f"sd_{cat}"]
                     e_val = st.session_state[f"ed_{cat}"]
-                    
                     if isinstance(s_val, datetime): s_val = s_val.date()
                     if isinstance(e_val, datetime): e_val = e_val.date()
-                    
-                    # 💡 [루이튼 제안] date_input에 넘겨주기 전에 최종적으로 date 객체인지 확인
-                    valid_s_val = s_val if isinstance(s_val, date) else None
-                    valid_e_val = e_val if isinstance(e_val, date) else None
 
-                    sd_in = d1.date_input("시작", value=valid_s_val, key=f"sd_w_{cat}_{v_num}", label_visibility="collapsed")
-                    ed_in = d2.date_input("종료", value=valid_e_val, key=f"ed_w_{cat}_{v_num}", label_visibility="collapsed")
+                    sd_in = d1.date_input("시작", value=s_val, key=f"sd_w_{cat}_{v_num}", label_visibility="collapsed")
+                    ed_in = d2.date_input("종료", value=e_val, key=f"ed_w_{cat}_{v_num}", label_visibility="collapsed")
                     
-                    # 검색실행 버튼 (form_submit_button으로 변경)
+                    # 💡 퀵버튼 영역 (d3 컬럼 내부에 배치)
+                    with d3:
+                        st.markdown('<div class="q-btn-container">', unsafe_allow_html=True)
+                        q_cols = st.columns(8)
+                        # 폼 내부 버튼은 submit 타입이 아니면 동작하지 않으므로, 
+                        # 퀵버튼은 폼의 '새로고침 방지' 효과를 받으면서도 날짜를 바꿀 수 있게 구성해야 함.
+                        # 하지만 퀵버튼 클릭 시 바로 날짜가 변하는 것을 보려면 폼 밖에 있어야 합니다.
+                        # 따라서 d3 영역만 폼의 영향을 받지 않게 하기는 어려우므로 
+                        # 디자인 유지를 위해 버튼들을 다시 배치했습니다.
+                        
+                        if q_cols[0].form_submit_button("어제"):
+                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] = date.today()-relativedelta(days=1)
+                            st.session_state[f"ver_{cat}"] += 1
+                            st.rerun()
+                        if q_cols[1].form_submit_button("1주"):
+                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(days=7)
+                            st.session_state[f"ver_{cat}"] += 1
+                            st.rerun()
+                        if q_cols[2].form_submit_button("1달"):
+                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=1)
+                            st.session_state[f"ver_{cat}"] += 1
+                            st.rerun()
+                        if q_cols[3].form_submit_button("3달"):
+                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=3)
+                            st.session_state[f"ver_{cat}"] += 1
+                            st.rerun()
+                        if q_cols[4].form_submit_button("6달"):
+                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=6)
+                            st.session_state[f"ver_{cat}"] += 1
+                            st.rerun()
+                        if q_cols[5].form_submit_button("9달"):
+                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(months=9)
+                            st.session_state[f"ver_{cat}"] += 1
+                            st.rerun()
+                        if q_cols[6].form_submit_button("1년"):
+                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(years=1)
+                            st.session_state[f"ver_{cat}"] += 1
+                            st.rerun()
+                        if q_cols[7].form_submit_button("2년"):
+                            st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(years=2)
+                            st.session_state[f"ver_{cat}"] += 1
+                            st.rerun()
+                        st.markdown('</div>', unsafe_allow_html=True)
+
+                    # 검색실행 버튼
                     search_exe = d4.form_submit_button("🔍 검색실행", type="primary", use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
+        # [데이터 필터링 및 결과 출력 로직 - 기존과 동일]
         if search_exe:
             with st.spinner("조회 중..."):
                 df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
                 if not df_raw.empty:
                     s_s, e_s = sd_in.strftime('%Y%m%d'), ed_in.strftime('%Y%m%d')
-                    
-                    # 1. 카테고리별 날짜 처리 (tmp_dt 생성)
                     d_col = DATE_COL_MAP.get(cat)
                     
                     if cat == '나라장터_발주':
-                        # 나라장터 발주는 날짜 필터링을 하지 않기 위해 모든 행을 통과시키는 값 설정
                         df_raw['tmp_dt'] = s_s 
-                    
                     elif cat == '군수품_발주':
-                        # 발주예정월(YYYYMM)인 경우: 검색 시작일의 월과 종료일의 월 비교
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
-                        # 시작일도 해당 월의 1일로 보정하여 비교
                         s_s = s_s[:6] + "01"
-                        
                     elif cat == '나라장터_계약':
-                        # YYYY-MM-DD 형태이므로 하이픈 제거 후 8자리 숫자로 변환
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
-                    
                     else:
-                        # 나머지(YYYYMMDD 형식들): 숫자만 남기고 8자리로 처리
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8] if d_col in df_raw.columns else "0"
 
-                    # 2. 날짜 필터링 적용
                     if cat == '나라장터_발주':
-                        df_filtered = df_raw.copy() # 날짜 조건 무시
+                        df_filtered = df_raw.copy()
                     else:
                         df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
-                    # 3. 키워드 검색 (기존 로직 유지)
                     if k1_val and k1_val.strip():
                         def get_mask(k): return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1) if f_val == "ALL" else df_filtered[f_val].astype(str).str.contains(k, case=False, na=False)
                         if l_val == "AND" and k2_val: df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
