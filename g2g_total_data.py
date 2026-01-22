@@ -163,7 +163,15 @@ def show_result_table(cat, idx_list):
     # 테이블 및 페이지네이션
     total_pages = max((len(df) - 1) // p_limit + 1, 1)
     curr_p = st.session_state.get(f"p_num_{cat}", 1)
-    st.dataframe(df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], use_container_width=True, height=520)
+    st.dataframe(
+        df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], 
+        use_container_width=True, 
+        height=520,
+        column_config={
+            "금액": st.column_config.NumberColumn(format="%d"),
+            "수량": st.column_config.NumberColumn(format="%d")
+        }
+    )
 
     pg_cols = st.columns([1, 8, 1])
     with pg_cols[1]:
