@@ -237,7 +237,7 @@ for i, tab in enumerate(tabs):
                     def set_period(m=0, y=0):
                         cur = date.today()
                         st.session_state[f"sd_{cat}"] = cur - relativedelta(months=m, years=y)
-                        st.session_state[f"ed_{cat}"] = cur
+                        #st.session_state[f"ed_{cat}"] = cur
                         st.session_state[f"ver_{cat}"] += 1
                         st.rerun()
 
