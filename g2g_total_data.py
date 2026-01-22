@@ -146,14 +146,8 @@ def show_result_table(cat, idx_list):
         ascending = (sort_dir == "오름차순")
         sort_key = 'tmp_dt' if sort_target == "날짜순" else sort_target
         
-        # 💡 가장 안전한 정렬 방식 (에러 방지용 astype(str) 포함)
-        try:
-            st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending, na_position='last')
-        except TypeError:
-            # 숫자와 문자가 섞여 있을 경우를 대비한 안전망
-            df_copy = df.copy()
-            df_copy[sort_key] = df_copy[sort_key].astype(str)
-            st.session_state[f"df_{cat}"] = df_copy.sort_values(by=sort_key, ascending=ascending, na_position='last')
+        # ✅ 이미 데이터 로드 시 숫자로 변환했으므로, 단순 정렬만 해도 숫자 크기대로 정렬됩니다.
+        st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending, na_position='last')
         st.rerun()
 
     p_limit = limit_col.selectbox("개수", [50, 100, 150, 200], key=f"ps_{cat}", label_visibility="collapsed")
@@ -172,19 +166,17 @@ def show_result_table(cat, idx_list):
     total_pages = max((len(df) - 1) // p_limit + 1, 1)
     curr_p = st.session_state.get(f"p_num_{cat}", 1)
 
-    # 💡 빨간 세모 에러 방지용 콤마 설정
-    # 숫자형이든 문자형이든 에러 없이 콤마를 찍기 위해 구성을 바꿉니다.
-    config = {}
-    for col in show_cols:
-        if any(x in str(col) for x in ["금액", "수량", "액", "가"]):
-            # TextColumn을 사용하면 숫자가 아닌 값이 섞여 있어도 빨간 세모가 뜨지 않습니다.
-            config[col] = st.column_config.TextColumn()
+    # ✅ 숫자형으로 바뀐 컬럼들에 천 단위 콤마(%,d)를 찍어줍니다.
+    amt_keywords = ["금액", "가격", "예가", "예산"]
+    config = {col: st.column_config.NumberColumn(format="%,d") 
+              for col in show_cols 
+              if any(kw in str(col) for kw in amt_keywords)}
 
     st.dataframe(
         df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], 
         use_container_width=True, 
         height=520,
-        column_config=config  # 안전한 텍스트 모드로 출력
+        column_config=config  # 여기에 콤마 설정 적용
     )
 
     pg_cols = st.columns([1, 8, 1])
@@ -276,6 +268,7 @@ for i, tab in enumerate(tabs):
             st.markdown('</div>', unsafe_allow_html=True)
 
         # 실제 데이터 처리는 search_exe 버튼이 눌린 '그 순간'에만 진행됨
+        # 실제 데이터 처리는 search_exe 버튼이 눌린 '그 순간'에만 진행됨
         if search_exe:
             with st.spinner("조회 중..."):
                 # 검색 버튼을 누른 시점의 날짜 정보를 다시 한번 업데이트하여 고정
@@ -301,13 +294,29 @@ for i, tab in enumerate(tabs):
                     else:
                         df_filtered = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
-                    # 3. 키워드 검색 (컬럼명 불일치 해결 및 유사 검색 유지)
+                    # ⭐ [금액 데이터 숫자 변환 로직 추가]
+                    amt_map = {
+                        '군수품_계약': '계약가격', 
+                        '군수품_수의': '예산금액', 
+                        '군수품_발주': '발주예정액', # 알려주신 C열
+                        '군수품_공고': '기초예가', 
+                        '나라장터_발주': '합계발주금액', 
+                        '나라장터_계약': '★가공_계약금액', 
+                        '종합쇼핑몰': '금액'
+                    }
+                    target_amt_col = amt_map.get(cat)
+                    if target_amt_col and target_amt_col in df_filtered.columns:
+                        # 숫자 외 문자(,) 제거 후 실제 숫자형으로 변환하여 정렬 문제 해결
+                        df_filtered[target_amt_col] = pd.to_numeric(
+                            df_filtered[target_amt_col].astype(str).str.replace(r'[^0-9.-]', '', regex=True), 
+                            errors='coerce'
+                        ).fillna(0)
+
+                    # 3. 키워드 검색 (기존 로직 유지)
                     if k1_val and k1_val.strip():
                         def get_mask(k):
-                            # [유연한 필드 매핑] 사용자가 '업체명'을 선택했을 때 시트마다 다른 컬럼명 대응
                             target_col = f_val
                             if f_val == "업체명":
-                                # 시트별로 업체명을 뜻하는 실제 컬럼명 후보들
                                 candidates = ["업체명", "상호", "상호명", "계약상대자", "업체 명", "계약상대자명"]
                                 for cand in candidates:
                                     if cand in df_filtered.columns:
@@ -319,15 +328,12 @@ for i, tab in enumerate(tabs):
                                     if cand in df_filtered.columns:
                                         target_col = cand
                                         break
-                    
-                            # 1. 최종 결정된 필드가 실제 컬럼에 존재하는지 확인하여 검색
+                            
                             if target_col in df_filtered.columns:
                                 return df_filtered[target_col].astype(str).str.contains(k, case=False, na=False)
-                            # 2. 필드가 없거나 "ALL"인 경우 전체 컬럼에서 유사 검색(포함 검색) 수행
                             else:
                                 return df_filtered.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1)
                     
-                        # AND/OR 논리 적용 필터링
                         if l_val == "AND" and k2_val: 
                             df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
                         elif l_val == "OR" and k2_val: 
@@ -337,6 +343,3 @@ for i, tab in enumerate(tabs):
                     
                     st.session_state[f"df_{cat}"] = df_filtered.sort_values(by='tmp_dt', ascending=False)
                     st.session_state[f"p_num_{cat}"] = 1
-        
-        if st.session_state[f"df_{cat}"] is not None:
-            show_result_table(cat, DISPLAY_INDEX_MAP.get(cat, []))
