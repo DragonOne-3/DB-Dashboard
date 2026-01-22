@@ -7,7 +7,7 @@ import pandas as pd
 import io
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
-from googleapiclient.http import MediaIoBaseUpload # 💡 [루이튼 반영] 이 import가 추가되었습니다!
+from googleapiclient.http import MediaIoBaseUpload 
 
 # 기타 스크립트에서 필요한 모듈들
 from pytimekr import pytimekr # 공휴일 계산용
@@ -39,8 +39,8 @@ keywords = [
 # 구글 드라이브 API 서비스 함수 (데이터 수집 스크립트 전용)
 def get_drive_service_for_script():
     info = json.loads(AUTH_JSON_STR)
-    # 파일 생성/수정 권한이 필요하므로 drive.file 스코프 사용 (최소 권한 원칙)
-    scopes = ['https://www.googleapis.com/auth/drive.file']
+    # 💡 [루이튼 반영] (스코프 확장) drive.file 대신 drive 스코프를 사용하여 읽기/쓰기 권한을 넓힙니다.
+    scopes = ['https://www.googleapis.com/auth/drive'] # drive.file -> drive 로 변경!
     creds = service_account.Credentials.from_service_account_info(info, scopes=scopes)
     return build('drive', 'v3', credentials=creds), creds
 
@@ -51,12 +51,8 @@ def get_target_date():
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
     target = now - datetime.timedelta(days=1)
     
-    # pytimekr.holidays()는 이미 datetime.date 객체들의 리스트를 반환합니다.
-    # 따라서 `.date()`를 다시 호출할 필요가 없습니다.
     holidays = pytimekr.holidays(year=target.year)
     
-    # target.date()는 datetime 객체인 target에서 날짜 부분만 추출하는 올바른 사용법입니다.
-    # holidays 리스트의 요소들도 이미 datetime.date 객체이므로 직접 비교하면 됩니다.
     while target.weekday() >= 5 or target.date() in holidays:
         target -= datetime.timedelta(days=1)
     return target
@@ -192,7 +188,6 @@ def main():
                 # '제일 마지막 데이터 밑에 추가'하되, 혹시 모를 중복 제거를 위해 주요 컬럼 기준으로 중복을 제거합니다.
                 # `keep='last'`를 사용하여 새로 추가된 데이터(오늘 수집된 데이터)가 유지되도록 합니다.
                 deduplicated_combined_df = combined_df.drop_duplicates(
-                    # HEADER_KOR에 정의된 실제 컬럼명 ['계약납품요구일자', '수요기관명', '품명', '금액']을 사용해야 합니다!
                     subset=['계약납품요구일자', '수요기관명', '품명', '금액'], 
                     keep='last'
                 )
@@ -211,24 +206,24 @@ def main():
         csv_bytes = csv_buffer.getvalue().encode('utf-8-sig') # BytesIO에 넣기 위해 다시 바이트로 인코딩
 
         # --- 구글 드라이브에 파일 업로드/업데이트 ---
-        # 💡 [루이튼 반영] media_body를 MediaIoBaseUpload로 감싸줍니다.
+        # media_body를 MediaIoBaseUpload로 감싸줍니다.
         media_body = MediaIoBaseUpload(io.BytesIO(csv_bytes), mimetype='text/csv', resumable=True)
 
         if file_id: # 기존 파일 업데이트
             drive_service.files().update(
                 fileId=file_id,
-                media_body=media_body, # 💡 [루이튼 반영] 수정된 media_body 사용
+                media_body=media_body, 
             ).execute()
             print(f"✅ '{FILE_NAME_FOR_YEAR}' 업데이트 완료!")
         else: # 새 파일 생성
             file_metadata = {
                 'name': FILE_NAME_FOR_YEAR,
-                'parents': [DRIVE_FOLDER_ID], # 여기에 폴더 ID 지정!
+                'parents': [DRIVE_FOLDER_ID], 
                 'mimeType': 'text/csv'
             }
             drive_service.files().create(
                 body=file_metadata,
-                media_body=media_body, # 💡 [루이튼 반영] 수정된 media_body 사용
+                media_body=media_body, 
                 fields='id' # 생성된 파일 ID를 받기 위함
             ).execute()
             print(f"✅ '{FILE_NAME_FOR_YEAR}' 생성 및 업로드 완료!")
@@ -236,11 +231,9 @@ def main():
         print(f"✅ {d_str} 원본 데이터 {len(final_data)}건 CSV 파일 처리 완료.")
 
         # --- 2. [분석 및 메인 본문용] 중복 제거 로직 ---
-        # 이 분석 로직은 '오늘 수집된 데이터(final_data)'만을 가지고 진행하는 기존 방식을 유지합니다.
         unique_final_data = {} 
         for row in final_data: 
             try:
-                # 데이터 인덱스 기반 키 생성 (4가지 기준)
                 key = (str(row[7]), str(row[21]), str(row[20]), str(row[14]))
                 if key not in unique_final_data:
                     unique_final_data[key] = row
