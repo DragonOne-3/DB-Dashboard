@@ -15,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.10'
 
       - name: Install dependencies # 💡 [루이튼 최종 수정] 이 부분을 이렇게 변경했습니다!
         run: |
