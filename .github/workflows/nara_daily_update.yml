@@ -2,7 +2,7 @@ name: Daily Procurement Data Bot
 
 on:
   schedule:
-    # 한국 시간 기준 매일 07:00 (UTC 22:00)
+    # 한국 시간 기준 매일 07:13 (UTC 22:13)
     - cron: '13 22 * * *'
   workflow_dispatch: # 수동 실행 버튼 활성화
 
@@ -15,7 +15,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.9'
 
       - name: Install dependencies # 💡 [루이튼 최종 수정] 이 부분을 이렇게 변경했습니다!
         run: |
