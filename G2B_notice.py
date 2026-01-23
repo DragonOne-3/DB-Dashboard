@@ -6,10 +6,11 @@ import time
 import requests
 import pandas as pd
 import io
-import traceback  # 에러 상세 로그 출력용
+import traceback
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseUpload
+from google.auth.transport.requests import Request  # 올바른 Request 임포트
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ================= 설정 =================
@@ -28,6 +29,7 @@ def get_drive_service():
         creds = service_account.Credentials.from_service_account_info(
             info, scopes=['https://www.googleapis.com/auth/drive']
         )
+        # 서비스 계정은 처음 호출 시 자동으로 토큰을 발급받으므로 별도의 refresh()가 필요 없습니다.
         return build('drive', 'v3', credentials=creds, cache_discovery=False), creds
     except Exception as e:
         print(f"❌ 구글 인증 에러: {e}")
@@ -71,9 +73,12 @@ def update_drive(drive_service, creds, cat_name, new_df):
         items = results.get('files', [])
         file_id = items[0]['id'] if items else None
         
+        # 토큰 유효성 체크 및 자동 갱신
+        if not creds.valid:
+            creds.refresh(Request())
+
         if file_id:
             download_url = f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media'
-            # 3.12에서 안전하게 토큰 갱신 후 요청
             resp = requests.get(download_url, headers={'Authorization': f'Bearer {creds.token}'})
             if resp.status_code == 200:
                 old_df = pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
@@ -102,13 +107,12 @@ def process_category(category, url, date_chunks, drive_service, creds):
             else:
                 print(f"ℹ️ [{category}] {s} ~ {e} 데이터 없음")
         except Exception as e:
-            print(f"❌ [{category}] 구간 처리 중 치명적 에러: {e}")
-            traceback.print_exc()
+            print(f"❌ [{category}] 구간 처리 중 에러: {e}")
         time.sleep(1)
 
 def main():
     if len(sys.argv) < 3:
-        print("❌ 인자가 부족합니다. YYYYMMDD YYYYMMDD 형식을 확인하세요.")
+        print("❌ 사용법: python G2B_notice.py 20250101 20260122")
         return
     
     start_str, end_str = sys.argv[1], sys.argv[2]
@@ -127,24 +131,16 @@ def main():
             curr = next_m
 
         drive_service, creds = get_drive_service()
-        # 토큰 미리 강제 갱신
-        creds.refresh(requests.Request())
         
-        print(f"📊 총 {len(date_chunks)}개 구간 병렬 처리 시작 (최대 3개 스레드)")
+        print(f"📊 총 {len(date_chunks)}개 구간 병렬 처리 시작")
 
-        # as_completed를 사용하여 모든 스레드가 끝날 때까지 메인 프로세스가 대기하도록 함
         with ThreadPoolExecutor(max_workers=3) as executor:
-            future_to_cat = {
-                executor.submit(process_category, cat, url, date_chunks, drive_service, creds): cat 
-                for cat, url in FILE_MAP.items()
-            }
-            for future in as_completed(future_to_cat):
-                cat = future_to_cat[future]
-                try:
-                    future.result()
-                    print(f"🏁 [{cat}] 모든 작업 완료")
-                except Exception as e:
-                    print(f"❌ [{cat}] 스레드 내부 에러 발생: {e}")
+            futures = [executor.submit(process_category, cat, url, date_chunks, drive_service, creds) 
+                       for cat, url in FILE_MAP.items()]
+            for future in as_completed(futures):
+                future.result()
+
+        print("🏁 모든 카테고리 수집 종료")
 
     except Exception as e:
         print(f"❌ 메인 로직 에러: {e}")
