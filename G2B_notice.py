@@ -6,7 +6,8 @@ import time
 import requests
 import pandas as pd
 import io
-import traceback
+import gc
+import threading
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseUpload
@@ -15,6 +16,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def log(msg):
     print(msg, flush=True)
+
+save_lock = threading.Lock()
 
 # ================= 설정 =================
 SERVICE_KEY = os.environ.get('DATA_GO_KR_API_KEY')
@@ -31,7 +34,6 @@ def get_drive_service():
     creds = service_account.Credentials.from_service_account_info(
         info, scopes=['https://www.googleapis.com/auth/drive']
     )
-    # API 요청 속도 및 안정성을 위해 전용 세션 구축
     return build('drive', 'v3', credentials=creds, cache_discovery=False), creds
 
 def fetch_data_chunk(category, url, s_dt, e_dt):
@@ -45,7 +47,6 @@ def fetch_data_chunk(category, url, s_dt, e_dt):
                 'inqryBgnDt': s_dt + "0000", 'inqryEndDt': e_dt + "2359"
             }
             log(f"   - [{category}] {s_dt} ~ {e_dt} | {page}p 요청")
-            
             try:
                 res = session.get(url, params=params, timeout=45)
                 if res.status_code == 200:
@@ -62,69 +63,64 @@ def fetch_data_chunk(category, url, s_dt, e_dt):
     return pd.DataFrame(all_data)
 
 def update_drive_robust(drive_service, creds, cat_name, new_df):
-    """대용량 파일 처리에 강한 업로드 로직"""
     if new_df.empty: return
     file_name = f"나라장터_공고_{cat_name}.csv"
     
-    try:
-        # 1. 파일 찾기
-        query = f"name='{file_name}' and trashed=false"
-        results = drive_service.files().list(q=query, fields='files(id)').execute()
-        items = results.get('files', [])
-        file_id = items[0]['id'] if items else None
-        
-        # 2. 기존 데이터 다운로드 및 병합
-        if file_id:
-            try:
-                # 토큰 갱신
-                if not creds.valid:
-                    creds.refresh(Request())
-                
-                download_url = f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media'
-                # 타임아웃 넉넉히 설정
-                resp = requests.get(download_url, headers={'Authorization': f'Bearer {creds.token}'}, timeout=60)
-                if resp.status_code == 200:
-                    # 인코딩 대응
-                    try:
-                        old_df = pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
-                    except:
-                        old_df = pd.read_csv(io.BytesIO(resp.content), encoding='cp949', low_memory=False)
-                    new_df = pd.concat([old_df, new_df], ignore_index=True)
-            except Exception as e:
-                log(f"⚠️ [{cat_name}] 기존 파일 다운로드 실패(병합 건너뜀): {e}")
-
-        # 3. 중복 제거
-        if 'bidNtceNo' in new_df.columns:
-            new_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
+    with save_lock:
+        try:
+            query = f"name='{file_name}' and trashed=false"
+            results = drive_service.files().list(q=query, fields='files(id)').execute()
+            items = results.get('files', [])
+            file_id = items[0]['id'] if items else None
             
-        # 4. 메모리 절약을 위해 스트림 방식으로 업로드 준비
-        csv_buffer = io.BytesIO()
-        new_df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
-        csv_buffer.seek(0)
-        
-        media = MediaIoBaseUpload(csv_buffer, mimetype='text/csv', resumable=True)
+            if file_id:
+                if not creds.valid: creds.refresh(Request())
+                download_url = f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media'
+                resp = requests.get(download_url, headers={'Authorization': f'Bearer {creds.token}'}, timeout=60)
+                
+                if resp.status_code == 200:
+                    try:
+                        # 기존 1행 헤더를 유지하며 데이터 읽기
+                        old_df = pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
+                        # 컬럼 순서 일치 및 병합
+                        new_df = pd.concat([old_df, new_df], ignore_index=True)
+                        del old_df
+                    except Exception as e:
+                        log(f"⚠️ [{cat_name}] 기존 파일 읽기 오류(새로 생성 시도): {e}")
 
-        # 5. 업로드 수행
-        if file_id:
-            drive_service.files().update(fileId=file_id, media_body=media).execute()
-        else:
-            drive_service.files().create(body={'name': file_name}, media_body=media).execute()
-        log(f"✅ [{cat_name}] 드라이브 저장 완료")
-        
-    except Exception as e:
-        log(f"❌ [{cat_name}] 드라이브 최종 처리 실패: {e}")
-        traceback.print_exc()
+            # 중복 제거 (공고번호 기준)
+            if 'bidNtceNo' in new_df.columns:
+                new_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
+            
+            # 🚀 저장 시 index=False를 사용하여 데이터만 넣고, 
+            # 🚀 header=True(기본값)로 기존 컬럼명을 1행에 유지함
+            csv_buffer = io.BytesIO()
+            new_df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+            csv_buffer.seek(0)
+            
+            media = MediaIoBaseUpload(csv_buffer, mimetype='text/csv', resumable=True)
+            if file_id:
+                drive_service.files().update(fileId=file_id, media_body=media).execute()
+            else:
+                drive_service.files().create(body={'name': file_name}, media_body=media).execute()
+            
+            log(f"✅ [{cat_name}] 드라이브 저장 완료")
+            del new_df
+            gc.collect() 
+            
+        except Exception as e:
+            log(f"❌ [{cat_name}] 드라이브 저장 오류: {e}")
 
 def process_category(category, url, date_chunks, drive_service, creds):
-    # API 서버 부하 방지를 위해 카테고리별로 약간의 시차를 둠
-    time.sleep({'공사': 0, '물품': 5, '용역': 10}[category])
+    offset = {'공사': 0, '물품': 3, '용역': 6}[category]
+    time.sleep(offset)
     
     for s, e in date_chunks:
         log(f"\n🔄 [{category}] 구간 시작: {s} ~ {e}")
         chunk_df = fetch_data_chunk(category, url, s, e)
         if not chunk_df.empty:
             update_drive_robust(drive_service, creds, category, chunk_df)
-        time.sleep(2)
+        time.sleep(1)
 
 def main():
     if len(sys.argv) < 3: return
@@ -133,11 +129,10 @@ def main():
     start_date = datetime.datetime.strptime(start_str, '%Y%m%d')
     end_date = datetime.datetime.strptime(end_str, '%Y%m%d')
     
-    # 데이터가 많으므로 10일 단위로 쪼갬
     date_chunks = []
     curr = start_date
     while curr <= end_date:
-        chunk_e = min(curr + datetime.timedelta(days=9), end_date)
+        chunk_e = min(curr + datetime.timedelta(days=14), end_date)
         date_chunks.append((curr.strftime('%Y%m%d'), chunk_e.strftime('%Y%m%d')))
         curr = chunk_e + datetime.timedelta(days=1)
 
