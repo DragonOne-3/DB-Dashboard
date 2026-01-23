@@ -35,15 +35,14 @@ jobs:
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
-          server_port: 587             # 465 대신 보안 검사가 더 유연한 587번 포트 사용
-          secure: false                # 587 포트를 사용할 때 필요한 설정
+          server_port: 465             # 잘 되었던 465 포트로 다시 복구
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
-          subject: "🤖 [조달 DATA] 특정품목 납품 DATA ${{ steps.run_script.outputs.collect_date }} 수집 결과"
-          # 수신인에 본인 메일(jetti4856@gmail.com)도 추가해서 내가 잘 받는지 먼저 확인해보세요.
+          # 제목에서 로봇 이모지를 빼고 대괄호 형식을 유지합니다.
+          subject: "[조달 DATA] 특정품목 납품 DATA ${{ steps.run_script.outputs.collect_date }} 수집 결과"
           to: mhy9680@innodep.com, jinseok8809@innodep.com, jetti4856@gmail.com
-          # 발신자 이름을 메일 주소와 동일하게 설정 (수신 차단 확률을 낮춤)
-          from: jetti4856@gmail.com
+          # 발신자 이름을 '조달데이터봇'처럼 한글로 명시 (성공 확률이 높습니다)
+          from: 조달데이터봇 <jetti4856@gmail.com>
           html_body: |
             <div style="font-family: 'Malgun Gothic', sans-serif; line-height: 1.6;">
               <h3>🏛️ 조달청 데이터 자동 수집 리포트</h3>
