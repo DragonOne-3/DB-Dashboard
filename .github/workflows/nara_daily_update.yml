@@ -40,7 +40,7 @@ jobs:
           password: ${{ secrets.EMAIL_PASS }}
           # 제목에서 로봇 이모지를 빼고 대괄호 형식을 유지합니다.
           subject: "[조달 DATA] 특정품목 납품 DATA ${{ steps.run_script.outputs.collect_date }} 수집 결과"
-          to: mhy9680@innodep.com, mhy9680@naver.com
+          to: mhy9680@innodep.com, mhy9680@naver.com, jinseok8809@innodep.com, jetti4856@gmail.com, seungju@innodep.com
           # 발신자 이름을 '조달데이터봇'처럼 한글로 명시 (성공 확률이 높습니다)
           from: 조달데이터봇 <jetti4856@gmail.com>
           html_body: |
