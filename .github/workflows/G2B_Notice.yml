@@ -6,11 +6,11 @@ on:
       start_date:
         description: '수집 시작일 (YYYYMMDD)'
         required: true
-        default: '20240101'
+        default: '20220101'
       end_date:
         description: '수집 종료일 (YYYYMMDD)'
         required: true
-        default: '20251231'
+        default: '20231231'
 
 jobs:
   collect:
