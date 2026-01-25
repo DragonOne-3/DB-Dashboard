@@ -40,9 +40,9 @@ def get_gs_client():
 
 def main():
     # 1. 수집 대상 날짜 계산
-    target_dt = get_target_date()
-    target_str = target_dt.strftime("%Y%m%d")
-    display_str = target_dt.strftime("%Y-%m-%d")
+    #target_dt = get_target_date()
+    target_str = '2026-01-19' #target_dt.strftime("%Y%m%d")
+    display_str = '2026-01-23' #target_dt.strftime("%Y-%m-%d")
     
     # 키워드 리스트: '방위' 추가
     keywords = ['CCTV', '통합관제', '주차관리', '영상감시장치', '영상정보처리기기', '국방', '부대', '작전', '경계', '방위','데이터','플랫폼','솔루션','군사', '무인화', '사령부', '군대','스마트시티','스마트도시','ITS','GIS']
