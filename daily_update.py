@@ -40,7 +40,7 @@ def get_gs_client():
 
 def main():
     # 1. 수집 대상 날짜 계산
-    #target_dt = get_target_date()
+    target_dt = get_target_date()
     target_str = target_dt.strftime("%Y%m%d")
     display_str = target_dt.strftime("%Y-%m-%d")
     
