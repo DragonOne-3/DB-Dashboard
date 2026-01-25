@@ -21,8 +21,8 @@ def fetch_monthly_plan(target_month):
     while True:
         params = {
             'serviceKey': SERVICE_KEY,
-            'orderPrearngeMtBegin': target_month,
-            'orderPrearngeMtEnd': target_month,
+            'orderPrearngeMtBegin': '2026-01-19', #target_month,
+            'orderPrearngeMtEnd': '2026-01-23', #target_month,
             'numOfRows': '500',
             'pageNo': str(page_no)
         }
