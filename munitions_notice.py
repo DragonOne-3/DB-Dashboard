@@ -21,8 +21,8 @@ def fetch_daily_data(target_date):
     while True:
         params = {
             'serviceKey': SERVICE_KEY,
-            'anmtDateBegin': '20260119' #target_date, # 공고일자 시작 (어제)
-            'anmtDateEnd': '20260123' #target_date,   # 공고일자 종료 (어제)
+            'anmtDateBegin': '2026-01-19' #target_date, # 공고일자 시작 (어제)
+            'anmtDateEnd': '2026-01-23' #target_date,   # 공고일자 종료 (어제)
             'numOfRows': '500',
             'pageNo': str(page_no)
         }
