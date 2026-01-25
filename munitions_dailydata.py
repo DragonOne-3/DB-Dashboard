@@ -22,7 +22,7 @@ def get_yesterday_data():
     params = {
         'serviceKey': SERVICE_KEY,
         'cntrctDateBegin': yesterday,
-        'cntrctDateEnd': to_date #yesterday,
+        'cntrctDateEnd': to_date , #yesterday
         'numOfRows': '20000', # 하루치 데이터는 5000건이면 충분함
         'pageNo': '1'
     }
