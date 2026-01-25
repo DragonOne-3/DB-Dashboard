@@ -15,14 +15,14 @@ def get_yesterday_data():
     url = 'http://openapi.d2b.go.kr/openapi/service/CntrctInfoService/getDmstcCntrctInfoList'
     
     # 어제 날짜 계산
-    yesterday = '20260119' #(datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-    to_date = '20260123'
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    
     print(f"{yesterday} 데이터를 수집합니다.")
     
     params = {
         'serviceKey': SERVICE_KEY,
         'cntrctDateBegin': yesterday,
-        'cntrctDateEnd': to_date , #yesterday
+        'cntrctDateEnd': yesterday,
         'numOfRows': '20000', # 하루치 데이터는 5000건이면 충분함
         'pageNo': '1'
     }
