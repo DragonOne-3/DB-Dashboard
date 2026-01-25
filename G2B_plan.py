@@ -62,8 +62,8 @@ def run_process():
     sheet = spreadsheet.get_worksheet(0)
 
     # 2. 날짜 구간 설정 (2025-01-01 ~ 오늘)
-    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
-    today = datetime.now().strftime('%Y%m%d')
+    yesterday = '2026-01-19' #(datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
+    today = '2026-01-23' #datetime.now().strftime('%Y%m%d')
     
     print(f">>> {yesterday} 발주계획 데이터 수집 시작...")
     items = fetch_g2b_by_date_range(yesterday, today) # fetch_g2b_by_date_range 함수 사용
