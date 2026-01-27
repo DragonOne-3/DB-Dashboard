@@ -209,30 +209,19 @@ def main():
 
     # 🚀 국방 기관 필터링
     # 🚀 [수정] 국방 기관 필터링: 더 유연하게 매칭되도록 보완
-    defense_env = os.environ.get('DEFENSE_ORG_LIST', '')
-    # 콤마, 줄바꿈, 세미콜론 등으로 구분된 리스트를 모두 허용
-    defense_org_list = [x.strip() for x in defense_env.replace('\n', ',').replace(';', ',').split(',') if x.strip()]
+    # 🚀 [추가] 국방 요약에서 원치 않는 기관(학교, 민방위, 교육청) 제외 로직
+    exclude_keywords = ['학교', '민방위', '교육청']
 
-    def is_defense_match(org_name):
-        # 시크릿에 등록된 기관이 하나도 없으면 국방 카테고리 데이터를 모두 보여줌 (누락 방지)
-        if not defense_org_list: 
-            return True 
-        
-        # 1. 대상 기관명 정제: 공백 제거, '제' 제거
-        clean_org = org_name.replace(" ", "").replace("제", "")
-        
-        for target in defense_org_list:
-            # 2. 시크릿 등록 키워드 정제
-            clean_target = target.replace(" ", "").replace("제", "")
-            
-            # 3. 상호 포함 관계 확인 (예: '국방과학연구소'와 '국방 과학 연구소' 매칭)
-            if clean_target in clean_org or clean_org in clean_target:
-                return True
-        return False
+    def is_valid_org(org_name):
+        # 제외 키워드 중 하나라도 기관명에 포함되어 있으면 False 반환
+        for word in exclude_keywords:
+            if word in org_name:
+                return False
+        return True
 
-    # 필터링 적용 (기존 카테고리 분류 데이터에서 재검증)
-    notice_mail_buckets['국방'] = [item for item in notice_mail_buckets['국방'] if is_defense_match(item['org'])]
-    contract_mail_buckets['국방'] = [item for item in contract_mail_buckets['국방'] if is_defense_match(item['org'])]
+    # 국방 섹션에서 해당 키워드가 포함된 데이터 제거
+    notice_mail_buckets['국방'] = [item for item in notice_mail_buckets['국방'] if is_valid_org(item['org'])]
+    contract_mail_buckets['국방'] = [item for item in contract_mail_buckets['국방'] if is_valid_org(item['org'])]
 
     # --- PART 4: 리포트 HTML 조립 ---
     report_html = f"""
