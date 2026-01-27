@@ -43,7 +43,7 @@ jobs:
           password: ${{ secrets.EMAIL_PASS }}
           # 제목 날짜 변동 가능
           subject: "[조달 리포트] ${{ steps.run_script.outputs.collect_date }} 수집 결과"
-          to: mhy9680@innodep.com, mhy9680@naver.com, jinseok8809@innodep.com, jetti4856@gmail.com, seungju@innodep.com
+          to: mhy9680@naver.com
           from: 조달데이터봇 <jetti4856@gmail.com>
           # 🚀 [핵심 수정] 아래 한 줄로 모든 리포트가 전송됩니다.
           html_body: |
