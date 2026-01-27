@@ -30,6 +30,7 @@ jobs:
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          DEFENSE_ORG_LIST: ${{ vars.DEFENSE_ORG_LIST }}
         run: python main.py
 
       - name: Send Email Notification
