@@ -249,7 +249,7 @@ def main():
             print(f"❌ [{cat}] 드라이브 저장 중 에러: {e}")
 
     # 메일용 공고 HTML 생성
-    notice_html = f"<div style='margin-top: 20px;'><h4 style='color: #d32f2f; border-bottom: 2px solid #d32f2f; padding-bottom: 5px;'>📢 주요 키워드 입찰 공고 ({d_str})</h4>"
+    notice_html = f"<div style='margin-top: 20px;'><h4 style='color: #d32f2f; border-bottom: 2px solid #d32f2f; padding-bottom: 5px;'>📢 나라장터 입찰 공고 ({d_str})</h4>"
     if not notice_mail_list:
         notice_html += f"<p style='color: #666;'>- {d_str}에 해당 키워드 공고 내역이 없습니다.</p></div>"
     else:
