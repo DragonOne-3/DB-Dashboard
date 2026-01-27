@@ -199,8 +199,8 @@ for kw_s in keywords_notice_all:
                     'amt': item.findtext('totCntrctAmt', '0'), 
                     'url': detail_url # 상세 URL 반영
                 })
-        except Exception as e:
-            print(f"계약 데이터 수집 중 오류: {e}")
+    except Exception as e:
+        print(f"계약 데이터 수집 중 오류: {e}")
     
     # 중복 제거 및 버킷 분류 (동일 로직 유지)
     unique_servc_list = list({f"{d['org']}_{d['nm']}": d for d in collected_servc}.values())
