@@ -57,20 +57,27 @@ def classify_text(text):
     return '기타'
 
 def format_html_table(data_list, title):
+    """표 스타일 조정 (업체명 추가 및 상세 URL 연결)"""
     html = f"<div style='margin-top:25px;'><h4 style='color:#2c3e50; border-bottom:2px solid #34495e; padding-bottom:8px;'>{title}</h4>"
     if not data_list:
         html += "<p style='color:#888; padding:10px;'>- 해당 내역이 없습니다.</p></div>"
         return html
     
     html += "<table border='1' style='border-collapse:collapse; width:100%; font-size:13px; line-height:1.8;'>"
-    html += "<tr style='background-color:#f8f9fa;'><th>수요기관</th><th>명칭</th><th>금액</th></tr>"
+    # 🚀 [수정] 헤더에 업체명 추가
+    html += "<tr style='background-color:#f8f9fa;'><th>수요기관</th><th>명칭(링크)</th><th>업체명</th><th>금액</th></tr>"
+    
     for item in data_list:
-        # 이노뎁 강조 (계약 내역용)
+        # 이노뎁 강조 로직
         bg = "background-color:#FFF9C4;" if "이노뎁" in item.get('corp', '') else ""
         amt_str = f"{int(item['amt']):,}원" if str(item['amt']).isdigit() else item['amt']
-        link_name = f"<a href='{item['url']}' style='color:#1a73e8; text-decoration:none;'>{item['nm']}</a>"
+        
+        # 🚀 [수정] 수집된 상세 URL로 연결
+        link_name = f"<a href='{item['url']}' target='_blank' style='color:#1a73e8; text-decoration:none;'>{item['nm']}</a>"
+        
         html += f"<tr style='{bg}'><td style='padding:8px; text-align:center;'>{item['org']}</td>"
         html += f"<td style='padding:8px;'>{link_name}</td>"
+        html += f"<td style='padding:8px; text-align:center;'>{item['corp']}</td>" # 🚀 업체명 컬럼 추가
         html += f"<td style='padding:8px; text-align:right;'>{amt_str}</td></tr>"
     html += "</table></div>"
     return html
@@ -169,6 +176,7 @@ def main():
     contract_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
     api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     collected_servc = []
+    
     for kw_s in keywords_notice_all:
         p = {'serviceKey': MY_DIRECT_KEY, 'pageNo': '1', 'numOfRows': '999', 'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
         try:
@@ -178,14 +186,24 @@ def main():
                 for item in root.findall('.//item'):
                     raw_demand = item.findtext('dminsttList', '-')
                     clean_demand = raw_demand.replace('[', '').replace(']', '').split('^')[2] if '^' in raw_demand else raw_demand
+                    
                     raw_corp = item.findtext('corpList', '-')
                     clean_corp = raw_corp.replace('[', '').replace(']', '').split('^')[3] if '^' in raw_corp else raw_corp
+                    
+                    # 🚀 [핵심 수정] 계약상세정보URL 필드 가져오기
+                    detail_url = item.findtext('cntrctDetailInfoUrl', 'https://www.g2b.go.kr')
+                    
                     collected_servc.append({
-                        'org': clean_demand, 'nm': item.findtext('cntrctNm', '-'), 'corp': clean_corp,
-                        'amt': item.findtext('totCntrctAmt', '0'), 'url': "https://www.g2b.go.kr"
+                        'org': clean_demand, 
+                        'nm': item.findtext('cntrctNm', '-'), 
+                        'corp': clean_corp,
+                        'amt': item.findtext('totCntrctAmt', '0'), 
+                        'url': detail_url # 상세 URL 반영
                     })
-        except: pass
+        except Exception as e:
+            print(f"계약 데이터 수집 중 오류: {e}")
     
+    # 중복 제거 및 버킷 분류 (동일 로직 유지)
     unique_servc_list = list({f"{d['org']}_{d['nm']}": d for d in collected_servc}.values())
     for s in unique_servc_list:
         cat_found = classify_text(s['nm'])
