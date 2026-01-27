@@ -74,7 +74,7 @@ def fetch_and_generate_servc_html(target_dt):
     api_url = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     target_date_str = target_dt.strftime("%Y%m%d")
     display_date_str = target_dt.strftime("%Y-%m-%d")
-    keywords_servc = ['통합관제', 'CCTV', '영상감시장치','국방','경계','작전','부대','육군','공군','해군','무인']
+    keywords_servc = ['통합관제', 'CCTV', '영상감시장치','국방','경계','작전','부대','육군','공군','해군','무인','주차','출입','과학화','주둔지','중요시설']
     collected_data = []
 
     for kw in keywords_servc:
@@ -195,13 +195,34 @@ def main():
                 for line in summary_lines: f.write(f"{line}<br>\n")
                 f.write(f"EOF\nservc_info<<EOF\n{servc_html}\nEOF\n")
 
+    
     # --- PART 2: 입찰 공고 수집 (G2B_notice 통합 기능) ---
-    print(f"🚀 입찰 공고 수집 시작 ({d_str})")
+    # --- PART 2: [수정] 입찰 공고 수집 및 메일용 필터링 로직 ---
+    print(f"🚀 입찰 공고 수집 및 필터링 시작 ({d_str})")
+    
+    # 메일 상단에 들어갈 공고 리스트를 담을 변수
+    keywords_servc = ['통합관제', 'CCTV', '영상감시장치','국방','경계','작전','부대','육군','공군','해군','무인','주차','출입','과학화','주둔지','중요시설']
+    notice_mail_list = []
+
     for cat, url in NOTICE_API_MAP.items():
         n_df = fetch_notice_data(cat, url, d_str)
         if not n_df.empty:
+            # 1. 🚀 메일 발송용 필터링 (요청하신 키워드 포함 공고 추출)
+            # 공고명(bidNtceNm) 컬럼에서 키워드 추출
+            filter_pattern = '|'.join(keywords_servc)
+            filtered_df = n_df[n_df['bidNtceNm'].str.contains(filter_pattern, na=False, case=False)]
+            
+            for _, row in filtered_df.iterrows():
+                notice_mail_list.append({
+                    'type': cat,
+                    'org': row.get('dminsttNm', '-'),
+                    'nm': row.get('bidNtceNm', '-'),
+                    'url': row.get('bidNtceDtlUrl', '#')
+                })
+
+            # 2. 구글 드라이브 저장 로직 (기존과 동일하되 에러 방지 옵션 추가)
             f_name = f"나라장터_공고_{cat}.csv"
-            res = drive_service.files().list(q=f"name='{f_name}' and '1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr' in parents and trashed=false", fields='files(id)').execute()
+            res = drive_service.files().list(q=f"name='{f_name}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false", fields='files(id)', supportsAllDrives=True).execute()
             items = res.get('files', [])
             fid = items[0]['id'] if items else None
             
@@ -211,10 +232,34 @@ def main():
                     n_df = pd.concat([pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False), n_df], ignore_index=True)
             
             n_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
-            media = MediaIoBaseUpload(io.BytesIO(n_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')), mimetype='text/csv', resumable=True)
-            if fid: drive_service.files().update(fileId=fid, media_body=media).execute()
-            else: drive_service.files().create(body={'name': f_name, 'parents': ['1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr'], 'mimeType': 'text/csv'}, media_body=media).execute()
-            print(f"✅ {cat} 공고 업데이트 완료")
+            csv_out = n_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+            media = MediaIoBaseUpload(io.BytesIO(csv_out), mimetype='text/csv', resumable=True)
+            
+            if fid: drive_service.files().update(fileId=fid, media_body=media, supportsAllDrives=True).execute()
+            else: drive_service.files().create(body={'name': f_name, 'parents': [DRIVE_FOLDER_ID], 'mimeType': 'text/csv'}, media_body=media, supportsAllDrives=True).execute()
+
+    # --- 3. 🚀 필터링된 공고 내역을 HTML로 변환 ---
+    notice_html = f"<div style='margin-top: 20px;'><h4 style='color: #d32f2f; border-bottom: 2px solid #d32f2f; padding-bottom: 5px;'>📢 주요 키워드 입찰 공고 ({d_str})</h4>"
+    if not notice_mail_list:
+        notice_html += f"<p style='color: #666;'>- 해당 키워드에 대한 공고 내역이 없습니다.</p></div>"
+    else:
+        notice_html += "<table border='1' style='border-collapse: collapse; width: 100%; font-size: 11px;'> <tr style='background-color: #f8f9fa;'><th>구분</th><th>수요기관</th><th>공고명(링크)</th></tr>"
+        for n in notice_mail_list:
+            notice_html += f"<tr><td style='text-align:center;'>{n['type']}</td><td>{n['org']}</td><td><a href='{n['url']}'>{n['nm']}</a></td></tr>"
+        notice_html += "</table></div>"
+
+    # --- 4. 🚀 GitHub Actions Output 설정 (순서 조정) ---
+    if "GITHUB_OUTPUT" in os.environ:
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+            f.write(f"collect_date={d_str}\n")
+            f.write(f"collect_count={len(final_data)}\n")
+            # 공고 내역(notice_info)을 추가
+            f.write(f"notice_info<<EOF\n{notice_html}\nEOF\n")
+            # 기존 학교 정보 및 용역 정보
+            f.write(f"school_info<<EOF\n")
+            for line in summary_lines: f.write(f"{line}<br>\n")
+            f.write(f"EOF\n")
+            f.write(f"servc_info<<EOF\n{servc_html}\nEOF\n")
 
 if __name__ == "__main__":
     main()
