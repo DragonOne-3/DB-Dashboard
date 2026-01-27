@@ -33,7 +33,7 @@ keywords = sorted(list(set([
 NOTICE_API_MAP = {
     '공사': 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoCnstwkPPSSrch',
     '물품': 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoThngPPSSrch',
-    '용역': 'https://apis.data.go.kr/1230000/ad/BidPblancListInfoService/getBidPblancListInfoServcPPSSrch'
+    '용역': 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServcPPSSrch'
 }
 
 # ================= 2. 유틸리티 함수 =================
@@ -183,24 +183,49 @@ def main():
         servc_html = fetch_and_generate_servc_html(target_dt)
 
     # --- PART 2: [필수 수정] 입찰 공고 수집 및 주요 키워드 필터링 ---
+    # --- PART 2: 입찰 공고 수집 및 주요 키워드 필터링 (최종 보완본) ---
     notice_mail_list = []
-    # 🚀 요청하신 공고 필터링 키워드
-    keywords_notice = ['CCTV', '통합관제', '영상감시장치', '영상정보처리기기', '국방', '부대', '작전', '경계', '방위','데이터','플랫폼','솔루션','군사', '무인화', '사령부', '군대','스마트시티','스마트도시','ITS','GIS','중요시설','주둔지','과학화','출입','주차','육군','해군','공군','해병']
+    
+    # 🚀 [업데이트] 요청하신 확장 키워드 리스트
+    keywords_notice = [
+        'CCTV', '통합관제', '영상감시장치', '영상정보처리기기', '국방', '부대', '작전', '경계', '방위',
+        '데이터','플랫폼','솔루션','군사', '무인화', '사령부', '군대','스마트시티','스마트도시','ITS','GIS',
+        '중요시설','주둔지','과학화','출입','주차','육군','해군','공군','해병'
+    ]
     
     print(f"🚀 입찰 공고 수집 시작 ({d_str})")
+    
     for cat, url in NOTICE_API_MAP.items():
+        print(f"📡 [{cat}] API 요청 중...") # 🔍 디버깅 로그 추가
         n_df = fetch_notice_data(cat, url, d_str)
-        if not n_df.empty:
-            # 1. 메일용 필터링
-            pattern = '|'.join(keywords_notice)
-            filtered_n = n_df[n_df['bidNtceNm'].str.contains(pattern, na=False, case=False)]
-            for _, row in filtered_n.iterrows():
-                notice_mail_list.append({'type': cat, 'org': row.get('dminsttNm', '-'), 'nm': row.get('bidNtceNm', '-'), 'url': row.get('bidNtceDtlUrl', '#')})
+        
+        if n_df is None or n_df.empty:
+            print(f"❓ [{cat}] 수집된 데이터가 없습니다. (API 응답 비어있음)")
+            continue
+            
+        print(f"📦 [{cat}] 수집 성공: {len(n_df)}건")
 
-            # 2. 구글 드라이브 저장 (최상단 검색 대응)
-            f_name = f"나라장터_공고_{cat}.csv"
+        # 1. 메일용 필터링
+        pattern = '|'.join(keywords_notice)
+        # 컬럼명 존재 여부 확인 후 필터링 (안정성)
+        target_col = 'bidNtceNm' if 'bidNtceNm' in n_df.columns else n_df.columns[0] 
+        filtered_n = n_df[n_df[target_col].str.contains(pattern, na=False, case=False)]
+        
+        print(f"🎯 [{cat}] 키워드 필터링 결과: {len(filtered_n)}건 발견")
+
+        for _, row in filtered_n.iterrows():
+            notice_mail_list.append({
+                'type': cat, 
+                'org': row.get('dminsttNm', '-'), 
+                'nm': row.get('bidNtceNm', '-'), 
+                'url': row.get('bidNtceDtlUrl', '#')
+            })
+
+        # 2. 구글 드라이브 저장 (최상단 검색 대응)
+        f_name = f"나라장터_공고_{cat}.csv"
+        try:
             query_n = f"name='{f_name}' and trashed=false"
-            res_n = drive_service.files().list(q=query_n, fields='files(id)').execute()
+            res_n = drive_service.files().list(q=query_n, fields='files(id)', supportsAllDrives=True).execute()
             items_n = res_n.get('files', [])
             fid_n = items_n[0]['id'] if items_n else None
             
@@ -210,17 +235,23 @@ def main():
                     old_df_n = pd.read_csv(io.BytesIO(resp_n.content), encoding='utf-8-sig', low_memory=False)
                     n_df = pd.concat([old_df_n, n_df], ignore_index=True)
                 
-                n_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
-                media_n = MediaIoBaseUpload(io.BytesIO(n_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')), mimetype='text/csv', resumable=True)
+                # 입찰공고번호(bidNtceNo) 기준으로 중복 제거
+                if 'bidNtceNo' in n_df.columns:
+                    n_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
+                
+                csv_out = n_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                media_n = MediaIoBaseUpload(io.BytesIO(csv_out), mimetype='text/csv', resumable=True)
                 drive_service.files().update(fileId=fid_n, media_body=media_n, supportsAllDrives=True).execute()
-                print(f"✅ {cat} 공고 업데이트 완료")
+                print(f"✅ [{cat}] 공고 구글 드라이브 업데이트 완료")
             else:
-                print(f"⚠️ {f_name} 파일이 드라이브에 없습니다. 업데이트를 건너뜁니다.")
+                print(f"⚠️ [{cat}] {f_name} 파일이 드라이브에 없습니다. 업데이트를 건너뜁니다.")
+        except Exception as e:
+            print(f"❌ [{cat}] 드라이브 저장 중 에러: {e}")
 
     # 메일용 공고 HTML 생성
     notice_html = f"<div style='margin-top: 20px;'><h4 style='color: #d32f2f; border-bottom: 2px solid #d32f2f; padding-bottom: 5px;'>📢 주요 키워드 입찰 공고 ({d_str})</h4>"
     if not notice_mail_list:
-        notice_html += "<p style='color: #666;'>- 해당 키워드에 대한 공고 내역이 없습니다.</p></div>"
+        notice_html += f"<p style='color: #666;'>- {d_str}에 해당 키워드 공고 내역이 없습니다.</p></div>"
     else:
         notice_html += "<table border='1' style='border-collapse: collapse; width: 100%; font-size: 11px;'> <tr style='background-color: #f8f9fa;'><th>구분</th><th>수요기관</th><th>공고명(링크)</th></tr>"
         for n in notice_mail_list:
