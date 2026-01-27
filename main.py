@@ -198,45 +198,54 @@ def main():
     
     # --- PART 2: 입찰 공고 수집 (G2B_notice 통합 기능) ---
     # --- PART 2: [수정] 입찰 공고 수집 및 메일용 필터링 로직 ---
-    print(f"🚀 입찰 공고 수집 및 필터링 시작 ({d_str})")
-    
-    # 메일 상단에 들어갈 공고 리스트를 담을 변수
-    keywords_servc = ['통합관제', 'CCTV', '영상감시장치','국방','경계','작전','부대','육군','공군','해군','무인','주차','출입','과학화','주둔지','중요시설']
-    notice_mail_list = []
-
+    # --- PART 2: 입찰 공고 수집 및 주요 키워드 필터링 ---
+    print(f"🚀 입찰 공고 수집 시작 ({d_str})")
     for cat, url in NOTICE_API_MAP.items():
         n_df = fetch_notice_data(cat, url, d_str)
         if not n_df.empty:
-            # 1. 🚀 메일 발송용 필터링 (요청하신 키워드 포함 공고 추출)
-            # 공고명(bidNtceNm) 컬럼에서 키워드 추출
-            filter_pattern = '|'.join(keywords_servc)
-            filtered_df = n_df[n_df['bidNtceNm'].str.contains(filter_pattern, na=False, case=False)]
-            
-            for _, row in filtered_df.iterrows():
-                notice_mail_list.append({
-                    'type': cat,
-                    'org': row.get('dminsttNm', '-'),
-                    'nm': row.get('bidNtceNm', '-'),
-                    'url': row.get('bidNtceDtlUrl', '#')
-                })
+            # 메일용 필터링 로직 (상단 키워드 활용)
+            pattern = '|'.join(keywords_notice)
+            filtered_n = n_df[n_df['bidNtceNm'].str.contains(pattern, na=False, case=False)]
+            for _, row in filtered_n.iterrows():
+                notice_mail_list.append({'type': cat, 'org': row.get('dminsttNm', '-'), 'nm': row.get('bidNtceNm', '-'), 'url': row.get('bidNtceDtlUrl', '#')})
 
-            # 2. 구글 드라이브 저장 로직 (기존과 동일하되 에러 방지 옵션 추가)
+            # 🚀 [핵심 수정] 구글 드라이브 파일 찾기 로직 개선
             f_name = f"나라장터_공고_{cat}.csv"
-            res = drive_service.files().list(q=f"name='{f_name}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false", fields='files(id)', supportsAllDrives=True).execute()
-            items = res.get('files', [])
-            fid = items[0]['id'] if items else None
-            
-            if fid:
-                resp = requests.get(f'https://www.googleapis.com/drive/v3/files/{fid}?alt=media', headers={'Authorization': f'Bearer {drive_creds.token}'})
-                if resp.status_code == 200:
-                    n_df = pd.concat([pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False), n_df], ignore_index=True)
-            
-            n_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
-            csv_out = n_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-            media = MediaIoBaseUpload(io.BytesIO(csv_out), mimetype='text/csv', resumable=True)
-            
-            if fid: drive_service.files().update(fileId=fid, media_body=media, supportsAllDrives=True).execute()
-            else: drive_service.files().create(body={'name': f_name, 'parents': [DRIVE_FOLDER_ID], 'mimeType': 'text/csv'}, media_body=media, supportsAllDrives=True).execute()
+            try:
+                # 쿼리에서 mimeType을 빼고 이름과 폴더로만 검색 (더 잘 찾아집니다)
+                query = f"name='{f_name}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
+                res = drive_service.files().list(
+                    q=query, 
+                    fields='files(id, name)', 
+                    supportsAllDrives=True, 
+                    includeItemsFromAllDrives=True
+                ).execute()
+                items = res.get('files', [])
+                fid = items[0]['id'] if items else None
+                
+                if fid:
+                    print(f"🔍 기존 파일 발견: {f_name} (ID: {fid})")
+                    # 기존 데이터 다운로드
+                    resp = requests.get(f'https://www.googleapis.com/drive/v3/files/{fid}?alt=media', headers={'Authorization': f'Bearer {drive_creds.token}'})
+                    if resp.status_code == 200:
+                        old_df = pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
+                        n_df = pd.concat([old_df, n_df], ignore_index=True)
+                    
+                    # 중복 제거 (입찰공고번호 기준)
+                    n_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
+                    csv_out = n_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                    media = MediaIoBaseUpload(io.BytesIO(csv_out), mimetype='text/csv', resumable=True)
+                    
+                    # 🚀 업데이트 실행 (Update는 용량 제한을 안 받습니다)
+                    drive_service.files().update(fileId=fid, media_body=media, supportsAllDrives=True).execute()
+                    print(f"✅ {cat} 공고 업데이트 완료")
+                else:
+                    # ❌ 여기서 create를 시도하면 에러가 나므로, 파일을 못 찾았을 때의 로그를 남깁니다.
+                    print(f"⚠️ 경고: 드라이브에서 '{f_name}' 파일을 찾을 수 없습니다. (폴더 ID: {DRIVE_FOLDER_ID})")
+                    print(f"💡 서비스 계정이 해당 파일에 '편집자' 권한이 있는지 확인해 주세요.")
+
+            except Exception as e:
+                print(f"❌ {cat} 처리 중 오류 발생: {e}")
 
     # --- 3. 🚀 필터링된 공고 내역을 HTML로 변환 ---
     notice_html = f"<div style='margin-top: 20px;'><h4 style='color: #d32f2f; border-bottom: 2px solid #d32f2f; padding-bottom: 5px;'>📢 주요 키워드 입찰 공고 ({d_str})</h4>"
