@@ -179,8 +179,12 @@ def main():
             if r.status_code == 200:
                 root = ET.fromstring(r.content)
                 for item in root.findall('.//item'):
-                    detail_url = item.findtext('cntrctDetailInfoUrl', 'https://www.g2b.go.kr')
-                    
+                    # 🚀 [수정] 필드명을 cntrctDtlInfoUrl 로 변경
+                    detail_url = item.findtext('cntrctDtlInfoUrl') 
+                    if not detail_url:
+                        detail_url = "https://www.g2b.go.kr"
+    
+                    # 수요기관명 추출 로직 (변수 정의 확인)
                     raw_demand = item.findtext('dminsttList', '-')
                     clean_demand = raw_demand.replace('[', '').replace(']', '').split('^')[2] if '^' in raw_demand else raw_demand
 
@@ -204,18 +208,29 @@ def main():
             contract_mail_buckets[cat_found].append(s)
 
     # 🚀 국방 기관 필터링
+    # 🚀 [수정] 국방 기관 필터링: 더 유연하게 매칭되도록 보완
     defense_env = os.environ.get('DEFENSE_ORG_LIST', '')
-    defense_org_list = [x.strip() for x in defense_env.replace('\n', ',').split(',') if x.strip()]
+    # 콤마, 줄바꿈, 세미콜론 등으로 구분된 리스트를 모두 허용
+    defense_org_list = [x.strip() for x in defense_env.replace('\n', ',').replace(';', ',').split(',') if x.strip()]
 
     def is_defense_match(org_name):
-        if not defense_org_list: return False
-        clean_org = org_name.replace("제", "").replace(" ", "")
+        # 시크릿에 등록된 기관이 하나도 없으면 국방 카테고리 데이터를 모두 보여줌 (누락 방지)
+        if not defense_org_list: 
+            return True 
+        
+        # 1. 대상 기관명 정제: 공백 제거, '제' 제거
+        clean_org = org_name.replace(" ", "").replace("제", "")
+        
         for target in defense_org_list:
-            clean_target = target.replace("제", "").replace(" ", "")
+            # 2. 시크릿 등록 키워드 정제
+            clean_target = target.replace(" ", "").replace("제", "")
+            
+            # 3. 상호 포함 관계 확인 (예: '국방과학연구소'와 '국방 과학 연구소' 매칭)
             if clean_target in clean_org or clean_org in clean_target:
                 return True
         return False
 
+    # 필터링 적용 (기존 카테고리 분류 데이터에서 재검증)
     notice_mail_buckets['국방'] = [item for item in notice_mail_buckets['국방'] if is_defense_match(item['org'])]
     contract_mail_buckets['국방'] = [item for item in contract_mail_buckets['국방'] if is_defense_match(item['org'])]
 
