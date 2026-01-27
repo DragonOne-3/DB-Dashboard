@@ -57,27 +57,26 @@ def classify_text(text):
     return '기타'
 
 def format_html_table(data_list, title):
-    """표 스타일 조정 (업체명 추가 및 상세 URL 연결)"""
     html = f"<div style='margin-top:25px;'><h4 style='color:#2c3e50; border-bottom:2px solid #34495e; padding-bottom:8px;'>{title}</h4>"
     if not data_list:
         html += "<p style='color:#888; padding:10px;'>- 해당 내역이 없습니다.</p></div>"
         return html
     
     html += "<table border='1' style='border-collapse:collapse; width:100%; font-size:13px; line-height:1.8;'>"
-    # 🚀 [수정] 헤더에 업체명 추가
     html += "<tr style='background-color:#f8f9fa;'><th>수요기관</th><th>명칭(링크)</th><th>업체명</th><th>금액</th></tr>"
     
     for item in data_list:
-        # 이노뎁 강조 로직
-        bg = "background-color:#FFF9C4;" if "이노뎁" in item.get('corp', '') else ""
-        amt_str = f"{int(item['amt']):,}원" if str(item['amt']).isdigit() else item['amt']
+        # 🚀 [해결] 업체명(corp) 키워드가 없으면 빈 문자열로 처리
+        corp_name = item.get('corp', '-') 
+        bg = "background-color:#FFF9C4;" if "이노뎁" in corp_name else ""
         
-        # 🚀 [수정] 수집된 상세 URL로 연결
+        amt_val = item.get('amt', '0')
+        amt_str = f"{int(amt_val):,}원" if str(amt_val).isdigit() else amt_val
         link_name = f"<a href='{item['url']}' target='_blank' style='color:#1a73e8; text-decoration:none;'>{item['nm']}</a>"
         
         html += f"<tr style='{bg}'><td style='padding:8px; text-align:center;'>{item['org']}</td>"
         html += f"<td style='padding:8px;'>{link_name}</td>"
-        html += f"<td style='padding:8px; text-align:center;'>{item['corp']}</td>" # 🚀 업체명 컬럼 추가
+        html += f"<td style='padding:8px; text-align:center;'>{corp_name}</td>"
         html += f"<td style='padding:8px; text-align:right;'>{amt_str}</td></tr>"
     html += "</table></div>"
     return html
@@ -209,7 +208,27 @@ def main():
         cat_found = classify_text(s['nm'])
         if cat_found in contract_mail_buckets:
             contract_mail_buckets[cat_found].append(s)
+    defense_env = os.environ.get('DEFENSE_ORG_LIST', '')
+    # 콤마나 줄바꿈으로 구분된 리스트를 가져와서 정리
+    defense_org_list = [x.strip() for x in defense_env.replace('\n', ',').split(',') if x.strip()]
 
+    def is_defense_match(org_name):
+        if not defense_org_list: return True  # 설정된 부대 리스트가 없으면 모두 노출
+        
+        # 비교를 위해 "제", "부대" 등 불필요한 수식어 제거 및 숫자 추출
+        clean_org = org_name.replace("제", "").replace(" ", "")
+        
+        for target in defense_org_list:
+            clean_target = target.replace("제", "").replace(" ", "")
+            # 기관명에 타겟 키워드가 포함되어 있거나 그 반대의 경우 (예: 2167부대 <-> 제2167부대)
+            if clean_target in clean_org or clean_org in clean_target:
+                return True
+        return False
+
+    # 국방 카테고리만 다시 필터링해서 덮어씌우기
+    notice_mail_buckets['국방'] = [item for item in notice_mail_buckets['국방'] if is_defense_match(item['org'])]
+    contract_mail_buckets['국방'] = [item for item in contract_mail_buckets['국방'] if is_defense_match(item['org'])]
+    # ==========================================================
     # --- PART 4: 최종 리포트 HTML 조립 ---
     report_html = f"""
     <div style="font-family:'Malgun Gothic'; line-height:2.0; border:1px solid #ddd; padding:20px; border-radius:10px;">
