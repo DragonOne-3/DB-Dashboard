@@ -176,29 +176,29 @@ def main():
     api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     collected_servc = []
     
-    for kw_s in keywords_notice_all:
-        p = {'serviceKey': MY_DIRECT_KEY, 'pageNo': '1', 'numOfRows': '999', 'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
-        try:
-            r = requests.get(api_url_servc, params=p, timeout=30)
-            if r.status_code == 200:
-                root = ET.fromstring(r.content)
-                for item in root.findall('.//item'):
-                    raw_demand = item.findtext('dminsttList', '-')
-                    clean_demand = raw_demand.replace('[', '').replace(']', '').split('^')[2] if '^' in raw_demand else raw_demand
-                    
-                    raw_corp = item.findtext('corpList', '-')
-                    clean_corp = raw_corp.replace('[', '').replace(']', '').split('^')[3] if '^' in raw_corp else raw_corp
-                    
-                    # 🚀 [핵심 수정] 계약상세정보URL 필드 가져오기
-                    detail_url = item.findtext('cntrctDetailInfoUrl', 'https://www.g2b.go.kr')
-                    
-                    collected_servc.append({
-                        'org': clean_demand, 
-                        'nm': item.findtext('cntrctNm', '-'), 
-                        'corp': clean_corp,
-                        'amt': item.findtext('totCntrctAmt', '0'), 
-                        'url': detail_url # 상세 URL 반영
-                    })
+    # --- PART 3: 나라장터 계약 내역 수정 ---
+for kw_s in keywords_notice_all:
+    p = {'service_key': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
+    try:
+        r = requests.get(api_url_servc, params=p, timeout=30)
+        if r.status_code == 200:
+            root = ET.fromstring(r.content)
+            for item in root.findall('.//item'):
+                # 🚀 [수정] 데이터상 두 번째로 나타나는 상세 URL 필드 직접 지정
+                detail_url = item.findtext('cntrctDetailInfoUrl') 
+                if not detail_url: # 필드가 없을 경우를 대비한 대체 로직
+                    detail_url = "https://www.g2b.go.kr"
+
+                raw_corp = item.findtext('corpList', '-')
+                clean_corp = raw_corp.replace('[', '').replace(']', '').split('^')[3] if '^' in raw_corp else raw_corp
+                
+                collected_servc.append({
+                    'org': clean_demand, 
+                    'nm': item.findtext('cntrctNm', '-'), 
+                    'corp': clean_corp,
+                    'amt': item.findtext('totCntrctAmt', '0'), 
+                    'url': detail_url # 상세 URL 반영
+                })
         except Exception as e:
             print(f"계약 데이터 수집 중 오류: {e}")
     
@@ -209,23 +209,20 @@ def main():
         if cat_found in contract_mail_buckets:
             contract_mail_buckets[cat_found].append(s)
     defense_env = os.environ.get('DEFENSE_ORG_LIST', '')
-    # 콤마나 줄바꿈으로 구분된 리스트를 가져와서 정리
     defense_org_list = [x.strip() for x in defense_env.replace('\n', ',').split(',') if x.strip()]
 
     def is_defense_match(org_name):
-        if not defense_org_list: return True  # 설정된 부대 리스트가 없으면 모두 노출
+        if not defense_org_list: return False # 시크릿 리스트가 없으면 국방 섹션은 비움
         
-        # 비교를 위해 "제", "부대" 등 불필요한 수식어 제거 및 숫자 추출
+        # 비교 최적화 (공백 및 '제' 제거)
         clean_org = org_name.replace("제", "").replace(" ", "")
-        
         for target in defense_org_list:
             clean_target = target.replace("제", "").replace(" ", "")
-            # 기관명에 타겟 키워드가 포함되어 있거나 그 반대의 경우 (예: 2167부대 <-> 제2167부대)
             if clean_target in clean_org or clean_org in clean_target:
                 return True
         return False
 
-    # 국방 카테고리만 다시 필터링해서 덮어씌우기
+    # 1. 국방 카테고리 필터링: 리스트에 있는 기관만 남김
     notice_mail_buckets['국방'] = [item for item in notice_mail_buckets['국방'] if is_defense_match(item['org'])]
     contract_mail_buckets['국방'] = [item for item in contract_mail_buckets['국방'] if is_defense_match(item['org'])]
     # ==========================================================
