@@ -66,7 +66,11 @@ def fetch_and_generate_servc_html(target_dt):
     api_url = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     target_date_str = target_dt.strftime("%Y%m%d")
     display_date_str = target_dt.strftime("%Y-%m-%d")
-    keywords_servc = ['통합관제', 'CCTV', '영상감시장치','국방','경계','작전','부대','육군','공군','해군','무인','주차','출입','과학화','주둔지','중요시설']
+    keywords_servc = [
+        'CCTV', '통합관제', '영상감시장치', '영상정보처리기기', '국방', '부대', '작전', '경계', '방위',
+        '데이터','플랫폼','솔루션','군사', '무인화', '사령부', '군대','스마트시티','스마트도시','ITS','GIS',
+        '중요시설','주둔지','과학화','출입','주차','육군','해군','공군','해병'
+    ]
     collected_data = []
 
     for kw in keywords_servc:
