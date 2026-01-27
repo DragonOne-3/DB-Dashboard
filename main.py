@@ -226,7 +226,7 @@ def main():
     # --- PART 4: 리포트 HTML 조립 ---
     report_html = f"""
     <div style="font-family:'Malgun Gothic'; line-height:2.0; border:1px solid #ddd; padding:20px; border-radius:10px;">
-        <h2 style="color:#1a73e8; margin-top:0;">📋 조달청 데이터 자동 수집 리포트</h2>
+        <h1 style="color:#1a73e8; margin-top:0;">📋 조달청 데이터 자동 수집 리포트</h1>
         <b>🔹 수집날짜 :</b> {display_date}({weekday_str}요일)<br>
         <b>🔹 종합쇼핑몰 3자단가 데이터 :</b> {len(final_data):,}건<br>
         <b>🔹 나라장터 공고 데이터 :</b> {all_notice_count:,}건 (필터링 전 전체)<br>
@@ -234,7 +234,7 @@ def main():
         <b>🔹 상태 :</b> 성공
         <hr style="border:0.5px solid #eee; margin:20px 0;">
         
-        <h3 style='color:#e67e22;'>🛒 2. 종합쇼핑몰 3자단가 요약</h3>
+        <h1 style='color:#e67e22;'>🛒 종합쇼핑몰 3자단가 요약</h1>
         <b>★ 학교 지능형 CCTV 납품 현황</b><div style='padding-left:10px; border-left:3px solid #e67e22;'>
     """
     if school_stats:
@@ -249,11 +249,11 @@ def main():
     else: report_html += "<p> - 이노뎁 납품내역 0건</p>"
     report_html += "</div>"
 
-    report_html += "<h3 style='margin-top:35px; color:#d32f2f;'>📢 3. 나라장터 입찰 공고 요약</h3>"
+    report_html += "<h1 style='margin-top:35px; color:#d32f2f;'>📢 나라장터 입찰 공고 요약</h1>"
     for i, cat in enumerate(CAT_KEYWORDS.keys(), 1):
         report_html += format_html_table(notice_mail_buckets[cat], f"{i}) {cat} 요약")
 
-    report_html += "<h3 style='margin-top:35px; color:#1a73e8;'>📝 4. 나라장터 계약 내역 요약</h3>"
+    report_html += "<h1 style='margin-top:35px; color:#1a73e8;'>📝 나라장터 계약 내역 요약</h1>"
     for i, cat in enumerate(CAT_KEYWORDS.keys(), 1):
         report_html += format_html_table(contract_mail_buckets[cat], f"{i}) {cat} 요약")
     
