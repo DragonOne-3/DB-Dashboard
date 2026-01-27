@@ -13,7 +13,6 @@ AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
 
 HEADER_KOR = ['조달구분명', '계약구분명', '계약납품구분명', '계약납품요구일자', '계약납품요구번호', '변경차수', '최종변경차수여부', '수요기관명', '수요기관구분명', '수요기관지역명', '수요기관코드', '물품분류번호', '품명', '세부물품분류번호', '세부품명', '물품식별번호', '물품규격명', '단가', '수량', '단위', '금액', '업체명', '업체기업구분명', '계약명', '우수제품여부', '공사용자재직접구매대상여부', '다수공급자계약여부', '다수공급자계약2단계진행여부', '단가계약번호', '단가계약변경차수', '최초계약(납품요구)일자', '계약체결방법명', '증감수량', '증감금액', '납품장소명', '납품기한일자', '업체사업자등록번호', '인도조건명', '물품순번']
 
-# 카테고리별 분류 키워드
 CAT_KEYWORDS = {
     '영상감시장치': ['CCTV', '통합관제', '영상감시장치', '영상정보처리기기'],
     '국방': ['국방', '부대', '작전', '경계', '방위', '군사', '무인화', '사령부', '군대', '중요시설', '주둔지', '과학화', '육군', '해군', '공군', '해병'],
@@ -21,7 +20,6 @@ CAT_KEYWORDS = {
     '스마트도시': ['ITS', '스마트시티', '스마트도시']
 }
 
-# 종합쇼핑몰 수집용 키워드 풀 (기존 유지)
 keywords = sorted(list(set([
     '네트워크시스템장비용랙','영상감시장치','PA용스피커','안내판','카메라브래킷','액정모니터','광송수신모듈','전원공급장치','광분배함','컨버터','컴퓨터서버','하드디스크드라이브','네트워크스위치','광점퍼코드','풀박스','서지흡수기','디지털비디오레코더',
     '스피커','오디오앰프','브래킷','UTP케이블','정보통신공사','영상정보디스플레이장치','송신기','난연전력케이블','1종금속제가요전선관','호온스피커','누전차단기','방송수신기','LAP외피광케이블','폴리에틸렌전선관','리모트앰프',
@@ -47,7 +45,6 @@ def get_drive_service_for_script():
     return build('drive', 'v3', credentials=creds), creds
 
 def get_target_date():
-    """[수정] 주말/공휴일 무시하고 무조건 어제 날짜 반환"""
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
     return now - datetime.timedelta(days=1)
 
@@ -66,7 +63,6 @@ def format_html_table(data_list, title):
     html += "<tr style='background-color:#f8f9fa;'><th>수요기관</th><th>명칭(링크)</th><th>업체명</th><th>금액</th></tr>"
     
     for item in data_list:
-        # 🚀 [해결] 업체명(corp) 키워드가 없으면 빈 문자열로 처리
         corp_name = item.get('corp', '-') 
         bg = "background-color:#FFF9C4;" if "이노뎁" in corp_name else ""
         
@@ -110,7 +106,10 @@ def main():
     weekday_str = ["월", "화", "수", "목", "금", "토", "일"][target_dt.weekday()]
     drive_service, drive_creds = get_drive_service_for_script()
 
-    # --- PART 1: 종합쇼핑몰 3자단가 (2026.csv 저장) ---
+    # 🚀 키워드 리스트 통합 정의
+    keywords_notice_all = [kw for sublist in CAT_KEYWORDS.values() for kw in sublist]
+
+    # --- PART 1: 종합쇼핑몰 3자단가 ---
     final_data = []
     for kw in keywords:
         data = fetch_api_data_from_g2b(kw, d_str)
@@ -140,16 +139,14 @@ def main():
                 innodep_today_dict[org] = innodep_today_dict.get(org, 0) + amt
                 innodep_total_amt += amt
 
-    # --- PART 2: 나라장터 입찰 공고 (공사/물품/용역 합산 및 드라이브 저장) ---
+    # --- PART 2: 나라장터 입찰 공고 ---
     notice_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
-    keywords_notice_all = [kw for sublist in CAT_KEYWORDS.values() for kw in sublist]
     all_notice_count = 0
 
     for cat_api, api_url in NOTICE_API_MAP.items():
         n_df = fetch_notice_data(cat_api, api_url, d_str)
         if not n_df.empty:
             all_notice_count += len(n_df)
-            # 드라이브 개별 파일 업데이트
             f_name = f"나라장터_공고_{cat_api}.csv"
             res_n = drive_service.files().list(q=f"name='{f_name}' and trashed=false", fields='files(id)').execute()
             if res_n.get('files'):
@@ -160,7 +157,6 @@ def main():
                 media_n = MediaIoBaseUpload(io.BytesIO(n_up.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')), mimetype='text/csv')
                 drive_service.files().update(fileId=fid_n, media_body=media_n).execute()
             
-            # 리포트용 필터링
             pattern = '|'.join(keywords_notice_all)
             filtered = n_df[n_df['bidNtceNm'].str.contains(pattern, na=False, case=False)]
             for _, row in filtered.iterrows():
@@ -171,50 +167,48 @@ def main():
                         'amt': row.get('presmptPrce', '별도공고'), 'url': row.get('bidNtceDtlUrl', '#')
                     })
 
-    # --- PART 3: 나라장터 계약 내역 (용역 계약 API) ---
+    # --- PART 3: 나라장터 계약 내역 ---
     contract_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
     api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     collected_servc = []
     
-    # --- PART 3: 나라장터 계약 내역 수정 ---
-for kw_s in keywords_notice_all:
-    p = {'service_key': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
-    try:
-        r = requests.get(api_url_servc, params=p, timeout=30)
-        if r.status_code == 200:
-            root = ET.fromstring(r.content)
-            for item in root.findall('.//item'):
-                # 🚀 [수정] 데이터상 두 번째로 나타나는 상세 URL 필드 직접 지정
-                detail_url = item.findtext('cntrctDetailInfoUrl') 
-                if not detail_url: # 필드가 없을 경우를 대비한 대체 로직
-                    detail_url = "https://www.g2b.go.kr"
+    for kw_s in keywords_notice_all:
+        p = {'serviceKey': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
+        try:
+            r = requests.get(api_url_servc, params=p, timeout=30)
+            if r.status_code == 200:
+                root = ET.fromstring(r.content)
+                for item in root.findall('.//item'):
+                    detail_url = item.findtext('cntrctDetailInfoUrl', 'https://www.g2b.go.kr')
+                    
+                    raw_demand = item.findtext('dminsttList', '-')
+                    clean_demand = raw_demand.replace('[', '').replace(']', '').split('^')[2] if '^' in raw_demand else raw_demand
 
-                raw_corp = item.findtext('corpList', '-')
-                clean_corp = raw_corp.replace('[', '').replace(']', '').split('^')[3] if '^' in raw_corp else raw_corp
-                
-                collected_servc.append({
-                    'org': clean_demand, 
-                    'nm': item.findtext('cntrctNm', '-'), 
-                    'corp': clean_corp,
-                    'amt': item.findtext('totCntrctAmt', '0'), 
-                    'url': detail_url # 상세 URL 반영
-                })
-    except Exception as e:
-        print(f"계약 데이터 수집 중 오류: {e}")
+                    raw_corp = item.findtext('corpList', '-')
+                    clean_corp = raw_corp.replace('[', '').replace(']', '').split('^')[3] if '^' in raw_corp else raw_corp
+                    
+                    collected_servc.append({
+                        'org': clean_demand, 
+                        'nm': item.findtext('cntrctNm', '-'), 
+                        'corp': clean_corp,
+                        'amt': item.findtext('totCntrctAmt', '0'), 
+                        'url': detail_url
+                    })
+        except Exception as e:
+            print(f"계약 데이터 수집 중 오류: {e}")
     
-    # 중복 제거 및 버킷 분류 (동일 로직 유지)
     unique_servc_list = list({f"{d['org']}_{d['nm']}": d for d in collected_servc}.values())
     for s in unique_servc_list:
         cat_found = classify_text(s['nm'])
         if cat_found in contract_mail_buckets:
             contract_mail_buckets[cat_found].append(s)
+
+    # 🚀 국방 기관 필터링
     defense_env = os.environ.get('DEFENSE_ORG_LIST', '')
     defense_org_list = [x.strip() for x in defense_env.replace('\n', ',').split(',') if x.strip()]
 
     def is_defense_match(org_name):
-        if not defense_org_list: return False # 시크릿 리스트가 없으면 국방 섹션은 비움
-        
-        # 비교 최적화 (공백 및 '제' 제거)
+        if not defense_org_list: return False
         clean_org = org_name.replace("제", "").replace(" ", "")
         for target in defense_org_list:
             clean_target = target.replace("제", "").replace(" ", "")
@@ -222,11 +216,10 @@ for kw_s in keywords_notice_all:
                 return True
         return False
 
-    # 1. 국방 카테고리 필터링: 리스트에 있는 기관만 남김
     notice_mail_buckets['국방'] = [item for item in notice_mail_buckets['국방'] if is_defense_match(item['org'])]
     contract_mail_buckets['국방'] = [item for item in contract_mail_buckets['국방'] if is_defense_match(item['org'])]
-    # ==========================================================
-    # --- PART 4: 최종 리포트 HTML 조립 ---
+
+    # --- PART 4: 리포트 HTML 조립 ---
     report_html = f"""
     <div style="font-family:'Malgun Gothic'; line-height:2.0; border:1px solid #ddd; padding:20px; border-radius:10px;">
         <h2 style="color:#1a73e8; margin-top:0;">📋 조달청 데이터 자동 수집 리포트</h2>
