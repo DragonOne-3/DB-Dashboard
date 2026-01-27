@@ -40,28 +40,10 @@ jobs:
           server_port: 465
           username: ${{ secrets.EMAIL_USER }}
           password: ${{ secrets.EMAIL_PASS }}
-          subject: "[조달 DATA] 수집 결과 리포트 (${{ steps.run_script.outputs.collect_date }})"
+          # 제목 날짜 변동 가능
+          subject: "[조달 리포트] ${{ steps.run_script.outputs.collect_date }} 수집 결과"
           to: mhy9680@naver.com
           from: 조달데이터봇 <jetti4856@gmail.com>
+          # 🚀 [핵심 수정] 아래 한 줄로 모든 리포트가 전송됩니다.
           html_body: |
-            <div style="font-family: 'Malgun Gothic', sans-serif; line-height: 1.6;">
-              <h3>🏛️ 조달청 데이터 자동 수집 리포트</h3>
-              <ul>
-                <li><b>수집 날짜:</b> ${{ steps.run_script.outputs.collect_date }}</li>
-                <li><b>상태:</b> ${{ job.status }}</li>
-              </ul>
-              
-              <hr style="border: 0.5px solid #eee;">
-              <div style="background-color: #f9f9f9; padding: 10px; border-radius: 5px; white-space: pre-wrap;">
-                ${{ steps.run_script.outputs.school_info }}
-              </div>
-              
-              <hr style="border: 0.5px solid #eee;">
-              ${{ steps.run_script.outputs.notice_info }}
-                            
-              <br>
-              ${{ steps.run_script.outputs.servc_info }}
-              
-              <hr style="border: 0.5px solid #eee;">
-              <p style="font-size: 12px; color: #888;">본 메일은 시스템에 의해 자동으로 발송되었습니다.</p>
-            </div>
+            ${{ steps.run_script.outputs.full_report }}
