@@ -48,7 +48,6 @@ jobs:
               <h3>🏛️ 조달청 데이터 자동 수집 리포트</h3>
               <ul>
                 <li><b>수집 날짜:</b> ${{ steps.run_script.outputs.collect_date }}</li>
-                <li><b>총 저장 건수:</b> ${{ steps.run_script.outputs.collect_count }}건</li>
                 <li><b>상태:</b> ${{ job.status }}</li>
               </ul>
               
