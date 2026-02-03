@@ -45,7 +45,7 @@ def get_drive_service_for_script():
     return build('drive', 'v3', credentials=creds), creds
 
 def get_target_date():
-    now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    now = datetime.now(timezone.utc) + timedelta(hours=9)
     return now - datetime.timedelta(days=1)
 
 def classify_text(text):
