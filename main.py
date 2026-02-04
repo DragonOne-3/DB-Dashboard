@@ -6,6 +6,7 @@ import threading
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseUpload
+from datetime import datetime, timezone, timedelta
 
 # ================= 1. 설정 및 환경 변수 =================
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
