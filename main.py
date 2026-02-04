@@ -1,4 +1,4 @@
-import os, json,  time, requests
+import os, json, datetime, time, requests
 import xml.etree.ElementTree as ET
 import pandas as pd
 import io
@@ -6,8 +6,6 @@ import threading
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseUpload
-import datetime  # 모듈 전체를 가져옵니다.
-from datetime import timezone, timedelta
 
 # ================= 1. 설정 및 환경 변수 =================
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
@@ -47,9 +45,8 @@ def get_drive_service_for_script():
     return build('drive', 'v3', credentials=creds), creds
 
 def get_target_date():
-    # timezone과 timedelta를 직접 사용하도록 수정
-    now = datetime.datetime.now(timezone.utc) + timedelta(hours=9)
-    return now - timedelta(days=1)
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=9)
+    return now - datetime.timedelta(days=1)
 
 def classify_text(text):
     for cat, kws in CAT_KEYWORDS.items():
