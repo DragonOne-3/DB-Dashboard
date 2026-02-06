@@ -123,7 +123,8 @@ DATE_COL_MAP = {'군수품_발주': '발주예정월', '군수품_수의': '개�
 # --- [4] 상단 헤더 ---
 h_col1, h_col2 = st.columns([3, 1])
 with h_col1: st.markdown('<p class="title-text">🏛 공공조달 DATA 통합검색 시스템</p>', unsafe_allow_html=True)
-with h_col2: st.link_button("⛓️ 지자체 유지보수 내역", "https://g2b-info.streamlit.app/", use_container_width=True)
+#with h_col2: st.link_button("⛓️ 지자체 유지보수 내역", "https://g2b-info.streamlit.app/", use_container_width=True)
+with h_col2: st.link_button("⛓️ 지자체 유지보수 내역", "https://g2b-info.streamlit.app/", width="stretch")
 st.markdown("<hr style='margin: 10px 0px; border-top: 2px solid #333;'>", unsafe_allow_html=True)
 
 # --- [5] 결과 테이블 조각 (Fragment, 역할: 데이터 출력 및 정렬) ---
@@ -142,7 +143,8 @@ def show_result_table(cat, idx_list):
     sort_target = sort_col1.selectbox("정렬기준", ["날짜순"] + show_cols, key=f"st_{cat}", label_visibility="collapsed")
     sort_dir = sort_col2.selectbox("순서", ["내림차순", "오름차순"], key=f"sd_{cat}", label_visibility="collapsed")
     
-    if sort_col3.button("정렬", key=f"sb_{cat}", use_container_width=True):
+    #if sort_col3.button("정렬", key=f"sb_{cat}", use_container_width=True):
+    if sort_col3.button("정렬", key=f"sb_{cat}", width="stretch"):
         ascending = (sort_dir == "오름차순")
         sort_key = 'tmp_dt' if sort_target == "날짜순" else sort_target
         st.session_state[f"df_{cat}"] = df.sort_values(by=sort_key, ascending=ascending)
@@ -165,7 +167,8 @@ def show_result_table(cat, idx_list):
     curr_p = st.session_state.get(f"p_num_{cat}", 1)
     st.dataframe(
     df[show_cols].iloc[(curr_p-1)*p_limit : curr_p*p_limit], 
-    use_container_width=True, 
+    #use_container_width=True, 
+    width="stretch",
     height=520,
     column_config={
         "계약상세정보URL": st.column_config.LinkColumn(
@@ -260,7 +263,8 @@ for i, tab in enumerate(tabs):
                 
                 with d4:
                     # ⭐ 이 버튼을 눌렀을 때만 검색 로직이 실행되도록 변수에 할당
-                    search_exe = st.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
+                    #search_exe = st.button("🔍 검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
+                    search_exe = st.button("🔍 검색실행", key=f"exe_{cat}", type="primary", width="stretch")
             st.markdown('</div>', unsafe_allow_html=True)
 
         # 실제 데이터 처리는 search_exe 버튼이 눌린 '그 순간'에만 진행됨
