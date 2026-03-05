@@ -9,7 +9,7 @@ import google.auth.transport.requests
 from googleapiclient.discovery import build
 from dateutil.relativedelta import relativedelta
 
-st.set_page_config(page_title="나라장터 공고 검색", layout="wide", page_icon="📢")
+# set_page_config는 메인 app(g2g_total_data.py)에서만 호출 — 여기선 제거
 
 # ── 진단 모드: 실제 에러 원인 파악 ──────────────────────────────────────────────
 import traceback as _tb
