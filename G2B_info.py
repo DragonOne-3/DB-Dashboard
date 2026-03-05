@@ -19,100 +19,87 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-# 커스텀 CSS (세련된 다크 테마)
+# 커스텀 CSS (클린 라이트 테마)
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
   /* 전체 배경 */
-  .stApp { background: #f5f7fa; color: #e2e8f0; }
+  .stApp { background: #f4f6fb; }
 
-  /* 헤더 */
+  /* ── 히어로 헤더 ── */
   .hero {
-    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    border: 1px solid #334155;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
     border-radius: 16px;
     padding: 2.5rem 3rem;
     margin-bottom: 2rem;
     text-align: center;
+    box-shadow: 0 4px 20px rgba(37,99,235,.25);
   }
-  .hero h1 { font-size: 2rem; font-weight: 700; color: #f1f5f9; margin: 0 0 .5rem; }
-  .hero p  { color: #94a3b8; font-size: 1rem; margin: 0; }
+  .hero h1 { font-size: 2rem; font-weight: 800; color: #fff; margin: 0 0 .5rem; letter-spacing: -.5px; }
+  .hero p  { color: rgba(255,255,255,.75); font-size: 1rem; margin: 0; }
 
-  /* 검색 패널 */
+  /* ── 검색 패널 ── */
   .search-panel {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
     padding: 1.5rem 2rem;
     margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
   }
 
-  /* 통계 카드 */
+  /* ── 통계 카드 ── */
   .stat-card {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 10px;
-    padding: 1.2rem 1.5rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1.3rem 1.5rem;
     text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.05);
   }
-  .stat-num  { font-size: 1.8rem; font-weight: 700; color: #38bdf8; }
-  .stat-label{ font-size: .8rem; color: #94a3b8; margin-top: .2rem; }
+  .stat-num   { font-size: 1.9rem; font-weight: 800; color: #2563eb; line-height: 1.1; }
+  .stat-label { font-size: .78rem; color: #64748b; margin-top: .3rem; font-weight: 500; letter-spacing: .3px; }
 
-  /* 필터 바 */
-  .filter-bar {
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 10px;
-    padding: 1rem 1.5rem;
-    margin-bottom: 1rem;
+  /* ── 섹션 제목 ── */
+  .section-title {
+    font-size: 1rem; font-weight: 700; color: #1e293b;
+    margin-bottom: .8rem; letter-spacing: -.2px;
   }
 
-  /* 라디오/버튼 스타일 */
-  div[data-testid="stRadio"] > label { color: #cbd5e1; font-weight: 600; }
-  div[data-testid="stRadio"] div[role="radiogroup"] { gap: .4rem; }
-  div[data-testid="stRadio"] label > div:first-child { background: #334155 !important; }
-  div[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) > div:first-child {
-    background: #0ea5e9 !important;
-  }
-
-  /* 검색 버튼 */
+  /* ── 검색 버튼 ── */
   div[data-testid="stButton"] > button[kind="primary"] {
-    background: linear-gradient(135deg, #0ea5e9, #6366f1) !important;
+    background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
     border: none !important;
-    color: white !important;
+    color: #fff !important;
     font-weight: 700 !important;
     border-radius: 8px !important;
-    padding: .6rem 2.5rem !important;
-    font-size: 1rem !important;
-    transition: opacity .2s;
+    padding: .55rem 2rem !important;
+    font-size: .95rem !important;
+    box-shadow: 0 3px 10px rgba(37,99,235,.35) !important;
+    transition: opacity .18s, transform .18s;
   }
-  div[data-testid="stButton"] > button[kind="primary"]:hover { opacity: .85; }
+  div[data-testid="stButton"] > button[kind="primary"]:hover {
+    opacity: .9; transform: translateY(-1px);
+  }
 
-  /* 다운로드 버튼 */
+  /* ── 다운로드 버튼 ── */
   div[data-testid="stDownloadButton"] > button {
-    background: #1e293b !important;
-    border: 1px solid #475569 !important;
-    color: #e2e8f0 !important;
+    background: #fff !important;
+    border: 1.5px solid #2563eb !important;
+    color: #2563eb !important;
+    font-weight: 600 !important;
     border-radius: 8px !important;
   }
 
-  /* 데이터프레임 */
-  div[data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; }
+  /* ── 데이터프레임 ── */
+  div[data-testid="stDataFrame"] {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
 
-  /* select / multiselect */
-  div[data-testid="stMultiSelect"] label,
-  div[data-testid="stSelectbox"] label { color: #94a3b8 !important; font-size: .85rem !important; }
-
-  /* 구분선 */
-  hr { border-color: #334155; }
-
-  /* 배지 */
-  .badge-active  { background:#065f46; color:#6ee7b7; padding:2px 8px; border-radius:99px; font-size:.75rem; font-weight:600; }
-  .badge-expired { background:#7f1d1d; color:#fca5a5; padding:2px 8px; border-radius:99px; font-size:.75rem; font-weight:600; }
-  .badge-warn    { background:#78350f; color:#fde68a; padding:2px 8px; border-radius:99px; font-size:.75rem; font-weight:600; }
-
-  /* 섹션 제목 */
-  .section-title { font-size:1.1rem; font-weight:700; color:#e2e8f0; margin-bottom:.8rem; }
+  /* ── 구분선 ── */
+  hr { border-color: #e2e8f0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -337,10 +324,10 @@ st.markdown("</div>", unsafe_allow_html=True)
 # ─────────────────────────────────────────────
 if not search_clicked and "search_done" not in st.session_state:
     st.markdown("""
-    <div style="text-align:center; padding: 5rem 0; color: #475569;">
+    <div style="text-align:center; padding: 5rem 0; color: #94a3b8;">
       <div style="font-size:4rem; margin-bottom:1rem;">🔍</div>
-      <div style="font-size:1.3rem; font-weight:600; color:#64748b; margin-bottom:.5rem;">지역을 선택하고 검색 버튼을 눌러주세요</div>
-      <div style="font-size:.95rem; color:#475569;">전국 또는 광역시도를 선택하면 계약 현황이 표시됩니다</div>
+      <div style="font-size:1.3rem; font-weight:700; color:#334155; margin-bottom:.5rem;">지역을 선택하고 검색 버튼을 눌러주세요</div>
+      <div style="font-size:.95rem; color:#64748b;">전국 또는 광역시도를 선택하면 계약 현황이 표시됩니다</div>
     </div>
     """, unsafe_allow_html=True)
     st.stop()
@@ -379,12 +366,12 @@ c1, c2, c3, c4 = st.columns(4)
 with c1:
     st.markdown(f'<div class="stat-card"><div class="stat-num">{total_count:,}</div><div class="stat-label">전체 계약 건수</div></div>', unsafe_allow_html=True)
 with c2:
-    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#4ade80">{active_count:,}</div><div class="stat-label">진행중 계약</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#16a34a">{active_count:,}</div><div class="stat-label">진행중 계약</div></div>', unsafe_allow_html=True)
 with c3:
-    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#fb923c">{expiring_soon:,}</div><div class="stat-label">3개월 내 만료 예정</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#ea580c">{expiring_soon:,}</div><div class="stat-label">3개월 내 만료 예정</div></div>', unsafe_allow_html=True)
 with c4:
     amount_str = f"{total_amount/100_000_000:.1f}억" if total_amount >= 100_000_000 else f"{total_amount:,}원"
-    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#c084fc">{amount_str}</div><div class="stat-label">총 계약금액</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#7c3aed">{amount_str}</div><div class="stat-label">총 계약금액</div></div>', unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
