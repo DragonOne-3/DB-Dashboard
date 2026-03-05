@@ -10,14 +10,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # =================================================================================
 # 1. 설정 및 환경 변수
-# - GitHub Actions의 Secrets에 저장된 API 키와 구글 인증 정보를 불러옵니다.
-# - HEADER_KOR : 종합쇼핑몰 API에서 받아오는 데이터의 컬럼명 (한글)
-# - CAT_KEYWORDS : 나라장터 공고/계약 데이터를 분류할 카테고리와 키워드 매핑
-# - keywords : 종합쇼핑몰 3자단가 API 조회에 사용할 품목 키워드 목록
-# - NOTICE_API_MAP : 나라장터 입찰공고 API URL (공사/물품/용역 구분)
 # =================================================================================
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
+
+# ★ 나라장터 공고 연도별 파일 저장 폴더 ID
+NOTICE_FOLDER_ID = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
 
 HEADER_KOR = [
     '조달구분명', '계약구분명', '계약납품구분명', '계약납품요구일자', '계약납품요구번호',
@@ -79,10 +77,6 @@ NOTICE_API_MAP = {
 # =================================================================================
 
 def get_drive_service_for_script():
-    """
-    구글 서비스 계정 인증 후 Google Drive API 서비스 객체를 반환합니다.
-    GitHub Secrets의 JSON 문자열을 파싱해 인증합니다.
-    """
     info = json.loads(AUTH_JSON_STR)
     creds = service_account.Credentials.from_service_account_info(
         info, scopes=['https://www.googleapis.com/auth/drive']
@@ -91,19 +85,11 @@ def get_drive_service_for_script():
 
 
 def get_target_date():
-    """
-    수집 대상 날짜를 반환합니다. (한국시간 기준 어제 날짜)
-    UTC + 9시간 = KST, 거기서 하루 빼면 어제
-    """
     now = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=9)
     return now - datetime.timedelta(days=1)
 
 
 def classify_text(text):
-    """
-    텍스트(공고명, 계약명 등)를 CAT_KEYWORDS 기준으로 카테고리 분류합니다.
-    매칭되는 카테고리가 없으면 '기타' 반환.
-    """
     for cat, kws in CAT_KEYWORDS.items():
         if any(kw in str(text) for kw in kws):
             return cat
@@ -111,11 +97,6 @@ def classify_text(text):
 
 
 def format_html_table(data_list, title):
-    """
-    수집된 데이터 리스트를 HTML 테이블 형식으로 변환합니다.
-    이노뎁 업체명이 포함된 행은 노란 배경으로 강조합니다.
-    데이터가 없으면 '해당 내역 없음' 메시지를 반환합니다.
-    """
     html = f"<div style='margin-top:25px;'><h4 style='color:#2c3e50; border-bottom:2px solid #34495e; padding-bottom:8px;'>{title}</h4>"
     if not data_list:
         html += "<p style='color:#888; padding:10px;'>- 해당 내역이 없습니다.</p></div>"
@@ -127,11 +108,9 @@ def format_html_table(data_list, title):
     for item in data_list:
         corp_name = item.get('corp', '-')
         bg = "background-color:#FFF9C4;" if "이노뎁" in corp_name else ""
-
         amt_val = item.get('amt', '0')
         amt_str = f"{int(amt_val):,}원" if str(amt_val).isdigit() else amt_val
         link_name = f"<a href='{item['url']}' target='_blank' style='color:#1a73e8; text-decoration:none;'>{item['nm']}</a>"
-
         html += f"<tr style='{bg}'><td style='padding:8px; text-align:center;'>{item['org']}</td>"
         html += f"<td style='padding:8px;'>{link_name}</td>"
         html += f"<td style='padding:8px; text-align:center;'>{corp_name}</td>"
@@ -141,12 +120,6 @@ def format_html_table(data_list, title):
 
 
 def fetch_api_data_from_g2b(kw, d_str):
-    """
-    종합쇼핑몰 3자단가 API에서 특정 키워드(품목명)의 납품 데이터를 가져옵니다.
-    - kw  : 조회할 품목 키워드 (예: '영상감시장치')
-    - d_str : 조회 날짜 문자열 (예: '20250304')
-    반환값: 각 item의 필드값 리스트들의 리스트 (없으면 빈 리스트)
-    """
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
     params = {
         'numOfRows': '999', 'pageNo': '1', 'ServiceKey': MY_DIRECT_KEY,
@@ -165,13 +138,6 @@ def fetch_api_data_from_g2b(kw, d_str):
 
 
 def fetch_notice_data(category, url, d_str):
-    """
-    나라장터 입찰공고 API에서 하루치 공고 전체를 가져옵니다.
-    - category : '공사' / '물품' / '용역' 구분 (로그용)
-    - url      : 해당 카테고리의 API 엔드포인트
-    - d_str    : 조회 날짜 문자열
-    반환값: DataFrame (공고 목록), 실패 시 빈 DataFrame
-    """
     params = {
         'serviceKey': MY_DIRECT_KEY, 'pageNo': '1', 'numOfRows': '999',
         'inqryDiv': '1', 'type': 'json',
@@ -189,13 +155,6 @@ def fetch_notice_data(category, url, d_str):
 
 
 def fetch_single_contract(kw_s, d_str):
-    """
-    나라장터 용역 계약 API에서 특정 키워드로 계약 내역을 가져옵니다.
-    - kw_s  : 계약명 검색 키워드 (예: 'CCTV')
-    - d_str : 조회 날짜 문자열
-    반환값: 계약 정보 딕셔너리 리스트
-    ※ ThreadPoolExecutor로 병렬 호출되므로 독립 함수로 분리
-    """
     api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     results = []
     p = {
@@ -208,15 +167,12 @@ def fetch_single_contract(kw_s, d_str):
             root = ET.fromstring(r.content)
             for item in root.findall('.//item'):
                 detail_url = item.findtext('cntrctDtlInfoUrl') or "https://www.g2b.go.kr"
-
                 raw_demand = item.findtext('dminsttList', '-')
                 clean_demand = raw_demand.replace('[', '').replace(']', '').split('^')[2] \
                     if '^' in raw_demand else raw_demand
-
                 raw_corp = item.findtext('corpList', '-')
                 clean_corp = raw_corp.replace('[', '').replace(']', '').split('^')[3] \
                     if '^' in raw_corp else raw_corp
-
                 results.append({
                     'org': clean_demand,
                     'nm': item.findtext('cntrctNm', '-'),
@@ -229,31 +185,68 @@ def fetch_single_contract(kw_s, d_str):
     return results
 
 
+# ★ 추가: 나라장터 공고 연도별 파일 저장 함수
+def save_notice_by_year(drive_service, creds, cat_name, new_df, year):
+    """
+    나라장터 공고 데이터를 연도별 파일로 저장
+    파일명: 나라장터_공고_공사_2025년.csv
+    저장위치: NOTICE_FOLDER_ID 폴더
+    """
+    file_name = f"나라장터_공고_{cat_name}_{year}년.csv"
+
+    res = drive_service.files().list(
+        q=f"name='{file_name}' and '{NOTICE_FOLDER_ID}' in parents and trashed=false",
+        fields='files(id)'
+    ).execute()
+    items = res.get('files', [])
+    file_id = items[0]['id'] if items else None
+
+    if file_id:
+        resp = requests.get(
+            f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media',
+            headers={'Authorization': f'Bearer {creds.token}'}
+        )
+        try:
+            old_df = pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
+            new_df = pd.concat([old_df, new_df], ignore_index=True)
+        except Exception as e:
+            print(f"기존 파일 읽기 오류 ({file_name}): {e}")
+
+    if 'bidNtceNo' in new_df.columns:
+        new_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
+
+    csv_bytes = new_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+    media = MediaIoBaseUpload(io.BytesIO(csv_bytes), mimetype='text/csv')
+
+    if file_id:
+        drive_service.files().update(fileId=file_id, media_body=media).execute()
+    else:
+        drive_service.files().create(
+            body={'name': file_name, 'parents': [NOTICE_FOLDER_ID]},
+            media_body=media
+        ).execute()
+
+    print(f"✅ [{cat_name}] {file_name} 저장 완료 ({len(new_df):,}건)")
+
+
 # =================================================================================
 # 3. 메인 로직
 # =================================================================================
 def main():
-    # 환경변수 없으면 즉시 종료
     if not MY_DIRECT_KEY or not AUTH_JSON_STR:
         return
 
-    # 기본 날짜/시간 정보 설정
-    target_dt = get_target_date()
-    d_str = target_dt.strftime("%Y%m%d")
+    target_dt    = get_target_date()
+    d_str        = target_dt.strftime("%Y%m%d")
+    year         = target_dt.year           # ★ 어제 날짜 기준 연도
     display_date = target_dt.strftime("%Y년 %m월 %d일")
-    weekday_str = ["월", "화", "수", "목", "금", "토", "일"][target_dt.weekday()]
+    weekday_str  = ["월", "화", "수", "목", "금", "토", "일"][target_dt.weekday()]
 
-    # Google Drive 서비스 초기화
     drive_service, drive_creds = get_drive_service_for_script()
-
-    # 나라장터 공고/계약 검색에 사용할 통합 키워드 리스트 생성
     keywords_notice_all = [kw for sublist in CAT_KEYWORDS.values() for kw in sublist]
 
     # -------------------------------------------------------------------------
-    # PART 1: 종합쇼핑몰 3자단가 수집
-    # - keywords 목록의 품목들을 ThreadPoolExecutor로 병렬 API 호출
-    # - 수집한 데이터를 Google Drive의 연도별 CSV에 누적 저장
-    # - 학교 지능형 CCTV 납품 현황 / 이노뎁 납품 실적 별도 집계
+    # PART 1: 종합쇼핑몰 3자단가 수집 (변경 없음)
     # -------------------------------------------------------------------------
     final_data = []
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -268,7 +261,6 @@ def main():
     if final_data:
         new_df = pd.DataFrame(final_data, columns=HEADER_KOR)
 
-        # Google Drive에서 올해 CSV 파일 찾아서 신규 데이터 추가 후 재업로드
         query = f"name='{target_dt.year}.csv' and trashed=false"
         res = drive_service.files().list(q=query, fields='files(id)').execute()
         items = res.get('files', [])
@@ -289,7 +281,6 @@ def main():
             )
             drive_service.files().update(fileId=f_id, media_body=media).execute()
 
-        # 학교 CCTV / 이노뎁 납품 실적 집계
         for row in final_data:
             org = str(row[7])
             comp = str(row[21])
@@ -309,9 +300,7 @@ def main():
 
     # -------------------------------------------------------------------------
     # PART 2: 나라장터 입찰 공고 수집
-    # - 공사/물품/용역 3개 API에서 당일 공고 전체를 가져옴
-    # - 키워드 필터링 후 CAT_KEYWORDS 기준으로 카테고리 분류
-    # - Google Drive의 공고 CSV 파일에 누적 저장
+    # ★ 변경: 단일 파일 누적 저장 → 연도별 파일로 저장
     # -------------------------------------------------------------------------
     notice_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
     all_notice_count = 0
@@ -321,26 +310,8 @@ def main():
         if not n_df.empty:
             all_notice_count += len(n_df)
 
-            # Google Drive 공고 CSV 누적 저장
-            f_name = f"나라장터_공고_{cat_api}.csv"
-            res_n = drive_service.files().list(
-                q=f"name='{f_name}' and trashed=false", fields='files(id)'
-            ).execute()
-            if res_n.get('files'):
-                fid_n = res_n.get('files')[0]['id']
-                resp_n = requests.get(
-                    f'https://www.googleapis.com/drive/v3/files/{fid_n}?alt=media',
-                    headers={'Authorization': f'Bearer {drive_creds.token}'}
-                )
-                old_n = pd.read_csv(io.BytesIO(resp_n.content), encoding='utf-8-sig', low_memory=False)
-                n_up = pd.concat([old_n, n_df], ignore_index=True).drop_duplicates(
-                    subset=['bidNtceNo'], keep='last'
-                )
-                media_n = MediaIoBaseUpload(
-                    io.BytesIO(n_up.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')),
-                    mimetype='text/csv'
-                )
-                drive_service.files().update(fileId=fid_n, media_body=media_n).execute()
+            # ★ 연도별 파일로 저장 (어제 날짜 기준 연도)
+            save_notice_by_year(drive_service, drive_creds, cat_api, n_df, year)
 
             # 키워드 필터링 및 카테고리 분류
             pattern = '|'.join(keywords_notice_all)
@@ -350,15 +321,13 @@ def main():
                 if cat_found in notice_mail_buckets:
                     notice_mail_buckets[cat_found].append({
                         'org': row.get('dminsttNm', '-'),
-                        'nm': row.get('bidNtceNm', '-'),
+                        'nm':  row.get('bidNtceNm', '-'),
                         'amt': row.get('presmptPrce', '별도공고'),
                         'url': row.get('bidNtceDtlUrl', '#')
                     })
 
     # -------------------------------------------------------------------------
-    # PART 3: 나라장터 용역 계약 내역 수집
-    # - keywords_notice_all 키워드별로 계약 API를 ThreadPoolExecutor로 병렬 호출
-    # - 중복 제거 후 CAT_KEYWORDS 기준으로 카테고리 분류
+    # PART 3: 나라장터 용역 계약 내역 수집 (변경 없음)
     # -------------------------------------------------------------------------
     contract_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
     collected_servc = []
@@ -371,21 +340,15 @@ def main():
         for future in as_completed(futures):
             collected_servc.extend(future.result())
 
-    # 중복 제거 (수요기관+계약명 기준) 후 카테고리 분류
     unique_servc_list = list({f"{d['org']}_{d['nm']}": d for d in collected_servc}.values())
     for s in unique_servc_list:
         cat_found = classify_text(s['nm'])
         if cat_found in contract_mail_buckets:
             contract_mail_buckets[cat_found].append(s)
 
-    # -------------------------------------------------------------------------
-    # 국방 카테고리 후처리
-    # - 학교, 민방위, 교육청 기관은 국방 섹션에서 제외
-    # -------------------------------------------------------------------------
     exclude_keywords = ['학교', '민방위', '교육청']
 
     def is_valid_org(org_name):
-        """제외 키워드가 기관명에 포함되면 False 반환"""
         for word in exclude_keywords:
             if word in org_name:
                 return False
@@ -399,9 +362,7 @@ def main():
     ]
 
     # -------------------------------------------------------------------------
-    # PART 4: 최종 HTML 리포트 조립
-    # - 수집 요약 정보 + 종합쇼핑몰/공고/계약 데이터를 HTML로 조합
-    # - GitHub Actions output 변수로 저장하여 이메일 발송 등 후속 step에서 사용
+    # PART 4: 최종 HTML 리포트 조립 (변경 없음)
     # -------------------------------------------------------------------------
     report_html = f"""
     <div style="font-family:'Malgun Gothic'; line-height:2.0; border:1px solid #ddd; padding:20px; border-radius:10px;">
@@ -446,7 +407,6 @@ def main():
 
     report_html += "</div>"
 
-    # GitHub Actions output 변수로 저장 (이후 step에서 이메일 발송 등에 활용)
     if "GITHUB_OUTPUT" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
             f.write(f"collect_date={d_str}\nfull_report<<EOF\n{report_html}\nEOF\n")
