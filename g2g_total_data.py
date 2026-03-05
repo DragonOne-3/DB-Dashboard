@@ -41,28 +41,26 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
 [data-baseweb="menu"] { background: #ffffff !important; }
 [data-baseweb="option"] { background: #ffffff !important; color: #1e293b !important; font-size: 13px !important; }
 [data-baseweb="option"]:hover { background: #eff6ff !important; color: #1d4ed8 !important; }
-.stDateInput > div > div > input { background: #f8fafc !important; border: 1px solid #cbd5e1 !important; border-radius: 9px !important; color: #1e293b !important; font-size: 13px !important; }
 .stButton > button { background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-radius: 20px !important; color: #475569 !important; font-size: 12px !important; font-family: 'Noto Sans KR', sans-serif !important; font-weight: 500 !important; padding: 4px 14px !important; height: 30px !important; transition: all 0.16s ease !important; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
 .stButton > button:hover { background: #eff6ff !important; border-color: #3b82f6 !important; color: #1d4ed8 !important; box-shadow: 0 2px 8px rgba(59,130,246,0.2) !important; transform: translateY(-1px) !important; }
 .stButton > button:active { transform: translateY(0) !important; box-shadow: none !important; }
-button[kind="primary"] { background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%) !important; border: none !important; border-radius: 10px !important; color: #ffffff !important; font-weight: 700 !important; font-size: 13px !important; height: 38px !important; box-shadow: 0 3px 12px rgba(37,99,235,0.4), inset 0 1px 0 rgba(255,255,255,0.2) !important; transition: all 0.18s ease !important; }
-button[kind="primary"]:hover { box-shadow: 0 5px 18px rgba(37,99,235,0.5) !important; transform: translateY(-2px) !important; filter: brightness(1.06) !important; }
+button[kind="primary"] { background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%) !important; border: none !important; border-radius: 10px !important; color: #ffffff !important; font-weight: 700 !important; font-size: 13px !important; height: 38px !important; box-shadow: 0 3px 12px rgba(37,99,235,0.4) !important; transition: all 0.18s ease !important; }
+button[kind="primary"]:hover { box-shadow: 0 5px 18px rgba(37,99,235,0.5) !important; transform: translateY(-2px) !important; }
 [data-testid="stHorizontalBlock"] button[kind="primary"] { background: #1d4ed8 !important; border-radius: 20px !important; height: 30px !important; min-width: 30px !important; padding: 0 10px !important; font-size: 12px !important; font-weight: 700 !important; }
 .stDownloadButton > button { background: #f0f7ff !important; border: 1px solid #bfdbfe !important; border-radius: 9px !important; color: #1d4ed8 !important; font-size: 12px !important; font-weight: 500 !important; height: 32px !important; }
 .stDownloadButton > button:hover { background: #dbeafe !important; border-color: #3b82f6 !important; }
-.stLinkButton > a { background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-radius: 9px !important; color: #64748b !important; font-size: 12px !important; text-decoration: none; padding: 6px 14px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.stLinkButton > a { background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-radius: 9px !important; color: #64748b !important; font-size: 12px !important; text-decoration: none; padding: 6px 14px !important; }
 .stLinkButton > a:hover { border-color: #3b82f6 !important; color: #1d4ed8 !important; background: #eff6ff !important; }
-.info-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+.info-bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 12px; }
 .result-badge { background: linear-gradient(135deg, #eff6ff, #dbeafe); border: 1px solid #93c5fd; border-radius: 8px; padding: 5px 14px; font-size: 13px; font-weight: 700; color: #1d4ed8; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
 .stDataFrame { border-radius: 12px !important; overflow: hidden; border: 1px solid #e2e8f0 !important; }
 .stDataFrame thead tr th { background: #f8fafc !important; color: #64748b !important; font-size: 12px !important; font-weight: 600 !important; border-bottom: 1px solid #e2e8f0 !important; }
 .stDataFrame tbody tr:hover td { background: #f0f7ff !important; }
 .stDataFrame tbody tr td { font-size: 13px !important; color: #334155 !important; border-color: #f1f5f9 !important; }
-.stTextInput label, .stSelectbox label, .stDateInput label { display: none !important; }
+.stTextInput label, .stSelectbox label { display: none !important; }
 .stSpinner > div { border-top-color: #3b82f6 !important; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-hr { border-color: #e2e8f0 !important; margin: 12px 0 !important; }
 .no-data-msg { text-align: center; padding: 50px; color: #94a3b8; font-size: 14px; }
 .no-data-icon { font-size: 38px; margin-bottom: 10px; opacity: 0.4; }
 </style>
@@ -98,24 +96,10 @@ def fetch_data(file_id, is_sheet=True):
     ]
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-@st.cache_data(ttl=3600)
-def fetch_csv_by_name(file_name):
-    svc, creds = get_drive_service()
-    creds.refresh(google.auth.transport.requests.Request())
-    hdrs  = {'Authorization': f'Bearer {creds.token}'}
-    files = svc.files().list(q=f"name='{file_name}' and trashed=false", fields='files(id)').execute().get('files', [])
-    if not files:
-        return pd.DataFrame()
-    resp = requests.get(f"https://www.googleapis.com/drive/v3/files/{files[0]['id']}?alt=media", headers=hdrs)
-    return pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
 
-
-# ── 설정값 ────────────────────────────────────────────────────────────────────────
-NOTICE_CSV_MAP = {'공사': '나라장터_공고_공사.csv', '물품': '나라장터_공고_물품.csv', '용역': '나라장터_공고_용역.csv'}
-
+# ── 설정값 (나라장터_공고 제외) ───────────────────────────────────────────────────
 SHEET_FILE_IDS = {
     '나라장터_발주': '1pGnb6O5Z1ahaHYuQdydyoY1Ayf147IoGmLRdA3WAHi4',
-    '나라장터_공고': None,
     '나라장터_계약': '15Hsr_nup4ZteIZ4Jyov8wG2s_rKoZ25muqRE3-sRnaw',
     '군수품_발주':   '1pzW51Z29SSoQk7al_GvN_tj5smuhOR3J2HWnL_16fcI',
     '군수품_계약':   '1KPMUz0IKM6AQvqwfAkvW96WNvzbycN56vNlFnDmfRTw',
@@ -125,46 +109,44 @@ SHEET_FILE_IDS = {
 }
 
 DISPLAY_INDEX_MAP = {
-    '군수품_계약':   [7, 5, 3, 1, 12],
-    '군수품_수의':   [12, 10, 8, 3],
-    '군수품_발주':   [7, 8, 12, 2, 3],
-    '군수품_공고':   [0, 16, 18, 19, 23],
     '나라장터_발주': [9, 13, 20],
-    '나라장터_공고': ["dminsttNm", "bidNtceNm", "presmptPrce", "bidClsDt", "bidNtceDtlUrl"],
     '나라장터_계약': [0, 3, 4, 5, 6, 33],
+    '군수품_발주':   [7, 8, 12, 2, 3],
+    '군수품_계약':   [7, 5, 3, 1, 12],
+    '군수품_공고':   [0, 16, 18, 19, 23],
+    '군수품_수의':   [12, 10, 8, 3],
     '종합쇼핑몰':   ["수요기관명", "계약납품요구일자", "세부품명", "계약명", "업체명", "수량", "금액"]
 }
 
 DATE_COL_MAP = {
-    '군수품_발주':   '발주예정월',  '군수품_수의':   '개찰일자',
-    '군수품_계약':   '계약일자',    '군수품_공고':   '공고일자',
-    '나라장터_발주': None,          '나라장터_공고': 'bidNtceDt',
-    '나라장터_계약': '★가공_계약일', '종합쇼핑몰':   '계약납품요구일자'
+    '나라장터_발주': None,
+    '나라장터_계약': '★가공_계약일',
+    '군수품_발주':   '발주예정월',
+    '군수품_계약':   '계약일자',
+    '군수품_공고':   '공고일자',
+    '군수품_수의':   '개찰일자',
+    '종합쇼핑몰':   '계약납품요구일자'
 }
 
 TAB_ICONS = {
-    '나라장터_발주': '📋', '나라장터_공고': '📢', '나라장터_계약': '📝',
-    '군수품_발주':   '🛡', '군수품_계약':   '✅', '군수품_공고':   '📣',
-    '군수품_수의':   '🤝', '종합쇼핑몰':   '🛒'
+    '나라장터_발주': '📋', '나라장터_계약': '📝',
+    '군수품_발주':   '🛡', '군수품_계약':   '✅',
+    '군수품_공고':   '📣', '군수품_수의':   '🤝',
+    '종합쇼핑몰':   '🛒'
 }
 
 
 # ── 헬퍼 ─────────────────────────────────────────────────────────────────────────
-def safe_date(v):
-    if isinstance(v, tuple): v = v[0]
-    if isinstance(v, datetime): return v.date()
-    return v
-
 def apply_keyword(df, keyword, field):
     target = field
     if field == "업체명":
         for c in ["업체명","상호","상호명","계약상대자","계약상대자명"]:
             if c in df.columns: target = c; break
     elif field == "수요기관명":
-        for c in ["수요기관명","수요기관","발주기관","공고기관","dminsttNm"]:
+        for c in ["수요기관명","수요기관","발주기관","공고기관"]:
             if c in df.columns: target = c; break
     elif field == "계약명":
-        for c in ["계약명","공고명","bidNtceNm"]:
+        for c in ["계약명","공고명"]:
             if c in df.columns: target = c; break
     if target != "ALL" and target in df.columns:
         return df[target].astype(str).str.contains(keyword, case=False, na=False)
@@ -246,25 +228,20 @@ def show_result_table(cat, idx_list):
         if bc[13].button("»", key=f"n10_{cat}"): st.session_state[f"p_num_{cat}"]=min(total,curr+10); st.rerun()
 
 
-# ── 메인 루프 ─────────────────────────────────────────────────────────────────────
-# 모든 탭 세션키 미리 초기화 (탭 렌더링 전에 처리해야 date_input key 에러 방지)
+# ── 세션 초기화 (탭 렌더링 전 일괄) ─────────────────────────────────────────────
 _today = date.today()
-_yesterday = _today - relativedelta(days=1)
+_yed   = (_today - relativedelta(days=1)).strftime('%Y-%m-%d')
+_6m    = (_today - relativedelta(months=6)).strftime('%Y-%m-%d')
 for _cat in SHEET_FILE_IDS:
     if f"sd_in_{_cat}" not in st.session_state:
-        st.session_state[f"sd_in_{_cat}"] = (_today - relativedelta(months=6)).strftime('%Y-%m-%d')
+        st.session_state[f"sd_in_{_cat}"] = _6m
     if f"ed_in_{_cat}" not in st.session_state:
-        st.session_state[f"ed_in_{_cat}"] = _yesterday.strftime('%Y-%m-%d')
+        st.session_state[f"ed_in_{_cat}"] = _yed
     if f"df_{_cat}" not in st.session_state:
         st.session_state[f"df_{_cat}"] = None
-    # 타입 보정: 혹시 date/datetime 객체가 들어있으면 문자열로 변환
-    v = st.session_state[f"sd_in_{_cat}"]
-    if not isinstance(v, str):
-        st.session_state[f"sd_in_{_cat}"] = (v.date() if isinstance(v, datetime) else v).strftime('%Y-%m-%d')
-    v = st.session_state[f"ed_in_{_cat}"]
-    if not isinstance(v, str):
-        st.session_state[f"ed_in_{_cat}"] = (v.date() if isinstance(v, datetime) else v).strftime('%Y-%m-%d')
 
+
+# ── 메인 탭 루프 ──────────────────────────────────────────────────────────────────
 tab_labels = [f"{TAB_ICONS.get(k,'')} {k}" for k in SHEET_FILE_IDS]
 tabs = st.tabs(tab_labels)
 
@@ -273,24 +250,22 @@ for i, tab in enumerate(tabs):
     with tab:
         today     = date.today()
         yesterday = today - relativedelta(days=1)
-
-        # 세션 초기화는 탭 루프 밖에서 일괄 처리됨
+        yed_str   = yesterday.strftime('%Y-%m-%d')
 
         # ① 퀵버튼
         st.markdown('<div class="search-panel">', unsafe_allow_html=True)
         st.markdown('<div class="search-section-label">📅 조회 기간</div>', unsafe_allow_html=True)
 
         qb = st.columns([0.55, 0.55, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 6])
-        yed = yesterday.strftime('%Y-%m-%d')
         QUICK = [
-            ("어제",  f"d1_{cat}",  yed,                                                    yed),
-            ("1주",   f"d7_{cat}",  (yesterday-relativedelta(days=6)).strftime('%Y-%m-%d'),  yed),
-            ("1개월", f"m1_{cat}",  (yesterday-relativedelta(months=1)).strftime('%Y-%m-%d'), yed),
-            ("3개월", f"m3_{cat}",  (yesterday-relativedelta(months=3)).strftime('%Y-%m-%d'), yed),
-            ("6개월", f"m6_{cat}",  (yesterday-relativedelta(months=6)).strftime('%Y-%m-%d'), yed),
-            ("9개월", f"m9_{cat}",  (yesterday-relativedelta(months=9)).strftime('%Y-%m-%d'), yed),
-            ("1년",   f"y1_{cat}",  (yesterday-relativedelta(years=1)).strftime('%Y-%m-%d'),  yed),
-            ("2년",   f"y2_{cat}",  (yesterday-relativedelta(years=2)).strftime('%Y-%m-%d'),  yed),
+            ("어제",  f"d1_{cat}",  yed_str,                                                       yed_str),
+            ("1주",   f"d7_{cat}",  (yesterday-relativedelta(days=6)).strftime('%Y-%m-%d'),         yed_str),
+            ("1개월", f"m1_{cat}",  (yesterday-relativedelta(months=1)).strftime('%Y-%m-%d'),       yed_str),
+            ("3개월", f"m3_{cat}",  (yesterday-relativedelta(months=3)).strftime('%Y-%m-%d'),       yed_str),
+            ("6개월", f"m6_{cat}",  (yesterday-relativedelta(months=6)).strftime('%Y-%m-%d'),       yed_str),
+            ("9개월", f"m9_{cat}",  (yesterday-relativedelta(months=9)).strftime('%Y-%m-%d'),       yed_str),
+            ("1년",   f"y1_{cat}",  (yesterday-relativedelta(years=1)).strftime('%Y-%m-%d'),        yed_str),
+            ("2년",   f"y2_{cat}",  (yesterday-relativedelta(years=2)).strftime('%Y-%m-%d'),        yed_str),
         ]
         for idx_q, (label, key, sd_q, ed_q) in enumerate(QUICK):
             if qb[idx_q].button(label, key=key):
@@ -300,24 +275,10 @@ for i, tab in enumerate(tabs):
 
         # ② 검색 조건
         st.markdown('<div class="search-section-label">🔍 검색 조건</div>', unsafe_allow_html=True)
+        fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
 
-        if cat == '나라장터_공고':
-            fd1, fd2, sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 0.9, 1.0, 2.4, 0.7, 2.4, 1.1])
-        else:
-            sc0 = None
-            fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
-
-        # text_input으로 날짜 입력 — 세션 연동 단순, 퀵버튼 충돌 없음
-        sd_in = fd1.text_input("시작일", key=f"sd_in_{cat}",
-                               placeholder="YYYY-MM-DD", label_visibility="collapsed")
-        ed_in = fd2.text_input("종료일", key=f"ed_in_{cat}",
-                               placeholder="YYYY-MM-DD", label_visibility="collapsed")
-
-        notice_type = "전체"
-        if cat == '나라장터_공고' and sc0 is not None:
-            notice_type = sc0.selectbox("공고유형", ["전체","공사","물품","용역"],
-                                        key=f"nt_{cat}", label_visibility="collapsed")
-
+        sd_in = fd1.text_input("시작일", key=f"sd_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
+        ed_in = fd2.text_input("종료일", key=f"ed_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
         f_val  = sc1.selectbox("필드", ["ALL","수요기관명","업체명","계약명","세부품명"],
                                key=f"f_{cat}", label_visibility="collapsed")
         k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed",
@@ -328,12 +289,10 @@ for i, tab in enumerate(tabs):
                                 placeholder="🔎  검색어2 (AND/OR 선택 시)")
         search_exe = sc5.button("🔍  검색실행", key=f"search_{cat}",
                                 use_container_width=True, type="primary")
-
         st.markdown("</div>", unsafe_allow_html=True)
 
         # ③ 검색 실행
         if search_exe:
-            # 날짜 문자열 파싱 (YYYY-MM-DD → YYYYMMDD)
             try:
                 sd = datetime.strptime(sd_in.strip(), '%Y-%m-%d').date()
                 ed = datetime.strptime(ed_in.strip(), '%Y-%m-%d').date()
@@ -344,17 +303,7 @@ for i, tab in enumerate(tabs):
             e_s = ed.strftime('%Y%m%d')
             try:
                 with st.spinner("데이터를 불러오는 중..."):
-                    if cat == '나라장터_공고':
-                        types_to_load = list(NOTICE_CSV_MAP.keys()) if notice_type=="전체" else [notice_type]
-                        dfs = []
-                        for t in types_to_load:
-                            df_t = fetch_csv_by_name(NOTICE_CSV_MAP[t])
-                            if not df_t.empty:
-                                df_t['공고유형'] = t
-                                dfs.append(df_t)
-                        df_raw = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-                    else:
-                        df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
+                    df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
 
                     if not df_raw.empty:
                         d_col = DATE_COL_MAP.get(cat)
@@ -371,8 +320,8 @@ for i, tab in enumerate(tabs):
                                 if d_col and d_col in df_raw.columns else "0"
                             )
 
-                        df_f = df_raw.copy() if cat=='나라장터_발주' else \
-                               df_raw[(df_raw['tmp_dt']>=s_s)&(df_raw['tmp_dt']<=e_s)].copy()
+                        df_f = df_raw.copy() if cat == '나라장터_발주' else \
+                               df_raw[(df_raw['tmp_dt']>=s_s) & (df_raw['tmp_dt']<=e_s)].copy()
 
                         if k1_val and k1_val.strip():
                             m1 = apply_keyword(df_f, k1_val.strip(), f_val)
@@ -389,16 +338,14 @@ for i, tab in enumerate(tabs):
                         st.session_state[f"df_{cat}"] = pd.DataFrame()
 
             except Exception as e:
-                st.error(f"오류가 발생했습니다: {e}")
+                st.error(f"오류: {e}")
                 st.session_state[f"df_{cat}"] = pd.DataFrame()
 
         # ④ 결과 출력
         if st.session_state[f"df_{cat}"] is not None:
             if len(st.session_state[f"df_{cat}"]) == 0:
-                st.markdown('<div class="no-data-msg"><div class="no-data-icon">🔍</div>검색 결과가 없습니다.</div>',
-                            unsafe_allow_html=True)
+                st.markdown('<div class="no-data-msg"><div class="no-data-icon">🔍</div>검색 결과가 없습니다.</div>', unsafe_allow_html=True)
             else:
                 show_result_table(cat, DISPLAY_INDEX_MAP.get(cat, []))
         else:
-            st.markdown('<div class="no-data-msg"><div class="no-data-icon">📂</div>검색 조건을 입력하고 <strong>검색실행</strong> 버튼을 눌러주세요.</div>',
-                        unsafe_allow_html=True)
+            st.markdown('<div class="no-data-msg"><div class="no-data-icon">📂</div>검색 조건을 입력하고 <strong>검색실행</strong> 버튼을 눌러주세요.</div>', unsafe_allow_html=True)
