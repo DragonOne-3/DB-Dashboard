@@ -288,19 +288,17 @@ for i, tab in enumerate(tabs):
         st.markdown('<div class="search-section-label">🔍 검색 조건</div>', unsafe_allow_html=True)
 
         if cat == '나라장터_공고':
-            fd1, fd2, sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1,1.1,0.9,1.0,2.4,0.7,2.4,1.1])
+            fd1, fd2, sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 0.9, 1.0, 2.4, 0.7, 2.4, 1.1])
         else:
-            fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1,1.1,1.0,2.6,0.7,2.6,1.1])
+            sc0 = None
+            fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
 
-        sd_in = fd1.date_input("시작일",
-                               value=safe_date(st.session_state[f"sd_in_{cat}"]),
-                               key=f"sd_in_{cat}", label_visibility="collapsed")
-        ed_in = fd2.date_input("종료일",
-                               value=safe_date(st.session_state[f"ed_in_{cat}"]),
-                               key=f"ed_in_{cat}", label_visibility="collapsed")
+        # value 제거: key만 쓰면 세션값이 자동 반영됨 (value+key 동시 사용 시 경고 발생)
+        sd_in = fd1.date_input("시작일", key=f"sd_in_{cat}", label_visibility="collapsed")
+        ed_in = fd2.date_input("종료일", key=f"ed_in_{cat}", label_visibility="collapsed")
 
         notice_type = "전체"
-        if cat == '나라장터_공고':
+        if cat == '나라장터_공고' and sc0 is not None:
             notice_type = sc0.selectbox("공고유형", ["전체","공사","물품","용역"],
                                         key=f"nt_{cat}", label_visibility="collapsed")
 
