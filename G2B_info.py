@@ -467,15 +467,101 @@ filtered_df = filtered_df.sort_values(sort_key, ascending=asc_flag)
 final_out = filtered_df[cols_to_show].copy()
 final_out.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in final_out.columns]
 
-# ★ 핵심 수정 2: height 파라미터 제거 → 표가 전체 행 높이만큼 늘어나 페이지 스크롤만 사용
-st.dataframe(
-    final_out,
-    column_config={
-        "URL": st.column_config.LinkColumn("상세정보", display_text="🔗 보기"),
-        "계약금액": st.column_config.NumberColumn("계약금액(원)", format="localized"),
-        "남은기간": st.column_config.TextColumn("남은기간"),
-    },
-    use_container_width=True,
-    hide_index=True,
-    # height 제거 → 내부 스크롤 없이 전체 데이터 표시
-)
+# ★ 핵심 수정 2: st.dataframe 대신 HTML 테이블로 직접 렌더링
+#   → Streamlit의 iframe 고정높이 제약을 완전히 우회, 페이지 스크롤만 사용
+
+
+def _status_badge(val: str) -> str:
+    val = str(val)
+    if "만료됨" in val or "계약만료" in val:
+        color, bg = "#b91c1c", "#fef2f2"
+    elif re.match(r"^[0-3]개월", val):
+        color, bg = "#c2410c", "#fff7ed"
+    elif "정보부족" in val or "오류" in val or "계산불가" in val:
+        color, bg = "#64748b", "#f1f5f9"
+    else:
+        color, bg = "#15803d", "#f0fdf4"
+    return (
+        f'<span style="background:{bg};color:{color};padding:2px 8px;'
+        f'border-radius:999px;font-size:.78rem;font-weight:600;white-space:nowrap;">'
+        f'{val}</span>'
+    )
+
+
+def render_html_table(df: pd.DataFrame) -> str:
+    col_labels = {
+        "수요기관": "수요기관",
+        "계약명": "계약명",
+        "업체명": "업체명",
+        "계약금액": "계약금액(원)",
+        "계약일자": "계약일자",
+        "착수일자": "착수일자",
+        "계약만료일": "계약만료일",
+        "남은기간": "남은기간",
+        "URL": "상세",
+    }
+
+    th_style = (
+        "background:#1e3a5f;color:#fff;padding:10px 12px;"
+        "font-size:.8rem;font-weight:700;white-space:nowrap;"
+        "border-bottom:2px solid #2563eb;text-align:left;"
+    )
+    td_base = (
+        "padding:9px 12px;font-size:.82rem;color:#1e293b;"
+        "border-bottom:1px solid #e2e8f0;vertical-align:middle;"
+    )
+
+    headers = "".join(
+        f'<th style="{th_style}">{col_labels.get(c, c)}</th>' for c in df.columns
+    )
+
+    rows_html = []
+    for i, (_, row) in enumerate(df.iterrows()):
+        bg = "#fff" if i % 2 == 0 else "#f8fafc"
+        cells = []
+        for col in df.columns:
+            val = row[col]
+            if col == "URL":
+                cell = (
+                    f'<td style="{td_base}text-align:center;">'
+                    f'<a href="{val}" target="_blank" style="color:#2563eb;font-weight:600;'
+                    f'text-decoration:none;">🔗 보기</a></td>'
+                )
+            elif col == "남은기간":
+                cell = f'<td style="{td_base}">{_status_badge(str(val))}</td>'
+            elif col == "계약금액":
+                try:
+                    formatted = f"{int(val):,}"
+                except Exception:
+                    formatted = str(val)
+                cell = f'<td style="{td_base}text-align:right;font-variant-numeric:tabular-nums;">{formatted}</td>'
+            elif col in ("수요기관", "계약명", "업체명"):
+                cell = (
+                    f'<td style="{td_base}max-width:220px;word-break:keep-all;">'
+                    f'{str(val)}</td>'
+                )
+            else:
+                cell = f'<td style="{td_base}white-space:nowrap;">{str(val)}</td>'
+            cells.append(cell)
+
+        rows_html.append(
+            f'<tr style="background:{bg};" '
+            f'onmouseover="this.style.background=\'#eff6ff\'" '
+            f'onmouseout="this.style.background=\'{bg}\'">'
+            + "".join(cells)
+            + "</tr>"
+        )
+
+    table = f"""
+    <div style="width:100%;overflow-x:auto;border-radius:12px;
+                box-shadow:0 2px 12px rgba(0,0,0,.08);margin-top:.5rem;">
+      <table style="width:100%;border-collapse:collapse;min-width:900px;">
+        <thead><tr>{headers}</tr></thead>
+        <tbody>{"".join(rows_html)}</tbody>
+      </table>
+    </div>
+    """
+    return table
+
+
+st.markdown(render_html_table(final_out), unsafe_allow_html=True)
