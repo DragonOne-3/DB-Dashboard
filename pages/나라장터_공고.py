@@ -1,7 +1,7 @@
 import streamlit as st
 import json
-from google.oauth2 import service_account
 import google.auth.transport.requests
+from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import requests
 import pandas as pd
@@ -20,10 +20,14 @@ def get_drive_service():
                       'https://www.googleapis.com/auth/spreadsheets.readonly'])
     return build('drive', 'v3', credentials=creds), creds
 
-@st.cache_data(ttl=3600)
 def fetch_csv(file_name):
     svc, creds = get_drive_service()
-    creds.refresh(google.auth.transport.requests.Request())
+
+    # creds 변조 없이 유효성 확인 후 갱신
+    request = google.auth.transport.requests.Request()
+    if not creds.valid:
+        creds.refresh(request)
+
     hdrs  = {'Authorization': f'Bearer {creds.token}'}
     files = svc.files().list(
         q=f"name='{file_name}' and trashed=false", fields='files(id)'
@@ -56,8 +60,8 @@ if "ng_df" not in st.session_state:
 yed = yesterday.strftime('%Y-%m-%d')
 qb  = st.columns([0.55,0.55,0.65,0.65,0.65,0.65,0.65,0.65,6])
 QUICK = [
-    ("어제",  "ng_d1", yed,                                                   yed),
-    ("1주",   "ng_d7", (yesterday-relativedelta(days=6)).strftime('%Y-%m-%d'), yed),
+    ("어제",  "ng_d1", yed,                                                    yed),
+    ("1주",   "ng_d7", (yesterday-relativedelta(days=6)).strftime('%Y-%m-%d'),  yed),
     ("1개월", "ng_m1", (yesterday-relativedelta(months=1)).strftime('%Y-%m-%d'),yed),
     ("3개월", "ng_m3", (yesterday-relativedelta(months=3)).strftime('%Y-%m-%d'),yed),
     ("6개월", "ng_m6", (yesterday-relativedelta(months=6)).strftime('%Y-%m-%d'),yed),
