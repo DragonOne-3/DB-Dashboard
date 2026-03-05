@@ -210,9 +210,10 @@ def apply_keyword(df, keyword, field):
 
 # ── 헤더 ─────────────────────────────────────────────────────────────────────────
 
+st.markdown("<br><br><br>", unsafe_allow_html=True)
 c1, c2 = st.columns([5, 1])
 with c1:
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    
     st.markdown("""
     <div class="main-header">
       <div class="header-icon">🏛</div>
