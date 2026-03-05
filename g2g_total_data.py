@@ -409,7 +409,7 @@ with col_title:
         <div class="header-icon">🏛</div>
         <div>
             <p class="header-title">공공조달 DATA 통합검색 시스템</p>
-            <p class="header-sub">나라장터 · 군수품 · 종합쇼핑몰 통합 데이터 조회 플랫폼</p>
+            <p class="header-sub"><b>나라장터 · 군수품 · 종합쇼핑몰 통합 데이터 조회 플랫폼</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
