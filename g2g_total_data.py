@@ -247,6 +247,22 @@ def show_result_table(cat, idx_list):
 
 
 # ── 메인 루프 ─────────────────────────────────────────────────────────────────────
+# 모든 탭 세션키 미리 초기화 (탭 렌더링 전에 처리해야 date_input key 에러 방지)
+_today = date.today()
+_yesterday = _today - relativedelta(days=1)
+for _cat in SHEET_FILE_IDS:
+    if f"sd_in_{_cat}" not in st.session_state:
+        st.session_state[f"sd_in_{_cat}"] = _today - relativedelta(months=6)
+    if f"ed_in_{_cat}" not in st.session_state:
+        st.session_state[f"ed_in_{_cat}"] = _yesterday
+    if f"df_{_cat}" not in st.session_state:
+        st.session_state[f"df_{_cat}"] = None
+    # 타입 보정: 혹시 datetime이 들어있으면 date로 변환
+    if isinstance(st.session_state[f"sd_in_{_cat}"], datetime):
+        st.session_state[f"sd_in_{_cat}"] = st.session_state[f"sd_in_{_cat}"].date()
+    if isinstance(st.session_state[f"ed_in_{_cat}"], datetime):
+        st.session_state[f"ed_in_{_cat}"] = st.session_state[f"ed_in_{_cat}"].date()
+
 tab_labels = [f"{TAB_ICONS.get(k,'')} {k}" for k in SHEET_FILE_IDS]
 tabs = st.tabs(tab_labels)
 
@@ -256,12 +272,7 @@ for i, tab in enumerate(tabs):
         today     = date.today()
         yesterday = today - relativedelta(days=1)
 
-        if f"sd_in_{cat}" not in st.session_state:
-            st.session_state[f"sd_in_{cat}"] = today - relativedelta(months=6)
-        if f"ed_in_{cat}" not in st.session_state:
-            st.session_state[f"ed_in_{cat}"] = yesterday
-        if f"df_{cat}" not in st.session_state:
-            st.session_state[f"df_{cat}"] = None
+        # 세션 초기화는 탭 루프 밖에서 일괄 처리됨
 
         # ① 퀵버튼
         st.markdown('<div class="search-panel">', unsafe_allow_html=True)
@@ -293,9 +304,15 @@ for i, tab in enumerate(tabs):
             sc0 = None
             fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
 
-        # value 제거: key만 쓰면 세션값이 자동 반영됨 (value+key 동시 사용 시 경고 발생)
-        sd_in = fd1.date_input("시작일", key=f"sd_in_{cat}", label_visibility="collapsed")
-        ed_in = fd2.date_input("종료일", key=f"ed_in_{cat}", label_visibility="collapsed")
+        # key와 value를 함께 쓰되, 세션에 이미 올바른 date 값이 보장된 상태이므로 경고 없음
+        sd_in = fd1.date_input("시작일",
+                               value=st.session_state[f"sd_in_{cat}"],
+                               key=f"sd_in_{cat}",
+                               label_visibility="collapsed")
+        ed_in = fd2.date_input("종료일",
+                               value=st.session_state[f"ed_in_{cat}"],
+                               key=f"ed_in_{cat}",
+                               label_visibility="collapsed")
 
         notice_type = "전체"
         if cat == '나라장터_공고' and sc0 is not None:
