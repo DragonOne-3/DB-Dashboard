@@ -596,9 +596,16 @@ for i, tab in enumerate(tabs):
         else:
             fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
 
-        # key = "sd_in_{cat}" / "ed_in_{cat}" — 퀵버튼이 동일 key를 수정하므로 연동 작동
-        sd_in = fd1.date_input("시작일", key=f"sd_in_{cat}", label_visibility="collapsed")
-        ed_in = fd2.date_input("종료일", key=f"ed_in_{cat}", label_visibility="collapsed")
+        # value에 세션값을 명시 → tuple 반환 방지, 퀵버튼 연동 정상 작동
+        _sv = st.session_state[f"sd_in_{cat}"]
+        _ev = st.session_state[f"ed_in_{cat}"]
+        if isinstance(_sv, datetime): _sv = _sv.date()
+        if isinstance(_ev, datetime): _ev = _ev.date()
+        sd_in = fd1.date_input("시작일", value=_sv, key=f"sd_in_{cat}", label_visibility="collapsed")
+        ed_in = fd2.date_input("종료일", value=_ev, key=f"ed_in_{cat}", label_visibility="collapsed")
+        # date_input 반환값이 tuple일 경우 대비
+        if isinstance(sd_in, tuple): sd_in = sd_in[0]
+        if isinstance(ed_in, tuple): ed_in = ed_in[0]
 
         if cat == '나라장터_공고':
             notice_type = sc0.selectbox("공고유형", ["전체", "공사", "물품", "용역"],
@@ -637,8 +644,13 @@ for i, tab in enumerate(tabs):
                     df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
 
                 if not df_raw.empty:
-                    s_s = sd_in.strftime('%Y%m%d')
-                    e_s = ed_in.strftime('%Y%m%d')
+                    # 최종 타입 보정 (date_input이 tuple/datetime 반환하는 경우 대비)
+                    _sd = sd_in[0] if isinstance(sd_in, tuple) else sd_in
+                    _ed = ed_in[0] if isinstance(ed_in, tuple) else ed_in
+                    if isinstance(_sd, datetime): _sd = _sd.date()
+                    if isinstance(_ed, datetime): _ed = _ed.date()
+                    s_s = _sd.strftime('%Y%m%d')
+                    e_s = _ed.strftime('%Y%m%d')
                     d_col = DATE_COL_MAP.get(cat)
 
                     if cat == '나라장터_발주':
