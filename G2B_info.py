@@ -91,11 +91,15 @@ st.markdown("""
     border-radius: 8px !important;
   }
 
-  /* ── 데이터프레임 ── */
+  /* ── 데이터프레임 (내부 스크롤 제거) ── */
   div[data-testid="stDataFrame"] {
     border-radius: 12px;
-    overflow: hidden;
+    overflow: visible !important;
     box-shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  /* iframe height 자동 확장 */
+  div[data-testid="stDataFrame"] iframe {
+    min-height: unset !important;
   }
 
   /* ── 구분선 ── */
@@ -127,13 +131,25 @@ FULL_DISTRICT_LIST = [
     "제주특별자치도", "제주특별자치도 제주시", "제주특별자치도 서귀포시",
 ]
 
-DISTRICT_SET = set(FULL_DISTRICT_LIST)  # O(1) lookup
+DISTRICT_SET = set(FULL_DISTRICT_LIST)
 
 METRO_LIST = [
     "전국", "서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시",
     "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도",
     "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도",
 ]
+
+# ─────────────────────────────────────────────
+# session_state 초기화
+# ─────────────────────────────────────────────
+if "search_done" not in st.session_state:
+    st.session_state["search_done"] = False
+if "search_region" not in st.session_state:
+    st.session_state["search_region"] = "전국"
+# 라디오 선택값을 별도 key로 관리 (선택해도 검색 결과에 즉시 반영 안 됨)
+if "radio_region" not in st.session_state:
+    st.session_state["radio_region"] = "전국"
+
 
 # ─────────────────────────────────────────────
 # 데이터 로드 (캐싱 — 10분마다 갱신)
@@ -227,7 +243,6 @@ def clean_contract_name(name: str) -> str:
 def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw.copy()
 
-    # 기관 필터
     def _ok(a):
         a = str(a).strip()
         return any(a.startswith(d) for d in FULL_DISTRICT_LIST)
@@ -235,12 +250,10 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
     df = df[df["★가공_수요기관"].apply(_ok)]
     df = df[~df["★가공_수요기관"].str.contains("교육청", na=False)]
 
-    # 계약명 필터
     df = df[df["★가공_계약명"].str.contains("유지", na=False)]
     df = df[df["★가공_계약명"].str.contains("통합관제|통합|CCTV", na=False)]
     df = df[~df["★가공_계약명"].str.contains("상수도|청사|악취|미세먼지", na=False)]
 
-    # 날짜 계산
     results = df.apply(lambda r: pd.Series(calculate_logic(r)), axis=1)
     df[["★가공_계약만료일", "남은기간"]] = results
 
@@ -301,11 +314,13 @@ st.markdown("""
 st.markdown('<div class="search-panel">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
 
+# ★ 핵심 수정 1: 라디오 선택값을 별도 session_state key로 저장
+#   → 선택해도 search_region이 바뀌지 않으므로 결과 영역이 리렌더되지 않음
 selected_region = st.radio(
     label="",
     options=METRO_LIST,
     horizontal=True,
-    key="region_radio",
+    key="radio_region",          # session_state["radio_region"]에만 저장됨
     label_visibility="collapsed",
 )
 
@@ -319,10 +334,15 @@ with col_btn2:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# 검색 버튼 클릭 시에만 search_region을 업데이트
+if search_clicked:
+    st.session_state["search_done"]   = True
+    st.session_state["search_region"] = st.session_state["radio_region"]
+
 # ─────────────────────────────────────────────
 # 검색 전 초기 화면
 # ─────────────────────────────────────────────
-if not search_clicked and "search_done" not in st.session_state:
+if not st.session_state["search_done"]:
     st.markdown("""
     <div style="text-align:center; padding: 5rem 0; color: #94a3b8;">
       <div style="font-size:4rem; margin-bottom:1rem;">🔍</div>
@@ -333,22 +353,16 @@ if not search_clicked and "search_done" not in st.session_state:
     st.stop()
 
 # ─────────────────────────────────────────────
-# 검색 실행
+# 검색 실행 — search_region 기준으로 표시
 # ─────────────────────────────────────────────
-if search_clicked:
-    st.session_state["search_done"] = True
-    st.session_state["search_region"] = selected_region
+region_to_show = st.session_state["search_region"]
 
-region_to_show = st.session_state.get("search_region", selected_region)
-
-# 데이터 로드 및 전처리
 with st.spinner("⚙️ 데이터 처리 중…"):
     raw_df = load_raw_data()
     if raw_df.empty:
         st.stop()
     processed_df = build_processed_df(raw_df)
 
-# 지역 필터
 if region_to_show == "전국":
     display_df = processed_df.copy()
 else:
@@ -439,7 +453,6 @@ with dl_col:
         use_container_width=True,
     )
 
-# 정렬 옵션
 sort_col_map = {
     "수요기관": "★가공_수요기관",
     "계약금액 (높은순)": "★가공_계약금액",
@@ -451,10 +464,10 @@ sort_key    = sort_col_map[sort_choice]
 asc_flag    = sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"]
 filtered_df = filtered_df.sort_values(sort_key, ascending=asc_flag)
 
-# 컬럼 정리
 final_out = filtered_df[cols_to_show].copy()
 final_out.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in final_out.columns]
 
+# ★ 핵심 수정 2: height 파라미터 제거 → 표가 전체 행 높이만큼 늘어나 페이지 스크롤만 사용
 st.dataframe(
     final_out,
     column_config={
@@ -464,5 +477,5 @@ st.dataframe(
     },
     use_container_width=True,
     hide_index=True,
-    height=700,
+    # height 제거 → 내부 스크롤 없이 전체 데이터 표시
 )
