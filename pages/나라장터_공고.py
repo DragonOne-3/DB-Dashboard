@@ -1,9 +1,8 @@
 import streamlit as st
 import json
-import google.auth.transport.requests
 from google.oauth2 import service_account
+from google.auth.transport.requests import AuthorizedSession
 from googleapiclient.discovery import build
-import requests
 import pandas as pd
 import io
 from datetime import datetime, date
@@ -11,31 +10,22 @@ from dateutil.relativedelta import relativedelta
 
 st.title("📢 나라장터 공고")
 
-# ── Google Drive 연결 ──
-# credentials는 캐시하지 않고 매번 새로 생성 → mutation 에러 방지
-def get_credentials():
-    info = json.loads(st.secrets["GOOGLE_AUTH_JSON"])
-    creds = service_account.Credentials.from_service_account_info(
-        info, scopes=['https://www.googleapis.com/auth/drive.readonly',
-                      'https://www.googleapis.com/auth/spreadsheets.readonly'])
-    creds.refresh(google.auth.transport.requests.Request())
-    return creds
+SCOPES = [
+    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/spreadsheets.readonly'
+]
 
-# Drive 서비스 객체만 캐시
-@st.cache_resource
-def get_drive_service():
+def make_creds():
+    """캐시 없이 매번 새 credentials 반환 (refresh 호출 없음)"""
     info = json.loads(st.secrets["GOOGLE_AUTH_JSON"])
-    creds = service_account.Credentials.from_service_account_info(
-        info, scopes=['https://www.googleapis.com/auth/drive.readonly',
-                      'https://www.googleapis.com/auth/spreadsheets.readonly'])
-    return build('drive', 'v3', credentials=creds)
+    return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
 
 def fetch_csv(file_name):
-    svc = get_drive_service()
-    # 토큰은 별도로 매번 새로 발급
-    creds = get_credentials()
-    hdrs = {'Authorization': f'Bearer {creds.token}'}
+    creds = make_creds()
+    # AuthorizedSession이 토큰을 자동 관리 — 수동 refresh 불필요
+    session = AuthorizedSession(creds)
 
+    svc = build('drive', 'v3', credentials=creds)
     files = svc.files().list(
         q=f"name='{file_name}' and trashed=false", fields='files(id)'
     ).execute().get('files', [])
@@ -44,16 +34,26 @@ def fetch_csv(file_name):
         st.warning(f"{file_name} 파일을 찾을 수 없습니다.")
         return pd.DataFrame()
 
-    resp = requests.get(
-        f"https://www.googleapis.com/drive/v3/files/{files[0]['id']}?alt=media",
-        headers=hdrs)
+    file_id = files[0]['id']
+    resp = session.get(
+        f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+    )
+
+    if resp.status_code != 200:
+        st.error(f"파일 다운로드 실패: {resp.status_code}")
+        return pd.DataFrame()
+
     try:
         return pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
     except Exception:
         return pd.read_csv(io.BytesIO(resp.content), encoding='cp949', low_memory=False)
 
-NOTICE_CSV_MAP = {'공사': '나라장터_공고_공사.csv', '물품': '나라장터_공고_물품.csv', '용역': '나라장터_공고_용역.csv'}
-DISPLAY_COLS   = ["dminsttNm", "bidNtceNm", "presmptPrce", "bidClsDt", "bidNtceDtlUrl"]
+NOTICE_CSV_MAP = {
+    '공사': '나라장터_공고_공사.csv',
+    '물품': '나라장터_공고_물품.csv',
+    '용역': '나라장터_공고_용역.csv'
+}
+DISPLAY_COLS = ["dminsttNm", "bidNtceNm", "presmptPrce", "bidClsDt", "bidNtceDtlUrl"]
 
 # ── 세션 초기화 ──
 today     = date.today()
@@ -109,7 +109,7 @@ if search_exe:
 
     with st.spinner("데이터를 불러오는 중..."):
         try:
-            types_to_load = list(NOTICE_CSV_MAP.keys()) if notice_type=="전체" else [notice_type]
+            types_to_load = list(NOTICE_CSV_MAP.keys()) if notice_type == "전체" else [notice_type]
             dfs = []
             for t in types_to_load:
                 df_t = fetch_csv(NOTICE_CSV_MAP[t])
@@ -121,32 +121,32 @@ if search_exe:
 
             if not df_raw.empty:
                 if 'bidNtceDt' in df_raw.columns:
-                    df_raw['tmp_dt'] = df_raw['bidNtceDt'].astype(str).str.replace(r'[^0-9]','',regex=True).str[:8]
+                    df_raw['tmp_dt'] = df_raw['bidNtceDt'].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
                 else:
                     df_raw['tmp_dt'] = "0"
 
-                df_f = df_raw[(df_raw['tmp_dt']>=s_s)&(df_raw['tmp_dt']<=e_s)].copy()
+                df_f = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
                 if k1_val and k1_val.strip():
                     def get_mask(df, kw, field):
                         t = field
-                        if field=="수요기관명":
-                            for c in ["수요기관명","dminsttNm"]:
-                                if c in df.columns: t=c; break
-                        elif field=="계약명":
-                            for c in ["계약명","bidNtceNm"]:
-                                if c in df.columns: t=c; break
-                        elif field=="업체명":
-                            for c in ["업체명","상호"]:
-                                if c in df.columns: t=c; break
-                        if t!="ALL" and t in df.columns:
+                        if field == "수요기관명":
+                            for c in ["수요기관명", "dminsttNm"]:
+                                if c in df.columns: t = c; break
+                        elif field == "계약명":
+                            for c in ["계약명", "bidNtceNm"]:
+                                if c in df.columns: t = c; break
+                        elif field == "업체명":
+                            for c in ["업체명", "상호"]:
+                                if c in df.columns: t = c; break
+                        if t != "ALL" and t in df.columns:
                             return df[t].astype(str).str.contains(kw, case=False, na=False)
-                        return df.astype(str).apply(lambda x: x.str.contains(kw,case=False,na=False)).any(axis=1)
+                        return df.astype(str).apply(lambda x: x.str.contains(kw, case=False, na=False)).any(axis=1)
 
                     m1 = get_mask(df_f, k1_val.strip(), f_val)
-                    if l_val=="AND" and k2_val.strip():
+                    if l_val == "AND" and k2_val.strip():
                         df_f = df_f[m1 & get_mask(df_f, k2_val.strip(), f_val)]
-                    elif l_val=="OR" and k2_val.strip():
+                    elif l_val == "OR" and k2_val.strip():
                         df_f = df_f[m1 | get_mask(df_f, k2_val.strip(), f_val)]
                     else:
                         df_f = df_f[m1]
@@ -170,8 +170,8 @@ elif len(df) == 0:
     st.warning("검색 결과가 없습니다.")
 else:
     show_cols = [c for c in DISPLAY_COLS if c in df.columns] or list(df.columns[:10])
-    p_lim = st.selectbox("페이지당 행수", [50,100,150,200], key="ng_plim")
-    total = max((len(df)-1)//p_lim+1, 1)
+    p_lim = st.selectbox("페이지당 행수", [50, 100, 150, 200], key="ng_plim")
+    total = max((len(df) - 1) // p_lim + 1, 1)
     curr  = st.session_state.get("ng_pnum", 1)
 
     st.caption(f"총 {len(df):,}건 / {total}페이지")
@@ -181,19 +181,20 @@ else:
     # 페이지네이션
     cols = st.columns(14)
     sp = max(1, curr-4); ep = min(total, sp+9)
-    if cols[0].button("«", key="ng_f10"): st.session_state["ng_pnum"]=max(1,curr-10); st.rerun()
-    if cols[1].button("‹",  key="ng_f1"):  st.session_state["ng_pnum"]=max(1,curr-1);  st.rerun()
-    for j,p in enumerate(range(sp,ep+1)):
-        if cols[j+2].button(str(p), key=f"ng_pg_{p}", type="primary" if p==curr else "secondary"):
-            st.session_state["ng_pnum"]=p; st.rerun()
-    if cols[12].button("›",  key="ng_n1"):  st.session_state["ng_pnum"]=min(total,curr+1);  st.rerun()
-    if cols[13].button("»", key="ng_n10"): st.session_state["ng_pnum"]=min(total,curr+10); st.rerun()
+    if cols[0].button("«", key="ng_f10"): st.session_state["ng_pnum"] = max(1, curr-10); st.rerun()
+    if cols[1].button("‹",  key="ng_f1"):  st.session_state["ng_pnum"] = max(1, curr-1);  st.rerun()
+    for j, p in enumerate(range(sp, ep+1)):
+        if cols[j+2].button(str(p), key=f"ng_pg_{p}", type="primary" if p == curr else "secondary"):
+            st.session_state["ng_pnum"] = p; st.rerun()
+    if cols[12].button("›",  key="ng_n1"):  st.session_state["ng_pnum"] = min(total, curr+1);  st.rerun()
+    if cols[13].button("»", key="ng_n10"): st.session_state["ng_pnum"] = min(total, curr+10); st.rerun()
 
     # 다운로드
     out = io.BytesIO()
-    with pd.ExcelWriter(out, engine='xlsxwriter') as w: df.to_excel(w, index=False)
+    with pd.ExcelWriter(out, engine='xlsxwriter') as w:
+        df.to_excel(w, index=False)
     dc1, dc2 = st.columns(2)
-    dc1.download_button("📑 CSV", df.to_csv(index=False,encoding='utf-8-sig').encode('utf-8-sig'),
-                        "나라장터_공고.csv","text/csv")
+    dc1.download_button("📑 CSV", df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig'),
+                        "나라장터_공고.csv", "text/csv")
     dc2.download_button("📊 Excel", out.getvalue(), "나라장터_공고.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
