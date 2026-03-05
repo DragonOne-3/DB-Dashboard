@@ -562,6 +562,11 @@ def show_result_table(cat, idx_list):
 
 # =================================================================================
 # [6] 메인 루프 (탭별 검색 조건 입력 및 데이터 필터링)
+#
+# ✅ st.form() 적용 구조:
+#   - 퀵버튼(어제/1주/...)  → 폼 밖: 날짜만 세션에 저장 후 rerun (빠름)
+#   - 검색조건 + 날짜입력   → 폼 안: 위젯 변경해도 rerun 없음
+#   - 검색실행 버튼         → form_submit_button: 한 번만 rerun
 # =================================================================================
 tab_labels = [f"{TAB_ICONS.get(k, '')} {k}" for k in SHEET_FILE_IDS.keys()]
 tabs = st.tabs(tab_labels)
@@ -572,111 +577,102 @@ for i, tab in enumerate(tabs):
     with tab:
         today = date.today()
 
-        # 세션 초기화
+        # ── 세션 초기화 ──
         if f"sd_{cat}" not in st.session_state or not isinstance(st.session_state[f"sd_{cat}"], date):
             st.session_state[f"sd_{cat}"] = today - relativedelta(months=6)
         if f"ed_{cat}" not in st.session_state or not isinstance(st.session_state[f"ed_{cat}"], date):
             st.session_state[f"ed_{cat}"] = today - relativedelta(days=1)
-        if f"ver_{cat}" not in st.session_state:
-            st.session_state[f"ver_{cat}"] = 0
         if f"df_{cat}" not in st.session_state:
             st.session_state[f"df_{cat}"] = None
 
-        # ── 검색 패널 ──
+        # ════════════════════════════════════════════
+        # ① 퀵버튼 — 폼 밖 (날짜 세션 업데이트만)
+        # ════════════════════════════════════════════
         st.markdown('<div class="search-panel">', unsafe_allow_html=True)
+        st.markdown('<div class="search-section-label">📅 조회 기간 빠른 선택</div>', unsafe_allow_html=True)
 
-        # 검색조건 행
+        q_cols = st.columns(8)
+        def set_period(cat=cat, d=0, m=0, y=0):
+            end = st.session_state[f"ed_{cat}"]
+            if isinstance(end, datetime): end = end.date()
+            st.session_state[f"sd_{cat}"] = end - relativedelta(days=d, months=m, years=y)
+            st.rerun()
+
+        if q_cols[0].button("어제",  key=f"d1_{cat}"):
+            st.session_state[f"ed_{cat}"] = today - relativedelta(days=1)
+            st.session_state[f"sd_{cat}"] = today - relativedelta(days=1)
+            st.rerun()
+        if q_cols[1].button("1주",   key=f"d7_{cat}"):  set_period(d=7)
+        if q_cols[2].button("1개월", key=f"m1_{cat}"):  set_period(m=1)
+        if q_cols[3].button("3개월", key=f"m3_{cat}"):  set_period(m=3)
+        if q_cols[4].button("6개월", key=f"m6_{cat}"):  set_period(m=6)
+        if q_cols[5].button("9개월", key=f"m9_{cat}"):  set_period(m=9)
+        if q_cols[6].button("1년",   key=f"y1_{cat}"):  set_period(y=1)
+        if q_cols[7].button("2년",   key=f"y2_{cat}"):  set_period(y=2)
+
+        st.markdown("<div style='margin-top:14px;'>", unsafe_allow_html=True)
+
+        # ════════════════════════════════════════════
+        # ② 검색 폼 — 폼 안 (위젯 변경 시 rerun 없음)
+        # ════════════════════════════════════════════
         st.markdown('<div class="search-section-label">🔍 검색 조건</div>', unsafe_allow_html=True)
 
-        # ★ 나라장터_공고 전용: 공고유형 선택 추가
-        if cat == '나라장터_공고':
-            sc0, sc1, sc2, sc3, sc4 = st.columns([1.2, 1.4, 3.0, 1.0, 3.0])
-            notice_type = sc0.selectbox(
-                "공고유형", ["전체", "공사", "물품", "용역"],
-                key=f"nt_{cat}", label_visibility="collapsed"
-            )
-        else:
-            sc1, sc2, sc3, sc4 = st.columns([1.4, 3.2, 1.0, 3.2])
-
-        f_val  = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"], key=f"f_{cat}", label_visibility="collapsed")
-        k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed", placeholder="🔎  검색어를 입력하세요")
-        l_val  = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
-        k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val == "NONE"), placeholder="🔎  검색어2 (AND/OR 선택 시)")
-
-        # 공고유형 뱃지 표시 (나라장터_공고 전용)
-        if cat == '나라장터_공고':
-            color_map = {"전체": "#6366f1", "공사": "#f59e0b", "물품": "#10b981", "용역": "#3b82f6"}
-            badge_color = color_map.get(notice_type, "#6366f1")
-            st.markdown(f"""
-            <div style='margin:8px 0 4px 0;'>
-                <span style='background:{badge_color}18; border:1px solid {badge_color}55;
-                color:{badge_color}; border-radius:20px; padding:3px 12px;
-                font-size:12px; font-weight:600;'>
-                📌 공고유형: {notice_type}
-                </span>
-            </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown("<div style='margin-top:12px;'>", unsafe_allow_html=True)
-
-        # 조회기간 행
-        st.markdown('<div class="search-section-label">📅 조회 기간</div>', unsafe_allow_html=True)
-        d1, d2, d3, d4 = st.columns([1.3, 1.3, 5.2, 1.5])
-
-        v_num = st.session_state[f"ver_{cat}"]
         s_val = st.session_state[f"sd_{cat}"]
         e_val = st.session_state[f"ed_{cat}"]
         if isinstance(s_val, datetime): s_val = s_val.date()
         if isinstance(e_val, datetime): e_val = e_val.date()
 
-        sd_in = d1.date_input("시작", value=s_val if isinstance(s_val, date) else None,
-                               key=f"sd_w_{cat}_{v_num}", label_visibility="collapsed")
-        ed_in = d2.date_input("종료", value=e_val if isinstance(e_val, date) else None,
-                               key=f"ed_w_{cat}_{v_num}", label_visibility="collapsed")
+        with st.form(key=f"form_{cat}"):
+            # 날짜 입력 행
+            fd1, fd2, fd3 = st.columns([1.3, 1.3, 7.4])
+            sd_in = fd1.date_input("시작일", value=s_val, key=f"sd_in_{cat}", label_visibility="collapsed")
+            ed_in = fd2.date_input("종료일", value=e_val, key=f"ed_in_{cat}", label_visibility="collapsed")
+            fd3.markdown("<div style='padding-top:6px; font-size:12px; color:#94a3b8;'>← 날짜를 직접 수정하거나 위 빠른선택 버튼을 사용하세요</div>", unsafe_allow_html=True)
 
-        # 퀵버튼
-        with d3:
-            def set_period(cat=cat, d=0, m=0, y=0):
-                st.session_state[f"sd_{cat}"] = st.session_state[f"ed_{cat}"] - relativedelta(days=d, months=m, years=y)
-                st.session_state[f"ver_{cat}"] += 1
-                st.rerun()
+            st.markdown("<div style='margin-top:10px;'>", unsafe_allow_html=True)
 
-            q_cols = st.columns(8)
-            if q_cols[0].button("어제",   key=f"d1_{cat}"):
-                st.session_state[f"ed_{cat}"] = today - relativedelta(days=1)
-                st.session_state[f"sd_{cat}"] = today - relativedelta(days=1)
-                st.session_state[f"ver_{cat}"] += 1; st.rerun()
-            if q_cols[1].button("1주",    key=f"d7_{cat}"): set_period(d=7)
-            if q_cols[2].button("1개월",  key=f"m1_{cat}"): set_period(m=1)
-            if q_cols[3].button("3개월",  key=f"m3_{cat}"): set_period(m=3)
-            if q_cols[4].button("6개월",  key=f"m6_{cat}"): set_period(m=6)
-            if q_cols[5].button("9개월",  key=f"m9_{cat}"): set_period(m=9)
-            if q_cols[6].button("1년",    key=f"y1_{cat}"): set_period(y=1)
-            if q_cols[7].button("2년",    key=f"y2_{cat}"): set_period(y=2)
+            # 검색조건 행
+            if cat == '나라장터_공고':
+                sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.2, 1.3, 3.0, 1.0, 2.8, 1.4])
+                notice_type = sc0.selectbox("공고유형", ["전체", "공사", "물품", "용역"],
+                                            key=f"nt_{cat}", label_visibility="collapsed")
+            else:
+                sc1, sc2, sc3, sc4, sc5 = st.columns([1.3, 3.2, 1.0, 3.2, 1.4])
 
-        with d4:
-            search_exe = st.button("🔍  검색실행", key=f"exe_{cat}", type="primary", use_container_width=True)
+            f_val  = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"],
+                                   key=f"f_{cat}", label_visibility="collapsed")
+            k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed",
+                                    placeholder="🔎  검색어를 입력하세요")
+            l_val  = sc3.selectbox("논리", ["NONE", "AND", "OR"],
+                                   key=f"l_{cat}", label_visibility="collapsed")
+            k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed",
+                                    placeholder="🔎  검색어2 (AND/OR 선택 시)")
+
+            search_exe = sc5.form_submit_button(
+                "🔍  검색실행", use_container_width=True, type="primary"
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("</div></div>", unsafe_allow_html=True)
 
-        # ── 검색 실행 로직 ──
+        # ════════════════════════════════════════════
+        # ③ 검색 실행 로직
+        # ════════════════════════════════════════════
         if search_exe:
-            with st.spinner("데이터를 불러오는 중..."):
-                st.session_state[f"sd_{cat}"] = sd_in
-                st.session_state[f"ed_{cat}"] = ed_in
+            # 폼에서 선택한 날짜를 세션에 저장 (다음 rerun 시 퀵버튼 기준값으로 쓰임)
+            st.session_state[f"sd_{cat}"] = sd_in
+            st.session_state[f"ed_{cat}"] = ed_in
 
-                # ★ 나라장터_공고 전용 로딩 로직
+            with st.spinner("데이터를 불러오는 중..."):
+
+                # 나라장터_공고 전용 로딩
                 if cat == '나라장터_공고':
-                    types_to_load = (
-                        list(NOTICE_CSV_MAP.keys())
-                        if notice_type == "전체"
-                        else [notice_type]
-                    )
+                    types_to_load = list(NOTICE_CSV_MAP.keys()) if notice_type == "전체" else [notice_type]
                     dfs = []
                     for t in types_to_load:
                         df_t = fetch_csv_by_name(NOTICE_CSV_MAP[t])
                         if not df_t.empty:
-                            df_t['공고유형'] = t   # 어느 파일에서 왔는지 컬럼 추가
+                            df_t['공고유형'] = t
                             dfs.append(df_t)
                     df_raw = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
                 else:
@@ -693,11 +689,6 @@ for i, tab in enumerate(tabs):
                     elif cat == '군수품_발주':
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
                         s_s = s_s[:6] + "01"
-                    elif cat in ('나라장터_계약', '나라장터_공고'):
-                        df_raw['tmp_dt'] = (
-                            df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
-                            if d_col and d_col in df_raw.columns else "0"
-                        )
                     else:
                         df_raw['tmp_dt'] = (
                             df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
@@ -725,7 +716,9 @@ for i, tab in enumerate(tabs):
                             if target_col != "ALL" and target_col in df.columns:
                                 return df[target_col].astype(str).str.contains(k, case=False, na=False)
                             else:
-                                return df.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1)
+                                return df.astype(str).apply(
+                                    lambda x: x.str.contains(k, case=False, na=False)
+                                ).any(axis=1)
 
                         if l_val == "AND" and k2_val:
                             df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
