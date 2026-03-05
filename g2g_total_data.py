@@ -629,75 +629,86 @@ for i, tab in enumerate(tabs):
         # ③ 검색 실행 로직
         # ════════════════════════════════════════════
         if search_exe:
-            with st.spinner("데이터를 불러오는 중..."):
+            # 날짜 값 안전하게 추출 (tuple/datetime 모두 대응)
+            def _to_date(v):
+                if isinstance(v, tuple): v = v[0]
+                if isinstance(v, datetime): return v.date()
+                return v
 
-                if cat == '나라장터_공고':
-                    types_to_load = list(NOTICE_CSV_MAP.keys()) if notice_type == "전체" else [notice_type]
-                    dfs = []
-                    for t in types_to_load:
-                        df_t = fetch_csv_by_name(NOTICE_CSV_MAP[t])
-                        if not df_t.empty:
-                            df_t['공고유형'] = t
-                            dfs.append(df_t)
-                    df_raw = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-                else:
-                    df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
+            _sd = _to_date(sd_in)
+            _ed = _to_date(ed_in)
+            s_s = _sd.strftime('%Y%m%d')
+            e_s = _ed.strftime('%Y%m%d')
 
-                if not df_raw.empty:
-                    # 최종 타입 보정 (date_input이 tuple/datetime 반환하는 경우 대비)
-                    _sd = sd_in[0] if isinstance(sd_in, tuple) else sd_in
-                    _ed = ed_in[0] if isinstance(ed_in, tuple) else ed_in
-                    if isinstance(_sd, datetime): _sd = _sd.date()
-                    if isinstance(_ed, datetime): _ed = _ed.date()
-                    s_s = _sd.strftime('%Y%m%d')
-                    e_s = _ed.strftime('%Y%m%d')
-                    d_col = DATE_COL_MAP.get(cat)
+            # notice_type: 나라장터_공고 탭에서만 정의됨 → 기본값 보장
+            _notice_type = notice_type if cat == '나라장터_공고' else None
 
-                    if cat == '나라장터_발주':
-                        df_raw['tmp_dt'] = s_s
-                    elif cat == '군수품_발주':
-                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
-                        s_s = s_s[:6] + "01"
+            try:
+                with st.spinner("데이터를 불러오는 중..."):
+
+                    if cat == '나라장터_공고':
+                        types_to_load = list(NOTICE_CSV_MAP.keys()) if _notice_type == "전체" else [_notice_type]
+                        dfs = []
+                        for t in types_to_load:
+                            df_t = fetch_csv_by_name(NOTICE_CSV_MAP[t])
+                            if not df_t.empty:
+                                df_t['공고유형'] = t
+                                dfs.append(df_t)
+                        df_raw = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
                     else:
-                        df_raw['tmp_dt'] = (
-                            df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
-                            if d_col and d_col in df_raw.columns else "0"
-                        )
+                        df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
 
-                    df_filtered = df_raw.copy() if cat == '나라장터_발주' else \
-                        df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
+                    if not df_raw.empty:
+                        d_col = DATE_COL_MAP.get(cat)
 
-                    if k1_val and k1_val.strip():
-                        def get_mask(k, df=df_filtered):
-                            target_col = f_val
-                            if f_val == "업체명":
+                        if cat == '나라장터_발주':
+                            df_raw['tmp_dt'] = s_s
+                        elif cat == '군수품_발주':
+                            df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
+                            s_s = s_s[:6] + "01"
+                        else:
+                            df_raw['tmp_dt'] = (
+                                df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+                                if d_col and d_col in df_raw.columns else "0"
+                            )
+
+                        df_filtered = df_raw.copy() if cat == '나라장터_발주' else                             df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
+
+                        # 키워드 필터 (get_mask를 중첩함수로 정의하여 스코프 문제 방지)
+                        def apply_keyword(df, keyword, field):
+                            target_col = field
+                            if field == "업체명":
                                 for cand in ["업체명", "상호", "상호명", "계약상대자", "계약상대자명"]:
                                     if cand in df.columns: target_col = cand; break
-                            elif f_val == "수요기관명":
+                            elif field == "수요기관명":
                                 for cand in ["수요기관명", "수요기관", "발주기관", "공고기관", "dminsttNm"]:
                                     if cand in df.columns: target_col = cand; break
-                            elif f_val == "계약명":
+                            elif field == "계약명":
                                 for cand in ["계약명", "공고명", "bidNtceNm"]:
                                     if cand in df.columns: target_col = cand; break
-
                             if target_col != "ALL" and target_col in df.columns:
-                                return df[target_col].astype(str).str.contains(k, case=False, na=False)
+                                return df[target_col].astype(str).str.contains(keyword, case=False, na=False)
+                            return df.astype(str).apply(lambda x: x.str.contains(keyword, case=False, na=False)).any(axis=1)
+
+                        if k1_val and k1_val.strip():
+                            m1 = apply_keyword(df_filtered, k1_val, f_val)
+                            if l_val == "AND" and k2_val and k2_val.strip():
+                                m2 = apply_keyword(df_filtered, k2_val, f_val)
+                                df_filtered = df_filtered[m1 & m2]
+                            elif l_val == "OR" and k2_val and k2_val.strip():
+                                m2 = apply_keyword(df_filtered, k2_val, f_val)
+                                df_filtered = df_filtered[m1 | m2]
                             else:
-                                return df.astype(str).apply(
-                                    lambda x: x.str.contains(k, case=False, na=False)
-                                ).any(axis=1)
+                                df_filtered = df_filtered[m1]
 
-                        if l_val == "AND" and k2_val:
-                            df_filtered = df_filtered[get_mask(k1_val) & get_mask(k2_val)]
-                        elif l_val == "OR" and k2_val:
-                            df_filtered = df_filtered[get_mask(k1_val) | get_mask(k2_val)]
-                        else:
-                            df_filtered = df_filtered[get_mask(k1_val)]
+                        st.session_state[f"df_{cat}"] = df_filtered.sort_values(by='tmp_dt', ascending=False)
+                        st.session_state[f"p_num_{cat}"] = 1
+                    else:
+                        st.session_state[f"df_{cat}"] = pd.DataFrame()
 
-                    st.session_state[f"df_{cat}"] = df_filtered.sort_values(by='tmp_dt', ascending=False)
-                    st.session_state[f"p_num_{cat}"] = 1
-                else:
-                    st.session_state[f"df_{cat}"] = pd.DataFrame()
+            except Exception as e:
+                st.error(f"검색 중 오류가 발생했습니다: {e}")
+                st.session_state[f"df_{cat}"] = pd.DataFrame()
 
         # ── 결과 출력 ──
         if st.session_state[f"df_{cat}"] is not None:
