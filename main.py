@@ -174,25 +174,25 @@ def main():
 
     # --- PART 3: 나라장터 계약 내역 ---
     def fetch_single_contract(kw_s, d_str):
-    api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
-    results = []
-    p = {'serviceKey': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml',
-         'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
-    try:
-        r = requests.get(api_url_servc, params=p, timeout=20)  # 30→20초로 단축
-        if r.status_code == 200:
-            root = ET.fromstring(r.content)
-            for item in root.findall('.//item'):
-                detail_url = item.findtext('cntrctDtlInfoUrl') or "https://www.g2b.go.kr"
-                raw_demand = item.findtext('dminsttList', '-')
-                clean_demand = raw_demand.replace('[','').replace(']','').split('^')[2] if '^' in raw_demand else raw_demand
-                raw_corp = item.findtext('corpList', '-')
-                clean_corp = raw_corp.replace('[','').replace(']','').split('^')[3] if '^' in raw_corp else raw_corp
-                results.append({'org': clean_demand, 'nm': item.findtext('cntrctNm', '-'),
-                                 'corp': clean_corp, 'amt': item.findtext('totCntrctAmt', '0'), 'url': detail_url})
-    except Exception as e:
-        print(f"계약 데이터 수집 오류 ({kw_s}): {e}")
-    return results
+        api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
+        results = []
+        p = {'serviceKey': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml',
+             'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
+        try:
+            r = requests.get(api_url_servc, params=p, timeout=20)
+            if r.status_code == 200:
+                root = ET.fromstring(r.content)
+                for item in root.findall('.//item'):
+                    detail_url = item.findtext('cntrctDtlInfoUrl') or "https://www.g2b.go.kr"
+                    raw_demand = item.findtext('dminsttList', '-')
+                    clean_demand = raw_demand.replace('[','').replace(']','').split('^')[2] if '^' in raw_demand else raw_demand
+                    raw_corp = item.findtext('corpList', '-')
+                    clean_corp = raw_corp.replace('[','').replace(']','').split('^')[3] if '^' in raw_corp else raw_corp
+                    results.append({'org': clean_demand, 'nm': item.findtext('cntrctNm', '-'),
+                                     'corp': clean_corp, 'amt': item.findtext('totCntrctAmt', '0'), 'url': detail_url})
+        except Exception as e:
+            print(f"계약 데이터 수집 오류 ({kw_s}): {e}")
+        return results
 
     collected_servc = []
     with ThreadPoolExecutor(max_workers=8) as executor:
