@@ -12,23 +12,16 @@ from dateutil.relativedelta import relativedelta
 # =================================================================================
 # [1] 페이지 설정 및 디자인
 # =================================================================================
-st.markdown("<br><br><br>", unsafe_allow_html=True)
 st.set_page_config(page_title="공공조달 DATA 통합검색", layout="wide", page_icon="🏛")
 
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
-/* ══════════════════════════════════════════
-   전체 기반 — 흰색 테마
-══════════════════════════════════════════ */
 html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important; }
 .stApp { background: #f5f7fa !important; color: #1e293b !important; }
 .block-container { padding: 1.5rem 2rem 2rem 2rem !important; max-width: 100% !important; }
 
-/* ══════════════════════════════════════════
-   헤더
-══════════════════════════════════════════ */
 .main-header {
     display: flex; align-items: center; gap: 14px;
     padding: 0 0 18px 0;
@@ -52,9 +45,6 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
     margin: 0 0 22px 0;
 }
 
-/* ══════════════════════════════════════════
-   탭 — 캡슐 pill 스타일
-══════════════════════════════════════════ */
 .stTabs [data-baseweb="tab-list"] {
     background: #eef2f7 !important;
     border: 1px solid #dde3ec !important;
@@ -92,9 +82,6 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
 }
 .stTabs [data-baseweb="tab-panel"] { padding-top: 4px !important; }
 
-/* ══════════════════════════════════════════
-   검색 패널
-══════════════════════════════════════════ */
 .search-panel {
     background: #ffffff;
     border: 1px solid #e2e8f0;
@@ -111,9 +98,6 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
 }
 .search-section-label::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
 
-/* ══════════════════════════════════════════
-   인풋 & 셀렉트박스
-══════════════════════════════════════════ */
 .stTextInput > div > div > input {
     background: #f8fafc !important;
     border: 1px solid #cbd5e1 !important;
@@ -152,9 +136,16 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
     font-size: 13px !important;
 }
 
-/* ══════════════════════════════════════════
-   일반 버튼 — pill 형태, 밝은 배경
-══════════════════════════════════════════ */
+/* ── 퀵버튼 전용: compact pill ── */
+.quick-btn-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+/* 일반 버튼 */
 .stButton > button {
     background: #ffffff !important;
     border: 1px solid #cbd5e1 !important;
@@ -178,9 +169,6 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
 }
 .stButton > button:active { transform: translateY(0) !important; box-shadow: none !important; }
 
-/* ══════════════════════════════════════════
-   검색실행 버튼 (primary)
-══════════════════════════════════════════ */
 button[kind="primary"] {
     background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%) !important;
     border: none !important;
@@ -200,7 +188,6 @@ button[kind="primary"]:hover {
 }
 button[kind="primary"]:active { transform: translateY(0) !important; }
 
-/* 페이지네이션 현재 페이지 */
 [data-testid="stHorizontalBlock"] button[kind="primary"] {
     background: #1d4ed8 !important;
     border-radius: 20px !important;
@@ -212,9 +199,6 @@ button[kind="primary"]:active { transform: translateY(0) !important; }
     box-shadow: 0 2px 8px rgba(29,78,216,0.4) !important;
 }
 
-/* ══════════════════════════════════════════
-   다운로드 버튼
-══════════════════════════════════════════ */
 .stDownloadButton > button {
     background: #f0f7ff !important;
     border: 1px solid #bfdbfe !important;
@@ -232,9 +216,6 @@ button[kind="primary"]:active { transform: translateY(0) !important; }
     box-shadow: 0 2px 8px rgba(59,130,246,0.2) !important;
 }
 
-/* ══════════════════════════════════════════
-   링크 버튼
-══════════════════════════════════════════ */
 .stLinkButton > a {
     background: #ffffff !important;
     border: 1px solid #cbd5e1 !important;
@@ -253,9 +234,6 @@ button[kind="primary"]:active { transform: translateY(0) !important; }
     box-shadow: 0 2px 8px rgba(59,130,246,0.15) !important;
 }
 
-/* ══════════════════════════════════════════
-   정보바 & 결과 뱃지
-══════════════════════════════════════════ */
 .info-bar {
     display: flex; align-items: center; gap: 12px;
     padding: 10px 16px;
@@ -276,9 +254,6 @@ button[kind="primary"]:active { transform: translateY(0) !important; }
     white-space: nowrap;
 }
 
-/* ══════════════════════════════════════════
-   데이터프레임
-══════════════════════════════════════════ */
 .stDataFrame { border-radius: 12px !important; overflow: hidden; border: 1px solid #e2e8f0 !important; box-shadow: 0 1px 6px rgba(0,0,0,0.06); }
 [data-testid="stDataFrame"] > div { border-radius: 12px !important; }
 .stDataFrame thead tr th {
@@ -289,9 +264,6 @@ button[kind="primary"]:active { transform: translateY(0) !important; }
 .stDataFrame tbody tr:hover td { background: #f0f7ff !important; }
 .stDataFrame tbody tr td { font-size: 13px !important; color: #334155 !important; border-color: #f1f5f9 !important; }
 
-/* ══════════════════════════════════════════
-   기타
-══════════════════════════════════════════ */
 .stTextInput label, .stSelectbox label, .stDateInput label { display: none !important; }
 .stSpinner > div { border-top-color: #3b82f6 !important; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -308,8 +280,6 @@ hr { border-color: #e2e8f0 !important; margin: 12px 0 !important; }
 
 # =================================================================================
 # [2] 구글 드라이브 연결 함수
-#     - @st.cache_resource : 서비스 객체는 앱 전체에서 1번만 생성 (재인증 방지)
-#     - @st.cache_data     : 데이터는 1시간 캐시 → 검색 버튼마다 재다운로드 방지
 # =================================================================================
 @st.cache_resource
 def get_drive_service():
@@ -325,7 +295,7 @@ def get_drive_service():
     return build('drive', 'v3', credentials=creds), creds
 
 
-@st.cache_data(ttl=3600)  # ✅ 핵심 수정: 1시간 캐시로 매번 다운로드 방지
+@st.cache_data(ttl=3600)
 def fetch_data(file_id, is_sheet=True):
     drive_service, credentials = get_drive_service()
     auth_req = google.auth.transport.requests.Request()
@@ -357,10 +327,6 @@ def fetch_data(file_id, is_sheet=True):
 
 @st.cache_data(ttl=3600)
 def fetch_csv_by_name(file_name):
-    """
-    구글 드라이브에서 파일명으로 CSV를 검색해 DataFrame으로 반환합니다.
-    나라장터_공고_공사.csv / 나라장터_공고_물품.csv / 나라장터_공고_용역.csv 전용
-    """
     drive_service, credentials = get_drive_service()
     auth_req = google.auth.transport.requests.Request()
     credentials.refresh(auth_req)
@@ -382,7 +348,6 @@ def fetch_csv_by_name(file_name):
     return pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
 
 
-# 나라장터_공고 탭 전용: 공고유형 → 파일명 매핑
 NOTICE_CSV_MAP = {
     '공사': '나라장터_공고_공사.csv',
     '물품': '나라장터_공고_물품.csv',
@@ -390,11 +355,11 @@ NOTICE_CSV_MAP = {
 }
 
 # =================================================================================
-# [3] 매핑 데이터: 시트 ID, 출력 컬럼, 날짜 컬럼 지정
+# [3] 매핑 데이터
 # =================================================================================
 SHEET_FILE_IDS = {
     '나라장터_발주':  '1pGnb6O5Z1ahaHYuQdydyoY1Ayf147IoGmLRdA3WAHi4',
-    '나라장터_공고':  None,   # CSV 3개 파일에서 로드 (NOTICE_CSV_MAP 사용)
+    '나라장터_공고':  None,
     '나라장터_계약':  '15Hsr_nup4ZteIZ4Jyov8wG2s_rKoZ25muqRE3-sRnaw',
     '군수품_발주':    '1pzW51Z29SSoQk7al_GvN_tj5smuhOR3J2HWnL_16fcI',
     '군수품_계약':    '1KPMUz0IKM6AQvqwfAkvW96WNvzbycN56vNlFnDmfRTw',
@@ -459,7 +424,7 @@ st.markdown('<div class="header-divider"></div>', unsafe_allow_html=True)
 
 
 # =================================================================================
-# [5] 결과 테이블 Fragment (역할: 데이터 출력, 정렬, 페이지네이션)
+# [5] 결과 테이블 Fragment
 # =================================================================================
 @st.fragment
 def show_result_table(cat, idx_list):
@@ -467,18 +432,15 @@ def show_result_table(cat, idx_list):
     if df is None:
         return
 
-    # 표시할 컬럼 추출 (없는 컬럼은 자동 제외)
     show_cols = [
         df.columns[idx] if isinstance(idx, int) else idx
         for idx in idx_list
         if (isinstance(idx, int) and idx < len(df.columns))
         or (isinstance(idx, str) and idx in df.columns)
     ]
-    # 표시 컬럼이 없으면 전체 컬럼 중 앞 10개 표시
     if not show_cols:
         show_cols = list(df.columns[:10])
 
-    # ── 정보바 ──
     st.markdown('<div class="info-bar">', unsafe_allow_html=True)
     c_result, c_sort1, c_sort2, c_sortbtn, c_limit, c_dl = st.columns([1.2, 2.0, 1.6, 0.7, 1.1, 2.2])
 
@@ -521,7 +483,6 @@ def show_result_table(cat, idx_list):
         )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── 테이블 ──
     total_pages = max((len(df) - 1) // p_limit + 1, 1)
     curr_p = st.session_state.get(f"p_num_{cat}", 1)
 
@@ -536,7 +497,6 @@ def show_result_table(cat, idx_list):
         column_config=link_col_config
     )
 
-    # ── 페이지네이션 ──
     st.markdown('<div class="pagination-area">', unsafe_allow_html=True)
     pg_cols = st.columns([1, 10, 1])
     with pg_cols[1]:
@@ -562,12 +522,7 @@ def show_result_table(cat, idx_list):
 
 
 # =================================================================================
-# [6] 메인 루프 (탭별 검색 조건 입력 및 데이터 필터링)
-#
-# ✅ st.form() 적용 구조:
-#   - 퀵버튼(어제/1주/...)  → 폼 밖: 날짜만 세션에 저장 후 rerun (빠름)
-#   - 검색조건 + 날짜입력   → 폼 안: 위젯 변경해도 rerun 없음
-#   - 검색실행 버튼         → form_submit_button: 한 번만 rerun
+# [6] 메인 루프
 # =================================================================================
 tab_labels = [f"{TAB_ICONS.get(k, '')} {k}" for k in SHEET_FILE_IDS.keys()]
 tabs = st.tabs(tab_labels)
@@ -587,34 +542,52 @@ for i, tab in enumerate(tabs):
             st.session_state[f"df_{cat}"] = None
 
         # ════════════════════════════════════════════
-        # ① 퀵버튼 — 폼 밖 (날짜 세션 업데이트만)
+        # ① 퀵버튼 — today 기준으로 날짜 범위 직접 설정
+        #    (ed를 today-1로 고정, sd만 변경)
         # ════════════════════════════════════════════
         st.markdown('<div class="search-panel">', unsafe_allow_html=True)
-        st.markdown('<div class="search-section-label">📅 조회 기간 빠른 선택</div>', unsafe_allow_html=True)
+        st.markdown('<div class="search-section-label">📅 조회 기간</div>', unsafe_allow_html=True)
 
-        q_cols = st.columns(8)
-        def set_period(cat=cat, d=0, m=0, y=0):
-            end = st.session_state[f"ed_{cat}"]
-            if isinstance(end, datetime): end = end.date()
-            st.session_state[f"sd_{cat}"] = end - relativedelta(days=d, months=m, years=y)
+        # 퀵버튼: 좌측에 compact하게 배치 (나머지 공간은 여백)
+        yesterday = today - relativedelta(days=1)
+
+        qb_cols = st.columns([0.55, 0.55, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 6])
+
+        if qb_cols[0].button("어제",  key=f"d1_{cat}"):
+            st.session_state[f"sd_{cat}"] = yesterday
+            st.session_state[f"ed_{cat}"] = yesterday
             st.rerun()
-
-        if q_cols[0].button("어제",  key=f"d1_{cat}"):
-            st.session_state[f"ed_{cat}"] = today - relativedelta(days=1)
-            st.session_state[f"sd_{cat}"] = today - relativedelta(days=1)
+        if qb_cols[1].button("1주",   key=f"d7_{cat}"):
+            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(days=6)
+            st.session_state[f"ed_{cat}"] = yesterday
             st.rerun()
-        if q_cols[1].button("1주",   key=f"d7_{cat}"):  set_period(d=7)
-        if q_cols[2].button("1개월", key=f"m1_{cat}"):  set_period(m=1)
-        if q_cols[3].button("3개월", key=f"m3_{cat}"):  set_period(m=3)
-        if q_cols[4].button("6개월", key=f"m6_{cat}"):  set_period(m=6)
-        if q_cols[5].button("9개월", key=f"m9_{cat}"):  set_period(m=9)
-        if q_cols[6].button("1년",   key=f"y1_{cat}"):  set_period(y=1)
-        if q_cols[7].button("2년",   key=f"y2_{cat}"):  set_period(y=2)
-
-        st.markdown("<div style='margin-top:14px;'>", unsafe_allow_html=True)
+        if qb_cols[2].button("1개월", key=f"m1_{cat}"):
+            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(months=1)
+            st.session_state[f"ed_{cat}"] = yesterday
+            st.rerun()
+        if qb_cols[3].button("3개월", key=f"m3_{cat}"):
+            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(months=3)
+            st.session_state[f"ed_{cat}"] = yesterday
+            st.rerun()
+        if qb_cols[4].button("6개월", key=f"m6_{cat}"):
+            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(months=6)
+            st.session_state[f"ed_{cat}"] = yesterday
+            st.rerun()
+        if qb_cols[5].button("9개월", key=f"m9_{cat}"):
+            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(months=9)
+            st.session_state[f"ed_{cat}"] = yesterday
+            st.rerun()
+        if qb_cols[6].button("1년",   key=f"y1_{cat}"):
+            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(years=1)
+            st.session_state[f"ed_{cat}"] = yesterday
+            st.rerun()
+        if qb_cols[7].button("2년",   key=f"y2_{cat}"):
+            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(years=2)
+            st.session_state[f"ed_{cat}"] = yesterday
+            st.rerun()
 
         # ════════════════════════════════════════════
-        # ② 검색 폼 — 폼 안 (위젯 변경 시 rerun 없음)
+        # ② 검색 폼
         # ════════════════════════════════════════════
         st.markdown('<div class="search-section-label">🔍 검색 조건</div>', unsafe_allow_html=True)
 
@@ -624,21 +597,18 @@ for i, tab in enumerate(tabs):
         if isinstance(e_val, datetime): e_val = e_val.date()
 
         with st.form(key=f"form_{cat}"):
-            # 날짜 입력 행
-            fd1, fd2, fd3 = st.columns([1.3, 1.3, 7.4])
+            # 날짜 + 검색조건을 한 행에
+            if cat == '나라장터_공고':
+                fd1, fd2, sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 0.9, 1.0, 2.4, 0.7, 2.4, 1.1])
+            else:
+                fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
+
             sd_in = fd1.date_input("시작일", value=s_val, key=f"sd_in_{cat}", label_visibility="collapsed")
             ed_in = fd2.date_input("종료일", value=e_val, key=f"ed_in_{cat}", label_visibility="collapsed")
-            fd3.markdown("<div style='padding-top:6px; font-size:12px; color:#94a3b8;'>← 날짜를 직접 수정하거나 위 빠른선택 버튼을 사용하세요</div>", unsafe_allow_html=True)
 
-            st.markdown("<div style='margin-top:10px;'>", unsafe_allow_html=True)
-
-            # 검색조건 행
             if cat == '나라장터_공고':
-                sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.2, 1.3, 3.0, 1.0, 2.8, 1.4])
                 notice_type = sc0.selectbox("공고유형", ["전체", "공사", "물품", "용역"],
                                             key=f"nt_{cat}", label_visibility="collapsed")
-            else:
-                sc1, sc2, sc3, sc4, sc5 = st.columns([1.3, 3.2, 1.0, 3.2, 1.4])
 
             f_val  = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"],
                                    key=f"f_{cat}", label_visibility="collapsed")
@@ -652,21 +622,18 @@ for i, tab in enumerate(tabs):
             search_exe = sc5.form_submit_button(
                 "🔍  검색실행", use_container_width=True, type="primary"
             )
-            st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("</div></div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         # ════════════════════════════════════════════
         # ③ 검색 실행 로직
         # ════════════════════════════════════════════
         if search_exe:
-            # 폼에서 선택한 날짜를 세션에 저장 (다음 rerun 시 퀵버튼 기준값으로 쓰임)
             st.session_state[f"sd_{cat}"] = sd_in
             st.session_state[f"ed_{cat}"] = ed_in
 
             with st.spinner("데이터를 불러오는 중..."):
 
-                # 나라장터_공고 전용 로딩
                 if cat == '나라장터_공고':
                     types_to_load = list(NOTICE_CSV_MAP.keys()) if notice_type == "전체" else [notice_type]
                     dfs = []
@@ -684,7 +651,6 @@ for i, tab in enumerate(tabs):
                     e_s = ed_in.strftime('%Y%m%d')
                     d_col = DATE_COL_MAP.get(cat)
 
-                    # 날짜 컬럼 전처리
                     if cat == '나라장터_발주':
                         df_raw['tmp_dt'] = s_s
                     elif cat == '군수품_발주':
@@ -696,11 +662,9 @@ for i, tab in enumerate(tabs):
                             if d_col and d_col in df_raw.columns else "0"
                         )
 
-                    # 날짜 필터
                     df_filtered = df_raw.copy() if cat == '나라장터_발주' else \
                         df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
 
-                    # 키워드 필터
                     if k1_val and k1_val.strip():
                         def get_mask(k, df=df_filtered):
                             target_col = f_val
