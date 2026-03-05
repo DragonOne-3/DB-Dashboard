@@ -24,7 +24,7 @@ st.set_page_config(
 st.markdown("""
 <style>
   /* 전체 배경 */
-  .stApp { background: #0f1117; color: #e2e8f0; }
+  .stApp { background: #f5f7fa; color: #e2e8f0; }
 
   /* 헤더 */
   .hero {
