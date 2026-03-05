@@ -104,7 +104,7 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
     box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 .search-section-label {
-    font-size: 10.5px; font-weight: 600; color: #94a3b8;
+    font-size: 14px; font-weight: 600; color: #94a3b8;
     letter-spacing: 1.8px; text-transform: uppercase;
     margin-bottom: 10px;
     display: flex; align-items: center; gap: 8px;
@@ -446,8 +446,8 @@ with col_title:
     <div class="main-header">
         <div class="header-icon">🏛</div>
         <div>
-            <p class="header-title">공공조달 DATA 통합검색 시스템</p>
-            <p class="header-sub">나라장터 · 군수품 · 종합쇼핑몰 통합 데이터 조회 플랫폼</p>
+            <p class="header-title"><b>공공조달 DATA 통합검색 시스템</p>
+            <p class="header-sub"><b>나라장터 · 군수품 · 종합쇼핑몰 통합 데이터 조회 플랫폼</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
