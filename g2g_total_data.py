@@ -587,41 +587,40 @@ for i, tab in enumerate(tabs):
             st.rerun()
 
         # ════════════════════════════════════════════
-        # ② 검색 폼
+        # ② 검색 조건 (폼 없이 — key 없는 date_input으로 퀵버튼 연동)
         # ════════════════════════════════════════════
         st.markdown('<div class="search-section-label">🔍 검색 조건</div>', unsafe_allow_html=True)
 
+        # date_input: key 미지정 → 매 rerun마다 value(세션값)로 렌더링되어 퀵버튼 연동 정상 작동
         s_val = st.session_state[f"sd_{cat}"]
         e_val = st.session_state[f"ed_{cat}"]
         if isinstance(s_val, datetime): s_val = s_val.date()
         if isinstance(e_val, datetime): e_val = e_val.date()
 
-        with st.form(key=f"form_{cat}"):
-            # 날짜 + 검색조건을 한 행에
-            if cat == '나라장터_공고':
-                fd1, fd2, sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 0.9, 1.0, 2.4, 0.7, 2.4, 1.1])
-            else:
-                fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
+        if cat == '나라장터_공고':
+            fd1, fd2, sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 0.9, 1.0, 2.4, 0.7, 2.4, 1.1])
+        else:
+            fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
 
-            sd_in = fd1.date_input("시작일", value=s_val, key=f"sd_in_{cat}", label_visibility="collapsed")
-            ed_in = fd2.date_input("종료일", value=e_val, key=f"ed_in_{cat}", label_visibility="collapsed")
+        # ★ key 없이 value만 지정 → 퀵버튼 rerun 후 세션값이 그대로 반영됨
+        sd_in = fd1.date_input("시작일", value=s_val, label_visibility="collapsed")
+        ed_in = fd2.date_input("종료일", value=e_val, label_visibility="collapsed")
 
-            if cat == '나라장터_공고':
-                notice_type = sc0.selectbox("공고유형", ["전체", "공사", "물품", "용역"],
-                                            key=f"nt_{cat}", label_visibility="collapsed")
+        if cat == '나라장터_공고':
+            notice_type = sc0.selectbox("공고유형", ["전체", "공사", "물품", "용역"],
+                                        key=f"nt_{cat}", label_visibility="collapsed")
 
-            f_val  = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"],
-                                   key=f"f_{cat}", label_visibility="collapsed")
-            k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed",
-                                    placeholder="🔎  검색어를 입력하세요")
-            l_val  = sc3.selectbox("논리", ["NONE", "AND", "OR"],
-                                   key=f"l_{cat}", label_visibility="collapsed")
-            k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed",
-                                    placeholder="🔎  검색어2 (AND/OR 선택 시)")
+        f_val  = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"],
+                               key=f"f_{cat}", label_visibility="collapsed")
+        k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed",
+                                placeholder="🔎  검색어를 입력하세요")
+        l_val  = sc3.selectbox("논리", ["NONE", "AND", "OR"],
+                               key=f"l_{cat}", label_visibility="collapsed")
+        k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed",
+                                placeholder="🔎  검색어2 (AND/OR 선택 시)")
 
-            search_exe = sc5.form_submit_button(
-                "🔍  검색실행", use_container_width=True, type="primary"
-            )
+        search_exe = sc5.button("🔍  검색실행", key=f"search_{cat}",
+                                use_container_width=True, type="primary")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -629,6 +628,7 @@ for i, tab in enumerate(tabs):
         # ③ 검색 실행 로직
         # ════════════════════════════════════════════
         if search_exe:
+            # 사용자가 직접 수정한 날짜도 세션에 저장
             st.session_state[f"sd_{cat}"] = sd_in
             st.session_state[f"ed_{cat}"] = ed_in
 
