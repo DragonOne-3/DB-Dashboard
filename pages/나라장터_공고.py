@@ -17,6 +17,16 @@ SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets.readonly'
 ]
 
+# 영어 컬럼 → 한글 매핑
+COL_RENAME = {
+    "dminsttNm":    "수요기관명",
+    "bidNtceNm":    "공고명",
+    "presmptPrce":  "추정가격",
+    "bidClsDt":     "입찰마감일시",
+    "bidNtceDtlUrl":"공고문",
+}
+DISPLAY_COLS = list(COL_RENAME.values()) + ["공고유형"]
+
 @st.cache_resource
 def get_notice_drive_service():
     info  = json.loads(st.secrets["GOOGLE_AUTH_JSON"])
@@ -25,7 +35,6 @@ def get_notice_drive_service():
 
 @st.cache_data(ttl=3600)
 def fetch_notice_csv_by_year(cat_name, year):
-    """연도별 파일 하나만 로드"""
     svc, creds = get_notice_drive_service()
     creds.refresh(google.auth.transport.requests.Request())
     hdrs = {'Authorization': f'Bearer {creds.token}'}
@@ -49,32 +58,23 @@ def fetch_notice_csv_by_year(cat_name, year):
         return pd.read_csv(io.BytesIO(resp.content), encoding='cp949', low_memory=False)
 
 def load_notice_data(cat_name, s_s, e_s):
-    """검색 기간에 해당하는 연도 파일만 골라서 로드 후 날짜 필터"""
     start_year = int(s_s[:4])
     end_year   = int(e_s[:4])
-    years = list(range(start_year, end_year + 1))
-
     dfs = []
-    for year in years:
+    for year in range(start_year, end_year + 1):
         df_y = fetch_notice_csv_by_year(cat_name, year)
         if not df_y.empty:
             dfs.append(df_y)
-
     if not dfs:
         return pd.DataFrame()
-
     df = pd.concat(dfs, ignore_index=True)
-
     if 'bidNtceDt' in df.columns:
         df['tmp_dt'] = df['bidNtceDt'].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
     else:
         df['tmp_dt'] = "0"
-
     return df[(df['tmp_dt'] >= s_s) & (df['tmp_dt'] <= e_s)].copy()
 
-
 NOTICE_CATS = ['공사', '물품', '용역']
-DISPLAY_COLS = ["dminsttNm", "bidNtceNm", "presmptPrce", "bidClsDt", "bidNtceDtlUrl"]
 
 # ── 세션 초기화 ──
 today     = date.today()
@@ -110,7 +110,7 @@ c1,c2,c3,c4,c5,c6,c7,c8 = st.columns([1.1,1.1,0.9,1.0,2.4,0.7,2.4,1.1])
 sd_in       = c1.text_input("시작일", key="ng_sd", placeholder="YYYY-MM-DD", label_visibility="collapsed")
 ed_in       = c2.text_input("종료일", key="ng_ed", placeholder="YYYY-MM-DD", label_visibility="collapsed")
 notice_type = c3.selectbox("공고유형", ["전체","공사","물품","용역"], key="ng_nt", label_visibility="collapsed")
-f_val       = c4.selectbox("필드", ["ALL","수요기관명","업체명","계약명"], key="ng_f", label_visibility="collapsed")
+f_val       = c4.selectbox("필드", ["ALL","수요기관명","공고명"], key="ng_f", label_visibility="collapsed")
 k1_val      = c5.text_input("검색어1", key="ng_k1", placeholder="🔎 검색어", label_visibility="collapsed")
 l_val       = c6.selectbox("논리", ["NONE","AND","OR"], key="ng_l", label_visibility="collapsed")
 k2_val      = c7.text_input("검색어2", key="ng_k2", placeholder="🔎 검색어2", label_visibility="collapsed")
@@ -141,20 +141,23 @@ if search_exe:
             df_f = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
             if not df_f.empty:
+                # ── 컬럼명 한글로 변환 ──
+                df_f = df_f.rename(columns=COL_RENAME)
+
+                # ── 추정가격 쉼표 포맷 (숫자만) ──
+                if '추정가격' in df_f.columns:
+                    def fmt_price(v):
+                        try:
+                            return f"{int(float(str(v).replace(',', ''))):,}"
+                        except:
+                            return v
+                    df_f['추정가격'] = df_f['추정가격'].apply(fmt_price)
+
+                # ── 키워드 검색 ──
                 if k1_val and k1_val.strip():
                     def get_mask(df, kw, field):
-                        t = field
-                        if field == "수요기관명":
-                            for c in ["수요기관명", "dminsttNm"]:
-                                if c in df.columns: t = c; break
-                        elif field == "계약명":
-                            for c in ["계약명", "bidNtceNm"]:
-                                if c in df.columns: t = c; break
-                        elif field == "업체명":
-                            for c in ["업체명", "상호"]:
-                                if c in df.columns: t = c; break
-                        if t != "ALL" and t in df.columns:
-                            return df[t].astype(str).str.contains(kw, case=False, na=False)
+                        if field != "ALL" and field in df.columns:
+                            return df[field].astype(str).str.contains(kw, case=False, na=False)
                         return df.astype(str).apply(lambda x: x.str.contains(kw, case=False, na=False)).any(axis=1)
 
                     m1 = get_mask(df_f, k1_val.strip(), f_val)
@@ -181,15 +184,30 @@ if df is None:
 elif len(df) == 0:
     st.warning("검색 결과가 없습니다.")
 else:
-    show_cols = [c for c in DISPLAY_COLS if c in df.columns] or list(df.columns[:10])
+    show_cols = [c for c in DISPLAY_COLS if c in df.columns]
+
     p_lim = st.selectbox("페이지당 행수", [50,100,150,200], key="ng_plim")
     total = max((len(df)-1)//p_lim+1, 1)
     curr  = st.session_state.get("ng_pnum", 1)
 
     st.caption(f"총 {len(df):,}건 / {total}페이지")
-    st.dataframe(df[show_cols].iloc[(curr-1)*p_lim: curr*p_lim],
-                 use_container_width=True, height=500)
 
+    # ── 공고문 컬럼을 링크로 ──
+    col_cfg = {}
+    if '공고문' in show_cols:
+        col_cfg['공고문'] = st.column_config.LinkColumn(
+            "공고문",
+            display_text="바로가기"
+        )
+
+    st.dataframe(
+        df[show_cols].iloc[(curr-1)*p_lim: curr*p_lim],
+        use_container_width=True,
+        height=500,
+        column_config=col_cfg
+    )
+
+    # ── 페이지네이션 ──
     cols = st.columns(14)
     sp = max(1, curr-4); ep = min(total, sp+9)
     if cols[0].button("«", key="ng_f10"): st.session_state["ng_pnum"]=max(1,curr-10); st.rerun()
@@ -200,6 +218,7 @@ else:
     if cols[12].button("›",  key="ng_n1"):  st.session_state["ng_pnum"]=min(total,curr+1);  st.rerun()
     if cols[13].button("»", key="ng_n10"): st.session_state["ng_pnum"]=min(total,curr+10); st.rerun()
 
+    # ── 다운로드 ──
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine='xlsxwriter') as w: df.to_excel(w, index=False)
     dc1, dc2 = st.columns(2)
