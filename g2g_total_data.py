@@ -12,6 +12,7 @@ from dateutil.relativedelta import relativedelta
 # =================================================================================
 # [1] 페이지 설정 및 디자인
 # =================================================================================
+st.markdown("<br><br><br>", unsafe_allow_html=True)
 st.set_page_config(page_title="공공조달 DATA 통합검색", layout="wide", page_icon="🏛")
 
 st.markdown("""
