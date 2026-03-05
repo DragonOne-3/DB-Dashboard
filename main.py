@@ -122,27 +122,29 @@ def format_html_table(data_list, title):
     return html
 
 
-def fetch_api_data_from_g2b(kw, d_str):
+def fetch_api_data_from_g2b(kw, d_str, retries=3):
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
     params = {
         'numOfRows': '999', 'pageNo': '1', 'ServiceKey': MY_DIRECT_KEY,
-        'type': 'xml',          # ← 'Type_A' → 'type' 으로 수정
-        'inqryDiv': '1', 'inqryPrdctDiv': '2',
+        'type': 'xml', 'inqryDiv': '1', 'inqryPrdctDiv': '2',
         'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'dtilPrdctClsfcNoNm': kw
     }
-    try:
-        res = requests.get(url, params=params, timeout=15)
-        print(f"[{kw}] status={res.status_code}, has_item={'<item>' in res.text}, len={len(res.text)}")
-        if res.status_code == 200 and "<item>" in res.text:
-            root = ET.fromstring(res.content)
-            rows = []
-            for elem_item in root.findall('.//item'):
-                row = [elem.text if elem.text else '' for elem in elem_item]
-                print(f"  → 태그 수: {len(row)}, HEADER: {len(HEADER_KOR)}")  # 한 번만 확인
-                rows.append(row)
-            return rows
-    except Exception as e:
-        print(f"[{kw}] 오류: {e}")  # ← pass 대신 오류 출력
+    for attempt in range(retries):
+        try:
+            res = requests.get(url, params=params, timeout=60)  # 15 → 60초
+            if res.status_code == 200 and "<item>" in res.text:
+                root = ET.fromstring(res.content)
+                return [[elem.text if elem.text else '' for elem in item]
+                        for item in root.findall('.//item')]
+            return []
+        except requests.exceptions.Timeout:
+            wait = (attempt + 1) * 5  # 5초, 10초, 15초 간격으로 재시도
+            print(f"[{kw}] 타임아웃 ({attempt+1}/{retries}), {wait}초 후 재시도...")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"[{kw}] 오류: {e}")
+            return []
+    print(f"[{kw}] 최종 실패")
     return []
 
 
@@ -251,7 +253,7 @@ def main():
     # ★ 변경: 폴더 ID 지정하여 파일 검색
     # -------------------------------------------------------------------------
     final_data = []
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(fetch_api_data_from_g2b, kw, d_str): kw for kw in keywords}
         for future in as_completed(futures):
             data = future.result()
