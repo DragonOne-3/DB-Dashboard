@@ -19,10 +19,10 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
 /* ══════════════════════════════════════════
-   전체 기반
+   전체 기반 — 흰색 테마
 ══════════════════════════════════════════ */
 html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important; }
-.stApp { background: #080c12; color: #e6edf3; }
+.stApp { background: #f5f7fa !important; color: #1e293b !important; }
 .block-container { padding: 1.5rem 2rem 2rem 2rem !important; max-width: 100% !important; }
 
 /* ══════════════════════════════════════════
@@ -31,23 +31,23 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
 .main-header {
     display: flex; align-items: center; gap: 14px;
     padding: 0 0 18px 0;
-    border-bottom: 1px solid #1c2230;
+    border-bottom: 1px solid #e2e8f0;
     margin-bottom: 20px;
 }
 .header-icon {
     width: 44px; height: 44px;
-    background: linear-gradient(135deg, #1a56db, #3b82f6);
+    background: linear-gradient(135deg, #1d4ed8, #3b82f6);
     border-radius: 12px;
     display: flex; align-items: center; justify-content: center;
     font-size: 21px;
-    box-shadow: 0 0 22px rgba(59,130,246,0.4);
+    box-shadow: 0 4px 14px rgba(59,130,246,0.35);
     flex-shrink: 0;
 }
-.header-title { font-size: 21px; font-weight: 700; color: #f0f6ff; letter-spacing: -0.4px; margin: 0; }
-.header-sub { font-size: 12px; color: #6b7a99; margin: 3px 0 0 0; font-weight: 300; }
+.header-title { font-size: 21px; font-weight: 700; color: #0f172a; letter-spacing: -0.4px; margin: 0; }
+.header-sub { font-size: 12px; color: #94a3b8; margin: 3px 0 0 0; font-weight: 300; }
 .header-divider {
     height: 1px;
-    background: linear-gradient(90deg, #1a56db 0%, #1c2230 55%);
+    background: linear-gradient(90deg, #3b82f6 0%, #e2e8f0 55%);
     margin: 0 0 22px 0;
 }
 
@@ -55,8 +55,8 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
    탭 — 캡슐 pill 스타일
 ══════════════════════════════════════════ */
 .stTabs [data-baseweb="tab-list"] {
-    background: #0f1623 !important;
-    border: 1px solid #1c2230 !important;
+    background: #eef2f7 !important;
+    border: 1px solid #dde3ec !important;
     border-radius: 14px !important;
     padding: 5px 6px !important;
     gap: 3px !important;
@@ -64,13 +64,12 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
     overflow-x: auto;
     flex-wrap: nowrap;
 }
-/* 탭 하단 기본 인디케이터 제거 */
 .stTabs [data-baseweb="tab-highlight"] { display: none !important; }
 .stTabs [data-baseweb="tab-border"]    { display: none !important; }
 
 .stTabs [data-baseweb="tab"] {
     background: transparent !important;
-    color: #5a6a88 !important;
+    color: #64748b !important;
     border: none !important;
     border-radius: 10px !important;
     padding: 7px 18px !important;
@@ -81,14 +80,14 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
     white-space: nowrap;
 }
 .stTabs [data-baseweb="tab"]:hover {
-    background: #1c2638 !important;
-    color: #a8b8d8 !important;
+    background: #dce6f5 !important;
+    color: #1d4ed8 !important;
 }
 .stTabs [aria-selected="true"] {
-    background: linear-gradient(135deg, #1a3a6e, #1d4ed8) !important;
+    background: linear-gradient(135deg, #1d4ed8, #3b82f6) !important;
     color: #ffffff !important;
     font-weight: 600 !important;
-    box-shadow: 0 2px 10px rgba(29,78,216,0.45), inset 0 1px 0 rgba(255,255,255,0.12) !important;
+    box-shadow: 0 2px 10px rgba(29,78,216,0.35), inset 0 1px 0 rgba(255,255,255,0.2) !important;
 }
 .stTabs [data-baseweb="tab-panel"] { padding-top: 4px !important; }
 
@@ -96,60 +95,70 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
    검색 패널
 ══════════════════════════════════════════ */
 .search-panel {
-    background: #0f1623;
-    border: 1px solid #1c2230;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 14px;
     padding: 20px 24px 18px 24px;
     margin-bottom: 18px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
 }
 .search-section-label {
-    font-size: 10.5px; font-weight: 600; color: #4a5a78;
+    font-size: 10.5px; font-weight: 600; color: #94a3b8;
     letter-spacing: 1.8px; text-transform: uppercase;
     margin-bottom: 10px;
     display: flex; align-items: center; gap: 8px;
 }
-.search-section-label::after { content: ''; flex: 1; height: 1px; background: #1c2230; }
+.search-section-label::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
 
 /* ══════════════════════════════════════════
    인풋 & 셀렉트박스
 ══════════════════════════════════════════ */
 .stTextInput > div > div > input {
-    background: #080c12 !important; border: 1px solid #1c2a40 !important;
-    border-radius: 9px !important; color: #d8e4f8 !important;
-    font-size: 13px !important; font-family: 'Noto Sans KR', sans-serif !important;
-    padding: 8px 13px !important; transition: all 0.2s;
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 9px !important;
+    color: #1e293b !important;
+    font-size: 13px !important;
+    font-family: 'Noto Sans KR', sans-serif !important;
+    padding: 8px 13px !important;
+    transition: all 0.2s;
 }
 .stTextInput > div > div > input:focus {
-    border-color: #1d4ed8 !important;
-    box-shadow: 0 0 0 3px rgba(29,78,216,0.18) !important;
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.15) !important;
+    background: #ffffff !important;
 }
-.stTextInput > div > div > input::placeholder { color: #2e3d57 !important; }
+.stTextInput > div > div > input::placeholder { color: #94a3b8 !important; }
 
 .stSelectbox > div > div {
-    background: #080c12 !important; border: 1px solid #1c2a40 !important;
-    border-radius: 9px !important; color: #d8e4f8 !important; font-size: 13px !important;
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 9px !important;
+    color: #1e293b !important;
+    font-size: 13px !important;
 }
-[data-baseweb="select"] > div  { background: #080c12 !important; border-color: #1c2a40 !important; }
-[data-baseweb="popover"]       { background: #0f1623 !important; border: 1px solid #1c2a40 !important; }
-[data-baseweb="menu"]          { background: #0f1623 !important; }
-[data-baseweb="option"]        { background: #0f1623 !important; color: #d8e4f8 !important; font-size: 13px !important; }
-[data-baseweb="option"]:hover  { background: #1c2638 !important; }
+[data-baseweb="select"] > div  { background: #f8fafc !important; border-color: #cbd5e1 !important; }
+[data-baseweb="popover"]       { background: #ffffff !important; border: 1px solid #e2e8f0 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.12) !important; }
+[data-baseweb="menu"]          { background: #ffffff !important; }
+[data-baseweb="option"]        { background: #ffffff !important; color: #1e293b !important; font-size: 13px !important; }
+[data-baseweb="option"]:hover  { background: #eff6ff !important; color: #1d4ed8 !important; }
 
 .stDateInput > div > div > input {
-    background: #080c12 !important; border: 1px solid #1c2a40 !important;
-    border-radius: 9px !important; color: #d8e4f8 !important; font-size: 13px !important;
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 9px !important;
+    color: #1e293b !important;
+    font-size: 13px !important;
 }
 
 /* ══════════════════════════════════════════
-   일반 버튼 (퀵 날짜 / 정렬 / 페이지)
-   — 얇은 테두리 pill 형태
+   일반 버튼 — pill 형태, 밝은 배경
 ══════════════════════════════════════════ */
 .stButton > button {
-    background: #111827 !important;
-    border: 1px solid #1e2d45 !important;
-    border-radius: 20px !important;          /* ← pill 형태 */
-    color: #7a90b8 !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 20px !important;
+    color: #475569 !important;
     font-size: 12px !important;
     font-family: 'Noto Sans KR', sans-serif !important;
     font-weight: 500 !important;
@@ -157,44 +166,40 @@ html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif !important;
     height: 30px !important;
     transition: all 0.16s ease !important;
     letter-spacing: 0.1px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 .stButton > button:hover {
-    background: #1a2740 !important;
+    background: #eff6ff !important;
     border-color: #3b82f6 !important;
-    color: #93c5fd !important;
-    box-shadow: 0 0 8px rgba(59,130,246,0.2) !important;
+    color: #1d4ed8 !important;
+    box-shadow: 0 2px 8px rgba(59,130,246,0.2) !important;
     transform: translateY(-1px) !important;
 }
-.stButton > button:active { transform: translateY(0) !important; }
+.stButton > button:active { transform: translateY(0) !important; box-shadow: none !important; }
 
 /* ══════════════════════════════════════════
    검색실행 버튼 (primary)
-   — 강조 그라데이션
 ══════════════════════════════════════════ */
 button[kind="primary"] {
-    background: linear-gradient(135deg, #1a3a8f 0%, #2563eb 50%, #3b82f6 100%) !important;
+    background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%) !important;
     border: none !important;
     border-radius: 10px !important;
     color: #ffffff !important;
     font-weight: 700 !important;
     font-size: 13px !important;
     height: 38px !important;
-    box-shadow: 0 3px 12px rgba(37,99,235,0.5), inset 0 1px 0 rgba(255,255,255,0.15) !important;
+    box-shadow: 0 3px 12px rgba(37,99,235,0.4), inset 0 1px 0 rgba(255,255,255,0.2) !important;
     letter-spacing: 0.3px;
     transition: all 0.18s ease !important;
 }
 button[kind="primary"]:hover {
-    box-shadow: 0 5px 20px rgba(37,99,235,0.65), inset 0 1px 0 rgba(255,255,255,0.2) !important;
+    box-shadow: 0 5px 18px rgba(37,99,235,0.5) !important;
     transform: translateY(-2px) !important;
-    filter: brightness(1.08) !important;
+    filter: brightness(1.06) !important;
 }
 button[kind="primary"]:active { transform: translateY(0) !important; }
 
-/* ══════════════════════════════════════════
-   페이지네이션 현재 페이지 (primary type)
-   — 소형 원형 강조
-══════════════════════════════════════════ */
-.stTabs ~ div button[kind="primary"],
+/* 페이지네이션 현재 페이지 */
 [data-testid="stHorizontalBlock"] button[kind="primary"] {
     background: #1d4ed8 !important;
     border-radius: 20px !important;
@@ -203,47 +208,48 @@ button[kind="primary"]:active { transform: translateY(0) !important; }
     padding: 0 10px !important;
     font-size: 12px !important;
     font-weight: 700 !important;
-    box-shadow: 0 0 10px rgba(29,78,216,0.5) !important;
+    box-shadow: 0 2px 8px rgba(29,78,216,0.4) !important;
 }
 
 /* ══════════════════════════════════════════
    다운로드 버튼
 ══════════════════════════════════════════ */
 .stDownloadButton > button {
-    background: #0f1e30 !important;
-    border: 1px solid #1e3a5f !important;
+    background: #f0f7ff !important;
+    border: 1px solid #bfdbfe !important;
     border-radius: 9px !important;
-    color: #5a8fc4 !important;
+    color: #1d4ed8 !important;
     font-size: 12px !important;
     font-weight: 500 !important;
     height: 32px !important;
     transition: all 0.15s !important;
 }
 .stDownloadButton > button:hover {
-    background: #162840 !important;
+    background: #dbeafe !important;
     border-color: #3b82f6 !important;
-    color: #93c5fd !important;
-    box-shadow: 0 0 10px rgba(59,130,246,0.2) !important;
+    color: #1e40af !important;
+    box-shadow: 0 2px 8px rgba(59,130,246,0.2) !important;
 }
 
 /* ══════════════════════════════════════════
    링크 버튼
 ══════════════════════════════════════════ */
 .stLinkButton > a {
-    background: #0f1623 !important;
-    border: 1px solid #1c2a40 !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
     border-radius: 9px !important;
-    color: #5a6a88 !important;
+    color: #64748b !important;
     font-size: 12px !important;
     text-decoration: none;
     padding: 6px 14px !important;
     transition: all 0.15s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 .stLinkButton > a:hover {
     border-color: #3b82f6 !important;
-    color: #60a5fa !important;
-    background: #0d1d33 !important;
-    box-shadow: 0 0 8px rgba(59,130,246,0.2) !important;
+    color: #1d4ed8 !important;
+    background: #eff6ff !important;
+    box-shadow: 0 2px 8px rgba(59,130,246,0.15) !important;
 }
 
 /* ══════════════════════════════════════════
@@ -252,35 +258,35 @@ button[kind="primary"]:active { transform: translateY(0) !important; }
 .info-bar {
     display: flex; align-items: center; gap: 12px;
     padding: 10px 16px;
-    background: #0f1623;
-    border: 1px solid #1c2230;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
     border-radius: 12px;
     margin-bottom: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
 .result-badge {
-    background: linear-gradient(135deg, #0d2347, #0f2d5c);
-    border: 1px solid #1d4ed844;
+    background: linear-gradient(135deg, #eff6ff, #dbeafe);
+    border: 1px solid #93c5fd;
     border-radius: 8px;
     padding: 5px 14px;
     font-size: 13px; font-weight: 700;
-    color: #60a5fa;
+    color: #1d4ed8;
     font-family: 'JetBrains Mono', monospace;
     white-space: nowrap;
-    box-shadow: 0 0 12px rgba(29,78,216,0.2);
 }
 
 /* ══════════════════════════════════════════
    데이터프레임
 ══════════════════════════════════════════ */
-.stDataFrame { border-radius: 12px !important; overflow: hidden; border: 1px solid #1c2230 !important; }
+.stDataFrame { border-radius: 12px !important; overflow: hidden; border: 1px solid #e2e8f0 !important; box-shadow: 0 1px 6px rgba(0,0,0,0.06); }
 [data-testid="stDataFrame"] > div { border-radius: 12px !important; }
 .stDataFrame thead tr th {
-    background: #0f1623 !important; color: #4a6080 !important;
+    background: #f8fafc !important; color: #64748b !important;
     font-size: 12px !important; font-weight: 600 !important;
-    border-bottom: 1px solid #1c2230 !important; letter-spacing: 0.4px;
+    border-bottom: 1px solid #e2e8f0 !important; letter-spacing: 0.4px;
 }
-.stDataFrame tbody tr:hover td { background: #111d2e !important; }
-.stDataFrame tbody tr td { font-size: 13px !important; color: #b8cce4 !important; border-color: #1c2230 !important; }
+.stDataFrame tbody tr:hover td { background: #f0f7ff !important; }
+.stDataFrame tbody tr td { font-size: 13px !important; color: #334155 !important; border-color: #f1f5f9 !important; }
 
 /* ══════════════════════════════════════════
    기타
@@ -288,13 +294,13 @@ button[kind="primary"]:active { transform: translateY(0) !important; }
 .stTextInput label, .stSelectbox label, .stDateInput label { display: none !important; }
 .stSpinner > div { border-top-color: #3b82f6 !important; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #080c12; }
-::-webkit-scrollbar-thumb { background: #1c2a40; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #2e4060; }
-hr { border-color: #1c2230 !important; margin: 12px 0 !important; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+hr { border-color: #e2e8f0 !important; margin: 12px 0 !important; }
 
-.no-data-msg { text-align: center; padding: 50px; color: #2e3d57; font-size: 14px; }
-.no-data-icon { font-size: 38px; margin-bottom: 10px; opacity: 0.5; }
+.no-data-msg { text-align: center; padding: 50px; color: #94a3b8; font-size: 14px; }
+.no-data-icon { font-size: 38px; margin-bottom: 10px; opacity: 0.4; }
 </style>
 """, unsafe_allow_html=True)
 
