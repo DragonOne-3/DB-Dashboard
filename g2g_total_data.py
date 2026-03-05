@@ -12,8 +12,6 @@ from dateutil.relativedelta import relativedelta
 # =================================================================================
 # [1] 페이지 설정 및 디자인
 # =================================================================================
-st.markdown("<br><br>", unsafe_allow_html=True)
-
 st.set_page_config(page_title="공공조달 DATA 통합검색", layout="wide", page_icon="🏛")
 
 st.markdown("""
@@ -356,11 +354,46 @@ def fetch_data(file_id, is_sheet=True):
         return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
+@st.cache_data(ttl=3600)
+def fetch_csv_by_name(file_name):
+    """
+    구글 드라이브에서 파일명으로 CSV를 검색해 DataFrame으로 반환합니다.
+    나라장터_공고_공사.csv / 나라장터_공고_물품.csv / 나라장터_공고_용역.csv 전용
+    """
+    drive_service, credentials = get_drive_service()
+    auth_req = google.auth.transport.requests.Request()
+    credentials.refresh(auth_req)
+    headers = {'Authorization': f'Bearer {credentials.token}'}
+
+    results = drive_service.files().list(
+        q=f"name='{file_name}' and trashed=false",
+        fields='files(id, name)'
+    ).execute()
+    files = results.get('files', [])
+    if not files:
+        return pd.DataFrame()
+
+    file_id = files[0]['id']
+    resp = requests.get(
+        f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media',
+        headers=headers
+    )
+    return pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
+
+
+# 나라장터_공고 탭 전용: 공고유형 → 파일명 매핑
+NOTICE_CSV_MAP = {
+    '공사': '나라장터_공고_공사.csv',
+    '물품': '나라장터_공고_물품.csv',
+    '용역': '나라장터_공고_용역.csv',
+}
+
 # =================================================================================
 # [3] 매핑 데이터: 시트 ID, 출력 컬럼, 날짜 컬럼 지정
 # =================================================================================
 SHEET_FILE_IDS = {
     '나라장터_발주':  '1pGnb6O5Z1ahaHYuQdydyoY1Ayf147IoGmLRdA3WAHi4',
+    '나라장터_공고':  None,   # CSV 3개 파일에서 로드 (NOTICE_CSV_MAP 사용)
     '나라장터_계약':  '15Hsr_nup4ZteIZ4Jyov8wG2s_rKoZ25muqRE3-sRnaw',
     '군수품_발주':    '1pzW51Z29SSoQk7al_GvN_tj5smuhOR3J2HWnL_16fcI',
     '군수품_계약':    '1KPMUz0IKM6AQvqwfAkvW96WNvzbycN56vNlFnDmfRTw',
@@ -370,32 +403,36 @@ SHEET_FILE_IDS = {
 }
 
 DISPLAY_INDEX_MAP = {
-    '군수품_계약':  [7, 5, 3, 1, 12],
-    '군수품_수의':  [12, 10, 8, 3],
-    '군수품_발주':  [7, 8, 12, 2, 3],
-    '군수품_공고':  [0, 16, 18, 19, 23],
+    '군수품_계약':   [7, 5, 3, 1, 12],
+    '군수품_수의':   [12, 10, 8, 3],
+    '군수품_발주':   [7, 8, 12, 2, 3],
+    '군수품_공고':   [0, 16, 18, 19, 23],
     '나라장터_발주': [9, 13, 20],
+    '나라장터_공고': ["dminsttNm", "bidNtceNm", "presmptPrce", "bidClsDt", "bidNtceDtlUrl"],
     '나라장터_계약': [0, 3, 4, 5, 6, 33],
     '종합쇼핑몰':   ["수요기관명", "계약납품요구일자", "세부품명", "계약명", "업체명", "수량", "금액"]
 }
 
 DATE_COL_MAP = {
-    '군수품_발주':  '발주예정월',
-    '군수품_수의':  '개찰일자',
-    '군수품_계약':  '계약일자',
-    '군수품_공고':  '공고일자',
+    '군수품_발주':   '발주예정월',
+    '군수품_수의':   '개찰일자',
+    '군수품_계약':   '계약일자',
+    '군수품_공고':   '공고일자',
+    '나라장터_발주': None,
+    '나라장터_공고': 'bidNtceDt',
     '나라장터_계약': '★가공_계약일',
     '종합쇼핑몰':   '계약납품요구일자'
 }
 
 TAB_ICONS = {
-    '나라장터_발주': '📋',
-    '나라장터_계약': '📝',
-    '군수품_발주':   '🛡',
-    '군수품_계약':   '✅',
-    '군수품_공고':   '📢',
-    '군수품_수의':   '🤝',
-    '종합쇼핑몰':   '🛒'
+    '나라장터_발주':  '📋',
+    '나라장터_공고':  '📢',
+    '나라장터_계약':  '📝',
+    '군수품_발주':    '🛡',
+    '군수품_계약':    '✅',
+    '군수품_공고':    '📣',
+    '군수품_수의':    '🤝',
+    '종합쇼핑몰':    '🛒'
 }
 
 
@@ -409,7 +446,7 @@ with col_title:
         <div class="header-icon">🏛</div>
         <div>
             <p class="header-title">공공조달 DATA 통합검색 시스템</p>
-            <p class="header-sub"><b>나라장터 · 군수품 · 종합쇼핑몰 통합 데이터 조회 플랫폼</p>
+            <p class="header-sub">나라장터 · 군수품 · 종합쇼핑몰 통합 데이터 조회 플랫폼</p>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -429,13 +466,16 @@ def show_result_table(cat, idx_list):
     if df is None:
         return
 
-    # 표시할 컬럼 추출
+    # 표시할 컬럼 추출 (없는 컬럼은 자동 제외)
     show_cols = [
         df.columns[idx] if isinstance(idx, int) else idx
         for idx in idx_list
         if (isinstance(idx, int) and idx < len(df.columns))
         or (isinstance(idx, str) and idx in df.columns)
     ]
+    # 표시 컬럼이 없으면 전체 컬럼 중 앞 10개 표시
+    if not show_cols:
+        show_cols = list(df.columns[:10])
 
     # ── 정보바 ──
     st.markdown('<div class="info-bar">', unsafe_allow_html=True)
@@ -547,11 +587,35 @@ for i, tab in enumerate(tabs):
 
         # 검색조건 행
         st.markdown('<div class="search-section-label">🔍 검색 조건</div>', unsafe_allow_html=True)
-        sc1, sc2, sc3, sc4 = st.columns([1.4, 3.2, 1.0, 3.2])
+
+        # ★ 나라장터_공고 전용: 공고유형 선택 추가
+        if cat == '나라장터_공고':
+            sc0, sc1, sc2, sc3, sc4 = st.columns([1.2, 1.4, 3.0, 1.0, 3.0])
+            notice_type = sc0.selectbox(
+                "공고유형", ["전체", "공사", "물품", "용역"],
+                key=f"nt_{cat}", label_visibility="collapsed"
+            )
+        else:
+            sc1, sc2, sc3, sc4 = st.columns([1.4, 3.2, 1.0, 3.2])
+
         f_val  = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"], key=f"f_{cat}", label_visibility="collapsed")
         k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed", placeholder="🔎  검색어를 입력하세요")
         l_val  = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
         k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", disabled=(l_val == "NONE"), placeholder="🔎  검색어2 (AND/OR 선택 시)")
+
+        # 공고유형 뱃지 표시 (나라장터_공고 전용)
+        if cat == '나라장터_공고':
+            color_map = {"전체": "#6366f1", "공사": "#f59e0b", "물품": "#10b981", "용역": "#3b82f6"}
+            badge_color = color_map.get(notice_type, "#6366f1")
+            st.markdown(f"""
+            <div style='margin:8px 0 4px 0;'>
+                <span style='background:{badge_color}18; border:1px solid {badge_color}55;
+                color:{badge_color}; border-radius:20px; padding:3px 12px;
+                font-size:12px; font-weight:600;'>
+                📌 공고유형: {notice_type}
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
 
         st.markdown("<div style='margin-top:12px;'>", unsafe_allow_html=True)
 
@@ -559,9 +623,9 @@ for i, tab in enumerate(tabs):
         st.markdown('<div class="search-section-label">📅 조회 기간</div>', unsafe_allow_html=True)
         d1, d2, d3, d4 = st.columns([1.3, 1.3, 5.2, 1.5])
 
-        v_num   = st.session_state[f"ver_{cat}"]
-        s_val   = st.session_state[f"sd_{cat}"]
-        e_val   = st.session_state[f"ed_{cat}"]
+        v_num = st.session_state[f"ver_{cat}"]
+        s_val = st.session_state[f"sd_{cat}"]
+        e_val = st.session_state[f"ed_{cat}"]
         if isinstance(s_val, datetime): s_val = s_val.date()
         if isinstance(e_val, datetime): e_val = e_val.date()
 
@@ -601,7 +665,22 @@ for i, tab in enumerate(tabs):
                 st.session_state[f"sd_{cat}"] = sd_in
                 st.session_state[f"ed_{cat}"] = ed_in
 
-                df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
+                # ★ 나라장터_공고 전용 로딩 로직
+                if cat == '나라장터_공고':
+                    types_to_load = (
+                        list(NOTICE_CSV_MAP.keys())
+                        if notice_type == "전체"
+                        else [notice_type]
+                    )
+                    dfs = []
+                    for t in types_to_load:
+                        df_t = fetch_csv_by_name(NOTICE_CSV_MAP[t])
+                        if not df_t.empty:
+                            df_t['공고유형'] = t   # 어느 파일에서 왔는지 컬럼 추가
+                            dfs.append(df_t)
+                    df_raw = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+                else:
+                    df_raw = fetch_data(SHEET_FILE_IDS[cat], is_sheet=(cat != '종합쇼핑몰'))
 
                 if not df_raw.empty:
                     s_s = sd_in.strftime('%Y%m%d')
@@ -614,8 +693,11 @@ for i, tab in enumerate(tabs):
                     elif cat == '군수품_발주':
                         df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
                         s_s = s_s[:6] + "01"
-                    elif cat == '나라장터_계약':
-                        df_raw['tmp_dt'] = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+                    elif cat in ('나라장터_계약', '나라장터_공고'):
+                        df_raw['tmp_dt'] = (
+                            df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+                            if d_col and d_col in df_raw.columns else "0"
+                        )
                     else:
                         df_raw['tmp_dt'] = (
                             df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
@@ -634,10 +716,13 @@ for i, tab in enumerate(tabs):
                                 for cand in ["업체명", "상호", "상호명", "계약상대자", "계약상대자명"]:
                                     if cand in df.columns: target_col = cand; break
                             elif f_val == "수요기관명":
-                                for cand in ["수요기관명", "수요기관", "발주기관", "공고기관"]:
+                                for cand in ["수요기관명", "수요기관", "발주기관", "공고기관", "dminsttNm"]:
+                                    if cand in df.columns: target_col = cand; break
+                            elif f_val == "계약명":
+                                for cand in ["계약명", "공고명", "bidNtceNm"]:
                                     if cand in df.columns: target_col = cand; break
 
-                            if target_col in df.columns:
+                            if target_col != "ALL" and target_col in df.columns:
                                 return df[target_col].astype(str).str.contains(k, case=False, na=False)
                             else:
                                 return df.astype(str).apply(lambda x: x.str.contains(k, case=False, na=False)).any(axis=1)
