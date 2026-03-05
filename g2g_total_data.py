@@ -252,16 +252,18 @@ _today = date.today()
 _yesterday = _today - relativedelta(days=1)
 for _cat in SHEET_FILE_IDS:
     if f"sd_in_{_cat}" not in st.session_state:
-        st.session_state[f"sd_in_{_cat}"] = _today - relativedelta(months=6)
+        st.session_state[f"sd_in_{_cat}"] = (_today - relativedelta(months=6)).strftime('%Y-%m-%d')
     if f"ed_in_{_cat}" not in st.session_state:
-        st.session_state[f"ed_in_{_cat}"] = _yesterday
+        st.session_state[f"ed_in_{_cat}"] = _yesterday.strftime('%Y-%m-%d')
     if f"df_{_cat}" not in st.session_state:
         st.session_state[f"df_{_cat}"] = None
-    # 타입 보정: 혹시 datetime이 들어있으면 date로 변환
-    if isinstance(st.session_state[f"sd_in_{_cat}"], datetime):
-        st.session_state[f"sd_in_{_cat}"] = st.session_state[f"sd_in_{_cat}"].date()
-    if isinstance(st.session_state[f"ed_in_{_cat}"], datetime):
-        st.session_state[f"ed_in_{_cat}"] = st.session_state[f"ed_in_{_cat}"].date()
+    # 타입 보정: 혹시 date/datetime 객체가 들어있으면 문자열로 변환
+    v = st.session_state[f"sd_in_{_cat}"]
+    if not isinstance(v, str):
+        st.session_state[f"sd_in_{_cat}"] = (v.date() if isinstance(v, datetime) else v).strftime('%Y-%m-%d')
+    v = st.session_state[f"ed_in_{_cat}"]
+    if not isinstance(v, str):
+        st.session_state[f"ed_in_{_cat}"] = (v.date() if isinstance(v, datetime) else v).strftime('%Y-%m-%d')
 
 tab_labels = [f"{TAB_ICONS.get(k,'')} {k}" for k in SHEET_FILE_IDS]
 tabs = st.tabs(tab_labels)
@@ -279,15 +281,16 @@ for i, tab in enumerate(tabs):
         st.markdown('<div class="search-section-label">📅 조회 기간</div>', unsafe_allow_html=True)
 
         qb = st.columns([0.55, 0.55, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 6])
+        yed = yesterday.strftime('%Y-%m-%d')
         QUICK = [
-            ("어제",  f"d1_{cat}",  yesterday,                       yesterday),
-            ("1주",   f"d7_{cat}",  yesterday-relativedelta(days=6),  yesterday),
-            ("1개월", f"m1_{cat}",  yesterday-relativedelta(months=1), yesterday),
-            ("3개월", f"m3_{cat}",  yesterday-relativedelta(months=3), yesterday),
-            ("6개월", f"m6_{cat}",  yesterday-relativedelta(months=6), yesterday),
-            ("9개월", f"m9_{cat}",  yesterday-relativedelta(months=9), yesterday),
-            ("1년",   f"y1_{cat}",  yesterday-relativedelta(years=1),  yesterday),
-            ("2년",   f"y2_{cat}",  yesterday-relativedelta(years=2),  yesterday),
+            ("어제",  f"d1_{cat}",  yed,                                                    yed),
+            ("1주",   f"d7_{cat}",  (yesterday-relativedelta(days=6)).strftime('%Y-%m-%d'),  yed),
+            ("1개월", f"m1_{cat}",  (yesterday-relativedelta(months=1)).strftime('%Y-%m-%d'), yed),
+            ("3개월", f"m3_{cat}",  (yesterday-relativedelta(months=3)).strftime('%Y-%m-%d'), yed),
+            ("6개월", f"m6_{cat}",  (yesterday-relativedelta(months=6)).strftime('%Y-%m-%d'), yed),
+            ("9개월", f"m9_{cat}",  (yesterday-relativedelta(months=9)).strftime('%Y-%m-%d'), yed),
+            ("1년",   f"y1_{cat}",  (yesterday-relativedelta(years=1)).strftime('%Y-%m-%d'),  yed),
+            ("2년",   f"y2_{cat}",  (yesterday-relativedelta(years=2)).strftime('%Y-%m-%d'),  yed),
         ]
         for idx_q, (label, key, sd_q, ed_q) in enumerate(QUICK):
             if qb[idx_q].button(label, key=key):
@@ -304,15 +307,11 @@ for i, tab in enumerate(tabs):
             sc0 = None
             fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
 
-        # key와 value를 함께 쓰되, 세션에 이미 올바른 date 값이 보장된 상태이므로 경고 없음
-        sd_in = fd1.date_input("시작일",
-                               value=st.session_state[f"sd_in_{cat}"],
-                               key=f"sd_in_{cat}",
-                               label_visibility="collapsed")
-        ed_in = fd2.date_input("종료일",
-                               value=st.session_state[f"ed_in_{cat}"],
-                               key=f"ed_in_{cat}",
-                               label_visibility="collapsed")
+        # text_input으로 날짜 입력 — 세션 연동 단순, 퀵버튼 충돌 없음
+        sd_in = fd1.text_input("시작일", key=f"sd_in_{cat}",
+                               placeholder="YYYY-MM-DD", label_visibility="collapsed")
+        ed_in = fd2.text_input("종료일", key=f"ed_in_{cat}",
+                               placeholder="YYYY-MM-DD", label_visibility="collapsed")
 
         notice_type = "전체"
         if cat == '나라장터_공고' and sc0 is not None:
@@ -334,8 +333,13 @@ for i, tab in enumerate(tabs):
 
         # ③ 검색 실행
         if search_exe:
-            sd = safe_date(sd_in)
-            ed = safe_date(ed_in)
+            # 날짜 문자열 파싱 (YYYY-MM-DD → YYYYMMDD)
+            try:
+                sd = datetime.strptime(sd_in.strip(), '%Y-%m-%d').date()
+                ed = datetime.strptime(ed_in.strip(), '%Y-%m-%d').date()
+            except ValueError:
+                st.warning("날짜 형식이 올바르지 않습니다. YYYY-MM-DD 형식으로 입력해주세요.")
+                st.stop()
             s_s = sd.strftime('%Y%m%d')
             e_s = ed.strftime('%Y%m%d')
             try:
