@@ -525,6 +525,7 @@ def show_result_table(cat, idx_list):
 # [6] 메인 루프
 # =================================================================================
 tab_labels = [f"{TAB_ICONS.get(k, '')} {k}" for k in SHEET_FILE_IDS.keys()]
+tab_labels = [f"{TAB_ICONS.get(k, '')} {k}" for k in SHEET_FILE_IDS.keys()]
 tabs = st.tabs(tab_labels)
 
 for i, tab in enumerate(tabs):
@@ -532,79 +533,72 @@ for i, tab in enumerate(tabs):
 
     with tab:
         today = date.today()
+        yesterday = today - relativedelta(days=1)
 
-        # ── 세션 초기화 ──
-        if f"sd_{cat}" not in st.session_state or not isinstance(st.session_state[f"sd_{cat}"], date):
-            st.session_state[f"sd_{cat}"] = today - relativedelta(months=6)
-        if f"ed_{cat}" not in st.session_state or not isinstance(st.session_state[f"ed_{cat}"], date):
-            st.session_state[f"ed_{cat}"] = today - relativedelta(days=1)
+        # ── 세션 초기화: date_input 위젯 key(sd_in_{cat}, ed_in_{cat}) 기준 ──
+        if f"sd_in_{cat}" not in st.session_state:
+            st.session_state[f"sd_in_{cat}"] = today - relativedelta(months=6)
+        if f"ed_in_{cat}" not in st.session_state:
+            st.session_state[f"ed_in_{cat}"] = yesterday
         if f"df_{cat}" not in st.session_state:
             st.session_state[f"df_{cat}"] = None
 
         # ════════════════════════════════════════════
-        # ① 퀵버튼 — today 기준으로 날짜 범위 직접 설정
-        #    (ed를 today-1로 고정, sd만 변경)
+        # ① 퀵버튼
+        #   핵심: st.session_state["sd_in_{cat}"] 를 직접 수정 후 rerun
+        #   → date_input(key="sd_in_{cat}")이 해당 세션값으로 렌더링 (연동 완성)
         # ════════════════════════════════════════════
         st.markdown('<div class="search-panel">', unsafe_allow_html=True)
         st.markdown('<div class="search-section-label">📅 조회 기간</div>', unsafe_allow_html=True)
 
-        # 퀵버튼: 좌측에 compact하게 배치 (나머지 공간은 여백)
-        yesterday = today - relativedelta(days=1)
-
         qb_cols = st.columns([0.55, 0.55, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 6])
 
         if qb_cols[0].button("어제",  key=f"d1_{cat}"):
-            st.session_state[f"sd_{cat}"] = yesterday
-            st.session_state[f"ed_{cat}"] = yesterday
+            st.session_state[f"sd_in_{cat}"] = yesterday
+            st.session_state[f"ed_in_{cat}"] = yesterday
             st.rerun()
         if qb_cols[1].button("1주",   key=f"d7_{cat}"):
-            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(days=6)
-            st.session_state[f"ed_{cat}"] = yesterday
+            st.session_state[f"sd_in_{cat}"] = yesterday - relativedelta(days=6)
+            st.session_state[f"ed_in_{cat}"] = yesterday
             st.rerun()
         if qb_cols[2].button("1개월", key=f"m1_{cat}"):
-            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(months=1)
-            st.session_state[f"ed_{cat}"] = yesterday
+            st.session_state[f"sd_in_{cat}"] = yesterday - relativedelta(months=1)
+            st.session_state[f"ed_in_{cat}"] = yesterday
             st.rerun()
         if qb_cols[3].button("3개월", key=f"m3_{cat}"):
-            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(months=3)
-            st.session_state[f"ed_{cat}"] = yesterday
+            st.session_state[f"sd_in_{cat}"] = yesterday - relativedelta(months=3)
+            st.session_state[f"ed_in_{cat}"] = yesterday
             st.rerun()
         if qb_cols[4].button("6개월", key=f"m6_{cat}"):
-            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(months=6)
-            st.session_state[f"ed_{cat}"] = yesterday
+            st.session_state[f"sd_in_{cat}"] = yesterday - relativedelta(months=6)
+            st.session_state[f"ed_in_{cat}"] = yesterday
             st.rerun()
         if qb_cols[5].button("9개월", key=f"m9_{cat}"):
-            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(months=9)
-            st.session_state[f"ed_{cat}"] = yesterday
+            st.session_state[f"sd_in_{cat}"] = yesterday - relativedelta(months=9)
+            st.session_state[f"ed_in_{cat}"] = yesterday
             st.rerun()
         if qb_cols[6].button("1년",   key=f"y1_{cat}"):
-            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(years=1)
-            st.session_state[f"ed_{cat}"] = yesterday
+            st.session_state[f"sd_in_{cat}"] = yesterday - relativedelta(years=1)
+            st.session_state[f"ed_in_{cat}"] = yesterday
             st.rerun()
         if qb_cols[7].button("2년",   key=f"y2_{cat}"):
-            st.session_state[f"sd_{cat}"] = yesterday - relativedelta(years=2)
-            st.session_state[f"ed_{cat}"] = yesterday
+            st.session_state[f"sd_in_{cat}"] = yesterday - relativedelta(years=2)
+            st.session_state[f"ed_in_{cat}"] = yesterday
             st.rerun()
 
         # ════════════════════════════════════════════
-        # ② 검색 조건 (폼 없이 — key 없는 date_input으로 퀵버튼 연동)
+        # ② 검색 조건 (폼 없이)
         # ════════════════════════════════════════════
         st.markdown('<div class="search-section-label">🔍 검색 조건</div>', unsafe_allow_html=True)
-
-        # date_input: key 미지정 → 매 rerun마다 value(세션값)로 렌더링되어 퀵버튼 연동 정상 작동
-        s_val = st.session_state[f"sd_{cat}"]
-        e_val = st.session_state[f"ed_{cat}"]
-        if isinstance(s_val, datetime): s_val = s_val.date()
-        if isinstance(e_val, datetime): e_val = e_val.date()
 
         if cat == '나라장터_공고':
             fd1, fd2, sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 0.9, 1.0, 2.4, 0.7, 2.4, 1.1])
         else:
             fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
 
-        # ★ key 없이 value만 지정 → 퀵버튼 rerun 후 세션값이 그대로 반영됨
-        sd_in = fd1.date_input("시작일", value=s_val, label_visibility="collapsed")
-        ed_in = fd2.date_input("종료일", value=e_val, label_visibility="collapsed")
+        # key = "sd_in_{cat}" / "ed_in_{cat}" — 퀵버튼이 동일 key를 수정하므로 연동 작동
+        sd_in = fd1.date_input("시작일", key=f"sd_in_{cat}", label_visibility="collapsed")
+        ed_in = fd2.date_input("종료일", key=f"ed_in_{cat}", label_visibility="collapsed")
 
         if cat == '나라장터_공고':
             notice_type = sc0.selectbox("공고유형", ["전체", "공사", "물품", "용역"],
@@ -628,10 +622,6 @@ for i, tab in enumerate(tabs):
         # ③ 검색 실행 로직
         # ════════════════════════════════════════════
         if search_exe:
-            # 사용자가 직접 수정한 날짜도 세션에 저장
-            st.session_state[f"sd_{cat}"] = sd_in
-            st.session_state[f"ed_{cat}"] = ed_in
-
             with st.spinner("데이터를 불러오는 중..."):
 
                 if cat == '나라장터_공고':
