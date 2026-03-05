@@ -292,9 +292,12 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
         return "기타"
 
     out["광역단위"] = out["★가공_수요기관"].apply(_metro)
-    out["★가공_계약금액"] = (
-        pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0).astype(int)
-    )
+
+    # ★가공_계약금액이 0이면 금차계약금액(S열)으로 대체
+    main_amt     = pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0)
+    fallback_amt = pd.to_numeric(out.get("금차계약금액", pd.Series(0, index=out.index)), errors="coerce").fillna(0)
+    out["★가공_계약금액"] = main_amt.where(main_amt != 0, fallback_amt).astype(int)
+
     return out
 
 
