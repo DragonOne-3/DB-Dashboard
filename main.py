@@ -6,6 +6,7 @@ import threading
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseUpload
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ================= 1. 설정 및 환경 변수 =================
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
@@ -82,7 +83,7 @@ def fetch_api_data_from_g2b(kw, d_str):
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
     params = {'numOfRows': '999', 'pageNo': '1', 'ServiceKey': MY_DIRECT_KEY, 'Type_A': 'xml', 'inqryDiv': '1', 'inqryPrdctDiv': '2', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'dtilPrdctClsfcNoNm': kw}
     try:
-        res = requests.get(url, params=params, timeout=30)
+        res = requests.get(url, params=params, timeout=15)
         if res.status_code == 200 and "<item>" in res.text:
             root = ET.fromstring(res.content)
             return [[elem.text if elem.text else '' for elem in elem_item] for elem_item in root.findall('.//item')]
@@ -92,7 +93,7 @@ def fetch_api_data_from_g2b(kw, d_str):
 def fetch_notice_data(category, url, d_str):
     params = {'serviceKey': MY_DIRECT_KEY, 'pageNo': '1', 'numOfRows': '999', 'inqryDiv': '1', 'type': 'json', 'inqryBgnDt': d_str + "0000", 'inqryEndDt': d_str + "2359"}
     try:
-        res = requests.get(url, params=params, timeout=45)
+        res = requests.get(url, params=params, timeout=15)
         if res.status_code == 200:
             return pd.DataFrame(res.json().get('response', {}).get('body', {}).get('items', []))
     except: pass
@@ -112,9 +113,12 @@ def main():
 
     # --- PART 1: 종합쇼핑몰 3자단가 ---
     final_data = []
-    for kw in keywords:
-        data = fetch_api_data_from_g2b(kw, d_str)
-        if data: final_data.extend(data)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_api_data_from_g2b, kw, d_str): kw for kw in keywords}
+        for future in as_completed(futures):
+            data = future.result()
+            if data:
+                final_data.extend(data)
     
     school_stats, innodep_today_dict, innodep_total_amt = {}, {}, 0
     if final_data:
@@ -169,45 +173,39 @@ def main():
                     })
 
     # --- PART 3: 나라장터 계약 내역 ---
-    contract_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
+    def fetch_single_contract(kw_s, d_str):
     api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
-    collected_servc = []
-    
-    for kw_s in keywords_notice_all:
-        p = {'serviceKey': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml', 'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
-        try:
-            r = requests.get(api_url_servc, params=p, timeout=30)
-            if r.status_code == 200:
-                root = ET.fromstring(r.content)
-                for item in root.findall('.//item'):
-                    # 🚀 [수정] 필드명을 cntrctDtlInfoUrl 로 변경
-                    detail_url = item.findtext('cntrctDtlInfoUrl') 
-                    if not detail_url:
-                        detail_url = "https://www.g2b.go.kr"
-    
-                    # 수요기관명 추출 로직 (변수 정의 확인)
-                    raw_demand = item.findtext('dminsttList', '-')
-                    clean_demand = raw_demand.replace('[', '').replace(']', '').split('^')[2] if '^' in raw_demand else raw_demand
+    results = []
+    p = {'serviceKey': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml',
+         'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s}
+    try:
+        r = requests.get(api_url_servc, params=p, timeout=20)  # 30→20초로 단축
+        if r.status_code == 200:
+            root = ET.fromstring(r.content)
+            for item in root.findall('.//item'):
+                detail_url = item.findtext('cntrctDtlInfoUrl') or "https://www.g2b.go.kr"
+                raw_demand = item.findtext('dminsttList', '-')
+                clean_demand = raw_demand.replace('[','').replace(']','').split('^')[2] if '^' in raw_demand else raw_demand
+                raw_corp = item.findtext('corpList', '-')
+                clean_corp = raw_corp.replace('[','').replace(']','').split('^')[3] if '^' in raw_corp else raw_corp
+                results.append({'org': clean_demand, 'nm': item.findtext('cntrctNm', '-'),
+                                 'corp': clean_corp, 'amt': item.findtext('totCntrctAmt', '0'), 'url': detail_url})
+    except Exception as e:
+        print(f"계약 데이터 수집 오류 ({kw_s}): {e}")
+    return results
 
-                    raw_corp = item.findtext('corpList', '-')
-                    clean_corp = raw_corp.replace('[', '').replace(']', '').split('^')[3] if '^' in raw_corp else raw_corp
-                    
-                    collected_servc.append({
-                        'org': clean_demand, 
-                        'nm': item.findtext('cntrctNm', '-'), 
-                        'corp': clean_corp,
-                        'amt': item.findtext('totCntrctAmt', '0'), 
-                        'url': detail_url
-                    })
-        except Exception as e:
-            print(f"계약 데이터 수집 중 오류: {e}")
-    
+    collected_servc = []
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {executor.submit(fetch_single_contract, kw_s, d_str): kw_s for kw_s in keywords_notice_all}
+        for future in as_completed(futures):
+            collected_servc.extend(future.result())
+'''    
     unique_servc_list = list({f"{d['org']}_{d['nm']}": d for d in collected_servc}.values())
     for s in unique_servc_list:
         cat_found = classify_text(s['nm'])
         if cat_found in contract_mail_buckets:
             contract_mail_buckets[cat_found].append(s)
-
+'''
     # 🚀 국방 기관 필터링
     # 🚀 [수정] 국방 기관 필터링: 더 유연하게 매칭되도록 보완
     # 🚀 [추가] 국방 요약에서 원치 않는 기관(학교, 민방위, 교육청) 제외 로직
