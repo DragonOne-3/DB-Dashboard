@@ -215,7 +215,7 @@ with c1:
     
     st.markdown("""
     <div class="main-header">
-      <div class="header-icon">🏛</div>
+      <div class="header-icon"><br><br>🏛</div>
       <div>
         <br><br>      
         <p class="header-title"><b>공공조달 DATA 통합검색 시스템</b></p>
