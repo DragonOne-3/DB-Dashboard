@@ -17,6 +17,9 @@ AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
 # ★ 나라장터 공고 연도별 파일 저장 폴더 ID
 NOTICE_FOLDER_ID = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
 
+# ★ 종합쇼핑몰 연도별 CSV 저장 폴더 ID
+SHOPPING_FOLDER_ID = "1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr"
+
 HEADER_KOR = [
     '조달구분명', '계약구분명', '계약납품구분명', '계약납품요구일자', '계약납품요구번호',
     '변경차수', '최종변경차수여부', '수요기관명', '수요기관구분명', '수요기관지역명',
@@ -185,15 +188,8 @@ def fetch_single_contract(kw_s, d_str):
     return results
 
 
-# ★ 추가: 나라장터 공고 연도별 파일 저장 함수
 def save_notice_by_year(drive_service, creds, cat_name, new_df, year):
-    """
-    나라장터 공고 데이터를 연도별 파일로 저장
-    파일명: 나라장터_공고_공사_2025년.csv
-    저장위치: NOTICE_FOLDER_ID 폴더
-    """
     file_name = f"나라장터_공고_{cat_name}_{year}년.csv"
-
     res = drive_service.files().list(
         q=f"name='{file_name}' and '{NOTICE_FOLDER_ID}' in parents and trashed=false",
         fields='files(id)'
@@ -225,7 +221,6 @@ def save_notice_by_year(drive_service, creds, cat_name, new_df, year):
             body={'name': file_name, 'parents': [NOTICE_FOLDER_ID]},
             media_body=media
         ).execute()
-
     print(f"✅ [{cat_name}] {file_name} 저장 완료 ({len(new_df):,}건)")
 
 
@@ -238,7 +233,7 @@ def main():
 
     target_dt    = get_target_date()
     d_str        = target_dt.strftime("%Y%m%d")
-    year         = target_dt.year           # ★ 어제 날짜 기준 연도
+    year         = target_dt.year
     display_date = target_dt.strftime("%Y년 %m월 %d일")
     weekday_str  = ["월", "화", "수", "목", "금", "토", "일"][target_dt.weekday()]
 
@@ -246,7 +241,8 @@ def main():
     keywords_notice_all = [kw for sublist in CAT_KEYWORDS.values() for kw in sublist]
 
     # -------------------------------------------------------------------------
-    # PART 1: 종합쇼핑몰 3자단가 수집 (변경 없음)
+    # PART 1: 종합쇼핑몰 3자단가 수집
+    # ★ 변경: 폴더 ID 지정하여 파일 검색
     # -------------------------------------------------------------------------
     final_data = []
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -261,7 +257,8 @@ def main():
     if final_data:
         new_df = pd.DataFrame(final_data, columns=HEADER_KOR)
 
-        query = f"name='{target_dt.year}.csv' and trashed=false"
+        # ★ 폴더 ID 지정하여 검색
+        query = f"name='{target_dt.year}.csv' and '{SHOPPING_FOLDER_ID}' in parents and trashed=false"
         res = drive_service.files().list(q=query, fields='files(id)').execute()
         items = res.get('files', [])
         f_id = items[0]['id'] if items else None
@@ -280,6 +277,17 @@ def main():
                 mimetype='text/csv'
             )
             drive_service.files().update(fileId=f_id, media_body=media).execute()
+        else:
+            # 파일이 없으면 새로 생성
+            media = MediaIoBaseUpload(
+                io.BytesIO(new_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')),
+                mimetype='text/csv'
+            )
+            drive_service.files().create(
+                body={'name': f'{target_dt.year}.csv', 'parents': [SHOPPING_FOLDER_ID]},
+                media_body=media
+            ).execute()
+            print(f"✅ 종합쇼핑몰 {target_dt.year}.csv 신규 생성 완료")
 
         for row in final_data:
             org = str(row[7])
@@ -299,8 +307,7 @@ def main():
                 innodep_total_amt += amt
 
     # -------------------------------------------------------------------------
-    # PART 2: 나라장터 입찰 공고 수집
-    # ★ 변경: 단일 파일 누적 저장 → 연도별 파일로 저장
+    # PART 2: 나라장터 입찰 공고 수집 → 연도별 파일로 저장 (변경 없음)
     # -------------------------------------------------------------------------
     notice_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
     all_notice_count = 0
@@ -309,11 +316,8 @@ def main():
         n_df = fetch_notice_data(cat_api, api_url, d_str)
         if not n_df.empty:
             all_notice_count += len(n_df)
-
-            # ★ 연도별 파일로 저장 (어제 날짜 기준 연도)
             save_notice_by_year(drive_service, drive_creds, cat_api, n_df, year)
 
-            # 키워드 필터링 및 카테고리 분류
             pattern = '|'.join(keywords_notice_all)
             filtered = n_df[n_df['bidNtceNm'].str.contains(pattern, na=False, case=False)]
             for _, row in filtered.iterrows():
@@ -354,12 +358,8 @@ def main():
                 return False
         return True
 
-    notice_mail_buckets['국방'] = [
-        item for item in notice_mail_buckets['국방'] if is_valid_org(item['org'])
-    ]
-    contract_mail_buckets['국방'] = [
-        item for item in contract_mail_buckets['국방'] if is_valid_org(item['org'])
-    ]
+    notice_mail_buckets['국방']   = [i for i in notice_mail_buckets['국방']   if is_valid_org(i['org'])]
+    contract_mail_buckets['국방'] = [i for i in contract_mail_buckets['국방'] if is_valid_org(i['org'])]
 
     # -------------------------------------------------------------------------
     # PART 4: 최종 HTML 리포트 조립 (변경 없음)
