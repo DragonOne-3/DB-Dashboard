@@ -126,17 +126,23 @@ def fetch_api_data_from_g2b(kw, d_str):
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
     params = {
         'numOfRows': '999', 'pageNo': '1', 'ServiceKey': MY_DIRECT_KEY,
-        'Type_A': 'xml', 'inqryDiv': '1', 'inqryPrdctDiv': '2',
+        'type': 'xml',          # ← 'Type_A' → 'type' 으로 수정
+        'inqryDiv': '1', 'inqryPrdctDiv': '2',
         'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'dtilPrdctClsfcNoNm': kw
     }
     try:
         res = requests.get(url, params=params, timeout=15)
+        print(f"[{kw}] status={res.status_code}, has_item={'<item>' in res.text}, len={len(res.text)}")
         if res.status_code == 200 and "<item>" in res.text:
             root = ET.fromstring(res.content)
-            return [[elem.text if elem.text else '' for elem in elem_item]
-                    for elem_item in root.findall('.//item')]
-    except:
-        pass
+            rows = []
+            for elem_item in root.findall('.//item'):
+                row = [elem.text if elem.text else '' for elem in elem_item]
+                print(f"  → 태그 수: {len(row)}, HEADER: {len(HEADER_KOR)}")  # 한 번만 확인
+                rows.append(row)
+            return rows
+    except Exception as e:
+        print(f"[{kw}] 오류: {e}")  # ← pass 대신 오류 출력
     return []
 
 
