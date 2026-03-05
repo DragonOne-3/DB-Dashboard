@@ -11,6 +11,71 @@ from dateutil.relativedelta import relativedelta
 
 st.set_page_config(page_title="나라장터 공고 검색", layout="wide", page_icon="📢")
 
+# ── 진단 모드: 실제 에러 원인 파악 ──────────────────────────────────────────────
+import traceback as _tb
+
+def _diag():
+    """각 단계별로 실행해서 어디서 터지는지 확인"""
+    steps = []
+    try:
+        import json as _json
+        _info = _json.loads(st.secrets["GOOGLE_AUTH_JSON"])
+        steps.append("✅ secrets 로드 OK")
+    except Exception as e:
+        steps.append(f"❌ secrets 로드 실패: {e}")
+        return steps
+
+    try:
+        from google.oauth2 import service_account as _sa
+        from googleapiclient.discovery import build as _build
+        _creds = _sa.Credentials.from_service_account_info(
+            _info, scopes=['https://www.googleapis.com/auth/drive.readonly'])
+        _svc = _build('drive', 'v3', credentials=_creds)
+        steps.append("✅ Google Drive 인증 OK")
+    except Exception as e:
+        steps.append(f"❌ Google Drive 인증 실패: {e}")
+        return steps
+
+    try:
+        import google.auth.transport.requests as _gatr
+        _creds.refresh(_gatr.Request())
+        _hdrs = {'Authorization': f'Bearer {_creds.token}'}
+        steps.append("✅ 토큰 갱신 OK")
+    except Exception as e:
+        steps.append(f"❌ 토큰 갱신 실패: {e}")
+        return steps
+
+    for fname in ['나라장터_공고_공사.csv', '나라장터_공고_물품.csv', '나라장터_공고_용역.csv']:
+        try:
+            import requests as _req, pandas as _pd, io as _io
+            _files = _svc.files().list(
+                q=f"name='{fname}' and trashed=false", fields='files(id,name)'
+            ).execute().get('files', [])
+            if not _files:
+                steps.append(f"⚠️ {fname}: 파일 없음")
+                continue
+            _resp = _req.get(
+                f"https://www.googleapis.com/drive/v3/files/{_files[0]['id']}?alt=media",
+                headers=_hdrs
+            )
+            steps.append(f"✅ {fname}: HTTP {_resp.status_code}, {len(_resp.content):,} bytes")
+            try:
+                _df = _pd.read_csv(_io.BytesIO(_resp.content), encoding='utf-8-sig', low_memory=False)
+                steps.append(f"   └ CSV 파싱 OK: {len(_df):,}행 × {len(_df.columns)}열")
+            except Exception as e2:
+                steps.append(f"   └ ❌ CSV 파싱 실패: {e2}")
+        except Exception as e:
+            steps.append(f"❌ {fname} 다운로드 실패: {e}")
+    return steps
+
+with st.expander("🔍 진단 실행 (에러 원인 확인용 — 해결 후 삭제)", expanded=True):
+    if st.button("진단 시작", key="diag_btn"):
+        with st.spinner("진단 중..."):
+            results = _diag()
+        for r in results:
+            st.write(r)
+# ────────────────────────────────────────────────────────────────────────────────
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
