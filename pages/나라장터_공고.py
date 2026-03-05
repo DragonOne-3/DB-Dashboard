@@ -11,30 +11,34 @@ from dateutil.relativedelta import relativedelta
 
 st.title("📢 나라장터 공고")
 
-# ── Google Drive 연결 ──
-# 함수명을 메인 앱과 다르게 지정 → cache_resource 충돌 방지
+NOTICE_FOLDER_ID = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
+SCOPES = [
+    'https://www.googleapis.com/auth/drive.readonly',
+    'https://www.googleapis.com/auth/spreadsheets.readonly'
+]
+
 @st.cache_resource
 def get_notice_drive_service():
     info  = json.loads(st.secrets["GOOGLE_AUTH_JSON"])
-    creds = service_account.Credentials.from_service_account_info(
-        info, scopes=[
-            'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/spreadsheets.readonly'
-        ]
-    )
+    creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
     return build('drive', 'v3', credentials=creds), creds
 
 @st.cache_data(ttl=3600)
-def fetch_notice_csv(file_name):
+def fetch_notice_csv_by_year(cat_name, year):
+    """연도별 파일 하나만 로드"""
     svc, creds = get_notice_drive_service()
     creds.refresh(google.auth.transport.requests.Request())
     hdrs = {'Authorization': f'Bearer {creds.token}'}
+
+    file_name = f"나라장터_공고_{cat_name}_{year}년.csv"
     files = svc.files().list(
-        q=f"name='{file_name}' and trashed=false", fields='files(id)'
+        q=f"name='{file_name}' and '{NOTICE_FOLDER_ID}' in parents and trashed=false",
+        fields='files(id, name)'
     ).execute().get('files', [])
+
     if not files:
-        st.warning(f"{file_name} 파일을 찾을 수 없습니다.")
         return pd.DataFrame()
+
     resp = requests.get(
         f"https://www.googleapis.com/drive/v3/files/{files[0]['id']}?alt=media",
         headers=hdrs
@@ -44,11 +48,32 @@ def fetch_notice_csv(file_name):
     except Exception:
         return pd.read_csv(io.BytesIO(resp.content), encoding='cp949', low_memory=False)
 
-NOTICE_CSV_MAP = {
-    '공사': '나라장터_공고_공사.csv',
-    '물품': '나라장터_공고_물품.csv',
-    '용역': '나라장터_공고_용역.csv'
-}
+def load_notice_data(cat_name, s_s, e_s):
+    """검색 기간에 해당하는 연도 파일만 골라서 로드 후 날짜 필터"""
+    start_year = int(s_s[:4])
+    end_year   = int(e_s[:4])
+    years = list(range(start_year, end_year + 1))
+
+    dfs = []
+    for year in years:
+        df_y = fetch_notice_csv_by_year(cat_name, year)
+        if not df_y.empty:
+            dfs.append(df_y)
+
+    if not dfs:
+        return pd.DataFrame()
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    if 'bidNtceDt' in df.columns:
+        df['tmp_dt'] = df['bidNtceDt'].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+    else:
+        df['tmp_dt'] = "0"
+
+    return df[(df['tmp_dt'] >= s_s) & (df['tmp_dt'] <= e_s)].copy()
+
+
+NOTICE_CATS = ['공사', '물품', '용역']
 DISPLAY_COLS = ["dminsttNm", "bidNtceNm", "presmptPrce", "bidClsDt", "bidNtceDtlUrl"]
 
 # ── 세션 초기화 ──
@@ -105,35 +130,28 @@ if search_exe:
 
     with st.spinner("데이터를 불러오는 중..."):
         try:
-            types_to_load = list(NOTICE_CSV_MAP.keys()) if notice_type == "전체" else [notice_type]
+            cats_to_load = NOTICE_CATS if notice_type == "전체" else [notice_type]
             dfs = []
-            for t in types_to_load:
-                df_t = fetch_notice_csv(NOTICE_CSV_MAP[t])
+            for cat in cats_to_load:
+                df_t = load_notice_data(cat, s_s, e_s)
                 if not df_t.empty:
-                    df_t['공고유형'] = t
+                    df_t['공고유형'] = cat
                     dfs.append(df_t)
 
-            df_raw = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+            df_f = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
-            if not df_raw.empty:
-                if 'bidNtceDt' in df_raw.columns:
-                    df_raw['tmp_dt'] = df_raw['bidNtceDt'].astype(str).str.replace(r'[^0-9]','',regex=True).str[:8]
-                else:
-                    df_raw['tmp_dt'] = "0"
-
-                df_f = df_raw[(df_raw['tmp_dt']>=s_s)&(df_raw['tmp_dt']<=e_s)].copy()
-
+            if not df_f.empty:
                 if k1_val and k1_val.strip():
                     def get_mask(df, kw, field):
                         t = field
                         if field == "수요기관명":
-                            for c in ["수요기관명","dminsttNm"]:
+                            for c in ["수요기관명", "dminsttNm"]:
                                 if c in df.columns: t = c; break
                         elif field == "계약명":
-                            for c in ["계약명","bidNtceNm"]:
+                            for c in ["계약명", "bidNtceNm"]:
                                 if c in df.columns: t = c; break
                         elif field == "업체명":
-                            for c in ["업체명","상호"]:
+                            for c in ["업체명", "상호"]:
                                 if c in df.columns: t = c; break
                         if t != "ALL" and t in df.columns:
                             return df[t].astype(str).str.contains(kw, case=False, na=False)
@@ -147,10 +165,8 @@ if search_exe:
                     else:
                         df_f = df_f[m1]
 
-                st.session_state["ng_df"] = df_f.sort_values('tmp_dt', ascending=False)
-                st.session_state["ng_pnum"] = 1
-            else:
-                st.session_state["ng_df"] = pd.DataFrame()
+            st.session_state["ng_df"] = df_f.sort_values('tmp_dt', ascending=False) if not df_f.empty else pd.DataFrame()
+            st.session_state["ng_pnum"] = 1
 
         except Exception as e:
             st.error(f"오류: {e}")
@@ -187,7 +203,7 @@ else:
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine='xlsxwriter') as w: df.to_excel(w, index=False)
     dc1, dc2 = st.columns(2)
-    dc1.download_button("📑 CSV", df.to_csv(index=False,encoding='utf-8-sig').encode('utf-8-sig'),
-                        "나라장터_공고.csv","text/csv")
+    dc1.download_button("📑 CSV", df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig'),
+                        "나라장터_공고.csv", "text/csv")
     dc2.download_button("📊 Excel", out.getvalue(), "나라장터_공고.xlsx",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
