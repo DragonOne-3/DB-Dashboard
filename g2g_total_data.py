@@ -9,7 +9,7 @@ import google.auth.transport.requests
 from googleapiclient.discovery import build
 from dateutil.relativedelta import relativedelta
 
-st.markdown("<br><br><br>", unsafe_allow_html=True)
+
 st.set_page_config(page_title="공공조달 DATA 통합검색", layout="wide", page_icon="🏛")
 
 st.markdown("""
@@ -209,12 +209,14 @@ def apply_keyword(df, keyword, field):
 
 
 # ── 헤더 ─────────────────────────────────────────────────────────────────────────
+st.markdown("<br><br><br>", unsafe_allow_html=True)
 c1, c2 = st.columns([5, 1])
 with c1:
     st.markdown("""
     <div class="main-header">
       <div class="header-icon">🏛</div>
       <div>
+          
         <p class="header-title"><b>공공조달 DATA 통합검색 시스템</b></p>
         <p class="header-sub">나라장터 · 군수품 · 종합쇼핑몰 통합 데이터 조회 플랫폼</p>
       </div>
