@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
@@ -10,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 import re
 
 # ─────────────────────────────────────────────
-# 설정
+# 페이지 설정
 # ─────────────────────────────────────────────
 st.set_page_config(
     page_title="지자체 유지보수 계약 현황",
@@ -20,18 +19,14 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-# ★ 최적화 1: 정규식 패턴 모듈 레벨에서 한 번만 컴파일
+# 정규식 (모듈 레벨 1회 컴파일)
 # ─────────────────────────────────────────────
-RE_NONDIGIT   = re.compile(r"[^0-9]")
-RE_THIS_M     = re.compile(r"금차\s*[:\s]*(\d+)")
-RE_TOTAL_M    = re.compile(r"(총차|총용역|총)\s*[:\s]*(\d+)")
-RE_DIGITS8    = re.compile(r"\d{8}")
-RE_MONTH_ONLY = re.compile(r"^[0-3]개월")
-RE_STATUS_BAD = re.compile(r"만료|정보부족|오류|계산불가")
+RE_NONDIGIT     = re.compile(r"[^0-9]")
+RE_MONTH_ONLY   = re.compile(r"^[0-3]개월")
 RE_CONTRACT_NUM = re.compile(r"\d+차분?|\d+")
 
 # ─────────────────────────────────────────────
-# 커스텀 CSS
+# CSS
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -45,8 +40,7 @@ st.markdown("""
   .hero p  { color: rgba(255,255,255,.75); font-size: 1rem; margin: 0; }
   .search-panel {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
-    padding: 1.5rem 2rem; margin-bottom: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    padding: 1.5rem 2rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,.06);
   }
   .stat-card {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
@@ -67,7 +61,6 @@ st.markdown("""
     background: #fff !important; border: 1.5px solid #2563eb !important;
     color: #2563eb !important; font-weight: 600 !important; border-radius: 8px !important;
   }
-  div[data-testid="stDataFrame"] { border-radius: 12px; overflow: visible !important; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
   hr { border-color: #e2e8f0; }
 </style>
 """, unsafe_allow_html=True)
@@ -101,60 +94,55 @@ METRO_LIST = [
     "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도",
 ]
 
+# ─────────────────────────────────────────────
 # session_state 초기화
+# ─────────────────────────────────────────────
 for k, v in [("search_done", False), ("search_region", "전국"), ("radio_region", "전국")]:
     if k not in st.session_state:
         st.session_state[k] = v
 
 
 # ─────────────────────────────────────────────
-# ★ 최적화 2a: gspread 클라이언트를 cache_resource로 분리
-#    → 앱 재실행마다 재인증하지 않고 커넥션 객체를 재사용
+# 데이터 로드
+# gspread 클라이언트는 cache_resource로 한 번만 인증
+# raw 데이터는 cache_data(ttl=600)로 10분 캐싱
 # ─────────────────────────────────────────────
 @st.cache_resource
-def get_gspread_worksheet():
+def _get_worksheet():
     auth_json = os.environ.get("GOOGLE_AUTH_JSON")
     if not auth_json:
         return None
     creds_dict = json.loads(auth_json)
-    scope  = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds  = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     return client.open("나라장터_용역계약내역").get_worksheet(0)
 
 
-# ─────────────────────────────────────────────
-# ★ 최적화 2b: get_all_values() + cache_data로 raw 데이터 캐싱
-# ─────────────────────────────────────────────
 @st.cache_data(ttl=600, show_spinner=False)
 def load_raw_data() -> pd.DataFrame:
     try:
-        ws = get_gspread_worksheet()
+        ws = _get_worksheet()
         if ws is None:
             st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
             return pd.DataFrame()
         records = ws.get_all_records()
-        if not records:
-            return pd.DataFrame()
-        return pd.DataFrame(records)
+        return pd.DataFrame(records) if records else pd.DataFrame()
     except Exception as e:
         st.error(f"❌ 시트 로드 오류: {e}")
         return pd.DataFrame()
 
 
 # ─────────────────────────────────────────────
-# ★ 최적화 3: 날짜 파싱 벡터화 (Series 단위로 한 번에 처리)
+# 날짜 파싱 (벡터화)
 # ─────────────────────────────────────────────
 def parse_date_series(s: pd.Series) -> pd.Series:
-    """문자열 Series를 받아 datetime Series로 반환 (벡터화)"""
     cleaned = s.astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8]
     return pd.to_datetime(cleaned, format="%Y%m%d", errors="coerce")
 
 
 # ─────────────────────────────────────────────
-# ★ 최적화 4: calculate_logic 완전 벡터화
-#   기존: df.apply(row 함수) → Python 루프, 수천 행이면 수 초
-#   변경: pandas/numpy 연산으로 전체 컬럼 동시 처리 → 수십 ms
+# 계약 만료일 & 남은기간 계산 (벡터화)
 # ─────────────────────────────────────────────
 def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cntrct_date  = parse_date_series(df["계약일자"])
@@ -162,86 +150,84 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     total_finish = parse_date_series(df["총완수일자"])
     period_raw   = df["계약기간"].astype(str)
 
-    # 금차 / 총 개월수 추출
-    this_vals  = period_raw.str.extract(r"금차\s*[:\s]*(\d+)", expand=False).astype(float).fillna(0)
+    this_vals  = period_raw.str.extract(r"금차\s*[:\s]*(\d+)",         expand=False).astype(float).fillna(0)
     total_vals = period_raw.str.extract(r"(?:총차|총용역|총)\s*[:\s]*(\d+)", expand=False).astype(float).fillna(0)
 
-    # 기준일 = 착수일자 우선, 없으면 계약일자
     base_date = start_date.combine_first(cntrct_date)
+    expire    = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
 
-    # 만료일 후보 1: 금차 ≠ 총차이면서 총완수일자 있는 경우
+    # 후보 1: 금차 ≠ 총차 + 총완수일자
     cond1 = (this_vals != total_vals) & total_finish.notna()
-    expire = pd.Series(pd.NaT, index=df.index)
     expire = expire.where(~cond1, total_finish)
 
-    # 만료일 후보 2: 총 개월수로 계산
+    # 후보 2: 총 개월수 × 30.44일
     cond2 = expire.isna() & (total_vals > 0) & base_date.notna()
     if cond2.any():
-        days = (total_vals[cond2] * 30.44).round().astype(int)  # 근사값
-        expire[cond2] = base_date[cond2] + pd.to_timedelta(days, unit="D")
+        expire[cond2] = base_date[cond2] + pd.to_timedelta((total_vals[cond2] * 30.44).round().astype(int), unit="D")
 
-    # 만료일 후보 3: period_raw 안에 8자리 숫자
+    # 후보 3: period_raw 안에 8자리 날짜
     cond3 = expire.isna()
     if cond3.any():
-        raw_dates = parse_date_series(period_raw[cond3])
-        expire[cond3] = raw_dates
+        expire[cond3] = parse_date_series(period_raw[cond3])
 
-    # 만료일 후보 4: total_finish fallback
+    # 후보 4: total_finish fallback
     cond4 = expire.isna() & total_finish.notna()
     expire[cond4] = total_finish[cond4]
 
-    today = pd.Timestamp(datetime.now().date())
-
-    # 만료일 문자열
+    today      = pd.Timestamp(datetime.now().date())
     expire_str = expire.dt.strftime("%Y-%m-%d").fillna("정보부족")
+    remaining  = pd.Series("정보부족", index=df.index)
 
-    # 남은기간 계산 — 벡터화
-    remaining = pd.Series("정보부족", index=df.index)
-
-    has_expire = expire.notna()
-    is_expired = has_expire & (expire < today)
-    is_active  = has_expire & (expire >= today)
+    is_expired = expire.notna() & (expire < today)
+    is_active  = expire.notna() & (expire >= today)
 
     remaining[is_expired] = "만료됨"
 
-    # 활성 건은 개월 + 일수 계산 (relativedelta 대신 timedelta 근사 → 빠름)
     if is_active.any():
-        delta_days = (expire[is_active] - today).dt.days
-        months     = (delta_days // 30).astype(int)
-        days_left  = (delta_days % 30).astype(int)
+        delta      = (expire[is_active] - today).dt.days
+        months     = (delta // 30).astype(int)
+        days_left  = (delta % 30).astype(int)
         remaining[is_active] = months.astype(str) + "개월 " + days_left.astype(str) + "일"
 
-    result = pd.DataFrame({"★가공_계약만료일": expire_str, "남은기간": remaining})
-    return result
+    return pd.DataFrame({"★가공_계약만료일": expire_str, "남은기간": remaining})
 
 
+# ─────────────────────────────────────────────
+# 전처리
+# ─────────────────────────────────────────────
 def clean_contract_name(name: str) -> str:
     name = str(name).replace(" ", "")
-    name = RE_CONTRACT_NUM.sub("", name)
-    return name
+    return RE_CONTRACT_NUM.sub("", name)
+
+
+def get_metro(a: str) -> str:
+    for m in METRO_LIST[1:]:
+        if a.startswith(m):
+            return m
+    return "기타"
 
 
 @st.cache_data(ttl=600, show_spinner=False)
 def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw.copy()
 
-    # ★ 수요기관 필터 — startswith를 정규식 OR 패턴으로 벡터화 (apply 루프 제거)
-    district_pattern = "^(" + "|".join(re.escape(d) for d in FULL_DISTRICT_LIST) + ")"
+    # 수요기관 필터
     agency_col = df["★가공_수요기관"].astype(str).str.strip()
-    district_prefix_mask = agency_col.str.match(district_pattern, na=False)
-    df = df[district_prefix_mask & ~agency_col.str.contains("교육청", na=False)]
+    mask = agency_col.apply(lambda a: any(a.startswith(d) for d in FULL_DISTRICT_LIST))
+    df = df[mask & ~agency_col.str.contains("교육청", na=False)].copy()
 
-    contract_col = df["★가공_계약명"].astype(str)
+    # 계약명 필터
+    cn = df["★가공_계약명"].astype(str)
     df = df[
-        contract_col.str.contains("유지", na=False) &
-        contract_col.str.contains("통합관제|통합|CCTV", na=False) &
-        ~contract_col.str.contains("상수도|청사|악취|미세먼지", na=False)
-    ]
+        cn.str.contains("유지", na=False) &
+        cn.str.contains("통합관제|통합|CCTV", na=False) &
+        ~cn.str.contains("상수도|청사|악취|미세먼지", na=False)
+    ].copy()
 
-    # ★ 핵심 최적화: 벡터화된 날짜 계산
-    calc_result = calculate_logic_vectorized(df)
-    df[["★가공_계약만료일", "남은기간"]] = calc_result.values
+    # 만료일 & 남은기간
+    df[["★가공_계약만료일", "남은기간"]] = calculate_logic_vectorized(df).values
 
+    # 정렬용 컬럼
     df["temp_date"]          = pd.to_datetime(df["계약일자"].astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8], format="%Y%m%d", errors="coerce")
     df["contract_group_key"] = df["★가공_계약명"].apply(clean_contract_name)
 
@@ -250,9 +236,7 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
         ascending=[True, True, True, False],
     )
 
-    active_df  = df[df["남은기간"] != "만료됨"].drop_duplicates(
-        ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
-    )
+    active_df  = df[df["남은기간"] != "만료됨"].drop_duplicates(["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first")
     expired_df = df[df["남은기간"] == "만료됨"].copy()
 
     active_agencies   = set(active_df["★가공_수요기관"])
@@ -268,22 +252,15 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
     )
 
     out = pd.concat([active_df, fallback_df], ignore_index=True)
+    out["광역단위"] = out["★가공_수요기관"].astype(str).apply(get_metro)
 
-    def _metro(a):
-        a = str(a)
-        for m in METRO_LIST[1:]:
-            if a.startswith(m):
-                return m
-        return "기타"
-
-    out["광역단위"] = out["★가공_수요기관"].apply(_metro)
-
+    # ── 계약금액: ★가공_계약금액 우선, 0이면 금차계약금액 fallback ──
     main_amt = pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0)
     if "금차계약금액" in out.columns:
-        fallback_amt = pd.to_numeric(out["금차계약금액"], errors="coerce").fillna(0)
+        sub_amt = pd.to_numeric(out["금차계약금액"], errors="coerce").fillna(0)
+        out["★가공_계약금액"] = main_amt.where(main_amt != 0, sub_amt).astype(int)
     else:
-        fallback_amt = pd.Series(0, index=out.index)
-    out["★가공_계약금액"] = main_amt.where(main_amt != 0, fallback_amt).astype(int)
+        out["★가공_계약금액"] = main_amt.astype(int)
 
     return out
 
@@ -304,19 +281,13 @@ st.markdown("""
 st.markdown('<div class="search-panel">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
 
-selected_region = st.radio(
-    label="",
-    options=METRO_LIST,
-    horizontal=True,
-    key="radio_region",
-    label_visibility="collapsed",
-)
+st.radio("", options=METRO_LIST, horizontal=True, key="radio_region", label_visibility="collapsed")
 
 col_btn1, col_btn2 = st.columns([1, 8])
 with col_btn1:
     search_clicked = st.button("🔍 검색", type="primary", use_container_width=True)
 with col_btn2:
-    if st.button("🔄 데이터 새로고침", use_container_width=False):
+    if st.button("🔄 데이터 새로고침"):
         st.cache_data.clear()
         st.cache_resource.clear()
         st.rerun()
@@ -328,40 +299,13 @@ if search_clicked:
     st.session_state["search_region"] = st.session_state["radio_region"]
 
 # ─────────────────────────────────────────────
-# ★ 핵심 최적화: 페이지 로드 즉시 백그라운드 프리페치
-#    검색 버튼을 누르기 전에 이미 데이터를 캐시에 올려둠
-#    → 버튼 클릭 시 캐시에서 즉시 반환되므로 체감 대기 시간 거의 0
+# 페이지 로드 시 즉시 프리페치 (캐시에 올려둠)
+# → 검색 버튼 클릭 시 캐시에서 즉시 반환
 # ─────────────────────────────────────────────
 with st.spinner("📡 데이터 준비 중…"):
-    _prefetch_raw = load_raw_data()
-    if not _prefetch_raw.empty:
-        _prefetch_processed = build_processed_df(_prefetch_raw)
-
-# ── 진단용 expander (문제 파악 후 제거) ──────────────────
-if not _prefetch_raw.empty:
-    with st.expander("🔧 [진단] 컬럼명 & 금액 샘플 확인", expanded=False):
-        amt_cols = [c for c in _prefetch_raw.columns if "계약금액" in c or "금차" in c]
-        st.write(f"**금액 관련 컬럼:** {amt_cols}")
-
-        col_name = "★가공_계약금액"
-        if col_name in _prefetch_raw.columns:
-            sample = _prefetch_raw[col_name].head(10)
-            st.write("**raw 값 (repr — 숨은 문자 포함):**")
-            st.write({i: repr(v) for i, v in sample.items()})
-
-            # 변환 후 결과
-            cleaned = sample.astype(str).str.strip().str.replace(r"[^\d]", "", regex=True)
-            st.write("**숫자만 추출 후:**")
-            st.write(dict(cleaned.items()))
-
-        # 처리 후 0인 행 샘플
-        if "★가공_계약금액" in _prefetch_processed.columns:
-            zero_rows = _prefetch_processed[_prefetch_processed["★가공_계약금액"] == 0][
-                ["★가공_수요기관", "★가공_계약명", "★가공_계약금액"]
-            ].head(5)
-            st.write("**처리 후 0원인 행 샘플:**")
-            st.dataframe(zero_rows)
-# ─────────────────────────────────────────────────────────
+    _raw = load_raw_data()
+    if not _raw.empty:
+        _processed = build_processed_df(_raw)
 
 if not st.session_state["search_done"]:
     st.markdown("""
@@ -374,28 +318,29 @@ if not st.session_state["search_done"]:
     st.stop()
 
 # ─────────────────────────────────────────────
-# 검색 실행
+# 검색 결과 (캐시에서 즉시)
 # ─────────────────────────────────────────────
 region_to_show = st.session_state["search_region"]
 
-# 이미 프리페치 완료 → 캐시에서 즉시 반환
 raw_df = load_raw_data()
 if raw_df.empty:
     st.stop()
 processed_df = build_processed_df(raw_df)
 
-if region_to_show == "전국":
-    display_df = processed_df.copy()
-else:
-    display_df = processed_df[processed_df["광역단위"] == region_to_show].copy()
+display_df = processed_df.copy() if region_to_show == "전국" else processed_df[processed_df["광역단위"] == region_to_show].copy()
 
 # ─────────────────────────────────────────────
 # 통계 카드
 # ─────────────────────────────────────────────
 total_count   = len(display_df)
-active_count  = len(display_df[~display_df["남은기간"].str.contains("만료", na=False) & (display_df["남은기간"] != "정보부족") & (display_df["남은기간"] != "계산불가")])
+active_count  = len(display_df[
+    ~display_df["남은기간"].str.contains("만료", na=False) &
+    (display_df["남은기간"] != "정보부족") &
+    (display_df["남은기간"] != "계산불가")
+])
 expiring_soon = len(display_df[display_df["남은기간"].str.match(r"^[0-3]개월", na=False)])
 total_amount  = display_df["★가공_계약금액"].sum()
+amount_str    = f"{total_amount/100_000_000:.1f}억" if total_amount >= 100_000_000 else f"{total_amount:,}원"
 
 c1, c2, c3, c4 = st.columns(4)
 with c1:
@@ -405,145 +350,131 @@ with c2:
 with c3:
     st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#ea580c">{expiring_soon:,}</div><div class="stat-label">3개월 내 만료 예정</div></div>', unsafe_allow_html=True)
 with c4:
-    amount_str = f"{total_amount/100_000_000:.1f}억" if total_amount >= 100_000_000 else f"{total_amount:,}원"
     st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#7c3aed">{amount_str}</div><div class="stat-label">총 계약금액</div></div>', unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 결과 내 필터
+# 세부 필터
 # ─────────────────────────────────────────────
 with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
     fc1, fc2, fc3 = st.columns(3)
     with fc1:
-        agency_opts = sorted(display_df["★가공_수요기관"].dropna().unique().tolist())
-        sel_agency  = st.multiselect("수요기관", agency_opts, placeholder="전체")
+        sel_agency  = st.multiselect("수요기관",  sorted(display_df["★가공_수요기관"].dropna().unique()), placeholder="전체")
     with fc2:
-        company_opts = sorted(display_df["★가공_업체명"].dropna().unique().tolist())
-        sel_company  = st.multiselect("업체명", company_opts, placeholder="전체")
+        sel_company = st.multiselect("업체명",    sorted(display_df["★가공_업체명"].dropna().unique()),   placeholder="전체")
     with fc3:
-        status_opts = ["진행중", "3개월 내 만료", "만료됨"]
-        sel_status  = st.multiselect("계약 상태", status_opts, placeholder="전체")
+        sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료", "만료됨"],                  placeholder="전체")
     kw = st.text_input("🔎 계약명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...")
 
 filtered_df = display_df.copy()
-if sel_agency:
-    filtered_df = filtered_df[filtered_df["★가공_수요기관"].isin(sel_agency)]
-if sel_company:
-    filtered_df = filtered_df[filtered_df["★가공_업체명"].isin(sel_company)]
-if kw:
-    filtered_df = filtered_df[filtered_df["★가공_계약명"].str.contains(kw, case=False, na=False)]
+if sel_agency:  filtered_df = filtered_df[filtered_df["★가공_수요기관"].isin(sel_agency)]
+if sel_company: filtered_df = filtered_df[filtered_df["★가공_업체명"].isin(sel_company)]
+if kw:          filtered_df = filtered_df[filtered_df["★가공_계약명"].str.contains(kw, case=False, na=False)]
 if sel_status:
     conds = []
-    if "진행중"     in sel_status: conds.append(~filtered_df["남은기간"].str.contains("만료|정보부족|오류", na=True))
+    if "진행중"        in sel_status: conds.append(~filtered_df["남은기간"].str.contains("만료|정보부족|오류", na=True))
     if "3개월 내 만료" in sel_status: conds.append(filtered_df["남은기간"].str.match(r"^[0-3]개월", na=False))
-    if "만료됨"     in sel_status: conds.append(filtered_df["남은기간"].str.contains("만료", na=False))
+    if "만료됨"        in sel_status: conds.append(filtered_df["남은기간"].str.contains("만료", na=False))
     if conds:
         combined = conds[0]
         for c in conds[1:]: combined |= c
         filtered_df = filtered_df[combined]
 
 # ─────────────────────────────────────────────
-# 결과 출력
+# 결과 헤더 + 다운로드
 # ─────────────────────────────────────────────
-st.divider()
-cols_to_show = ["★가공_수요기관", "★가공_계약명", "★가공_업체명", "★가공_계약금액",
-                "계약일자", "착수일자", "★가공_계약만료일", "남은기간", "계약상세정보URL"]
+COLS = ["★가공_수요기관", "★가공_계약명", "★가공_업체명", "★가공_계약금액",
+        "계약일자", "착수일자", "★가공_계약만료일", "남은기간", "계약상세정보URL"]
 
-result_col, dl_col = st.columns([6, 2])
-with result_col:
+st.divider()
+rc, dc = st.columns([6, 2])
+with rc:
     st.markdown(f'<div class="section-title">📊 {region_to_show} 계약 현황 — {len(filtered_df):,}건</div>', unsafe_allow_html=True)
-with dl_col:
-    export_df = filtered_df[cols_to_show].copy()
-    export_df.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in export_df.columns]
-    csv_bytes = export_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+with dc:
+    exp_df = filtered_df[COLS].copy()
+    exp_df.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in exp_df.columns]
     st.download_button(
-        label="📥 CSV 다운로드",
-        data=csv_bytes,
+        "📥 CSV 다운로드",
+        data=exp_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
         file_name=f"계약현황_{region_to_show}_{datetime.now().strftime('%Y%m%d')}.csv",
         mime="text/csv",
         use_container_width=True,
     )
 
-sort_col_map = {
+# 정렬
+sort_map = {
     "수요기관": "★가공_수요기관",
     "계약금액 (높은순)": "★가공_계약금액",
     "계약만료일 (빠른순)": "★가공_계약만료일",
     "계약일자 (최신순)": "계약일자",
 }
-sort_choice = st.selectbox("정렬 기준", list(sort_col_map.keys()), label_visibility="collapsed")
-sort_key    = sort_col_map[sort_choice]
-asc_flag    = sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"]
-filtered_df = filtered_df.sort_values(sort_key, ascending=asc_flag)
+sort_choice = st.selectbox("정렬 기준", list(sort_map.keys()), label_visibility="collapsed")
+filtered_df = filtered_df.sort_values(sort_map[sort_choice], ascending=sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"])
 
-final_out = filtered_df[cols_to_show].copy()
+final_out = filtered_df[COLS].copy()
 final_out.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in final_out.columns]
 
 
-def _status_badge(val: str) -> str:
-    val = str(val)
+# ─────────────────────────────────────────────
+# HTML 테이블 렌더링
+# ─────────────────────────────────────────────
+def status_badge(val: str) -> str:
     if "만료됨" in val or "계약만료" in val:
         color, bg = "#b91c1c", "#fef2f2"
     elif RE_MONTH_ONLY.match(val):
         color, bg = "#c2410c", "#fff7ed"
-    elif "정보부족" in val or "오류" in val or "계산불가" in val:
+    elif any(x in val for x in ("정보부족", "오류", "계산불가")):
         color, bg = "#64748b", "#f1f5f9"
     else:
         color, bg = "#15803d", "#f0fdf4"
-    return (
-        f'<span style="background:{bg};color:{color};padding:2px 8px;'
-        f'border-radius:999px;font-size:.78rem;font-weight:600;white-space:nowrap;">'
-        f'{val}</span>'
-    )
+    return (f'<span style="background:{bg};color:{color};padding:2px 8px;'
+            f'border-radius:999px;font-size:.78rem;font-weight:600;white-space:nowrap;">{val}</span>')
 
 
-def render_html_table(df: pd.DataFrame) -> str:
-    col_labels = {
+def render_table(df: pd.DataFrame) -> str:
+    COL_LABELS = {
         "수요기관": "수요기관", "계약명": "계약명", "업체명": "업체명",
         "계약금액": "계약금액(원)", "계약일자": "계약일자", "착수일자": "착수일자",
         "계약만료일": "계약만료일", "남은기간": "남은기간", "URL": "상세",
     }
-    th_style = (
-        "background:#1e3a5f;color:#fff;padding:10px 12px;"
-        "font-size:.8rem;font-weight:700;white-space:nowrap;"
-        "border-bottom:2px solid #2563eb;text-align:left;"
-    )
-    td_base = "padding:9px 12px;font-size:.82rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
-    headers = "".join(f'<th style="{th_style}">{col_labels.get(c, c)}</th>' for c in df.columns)
+    TH = ("background:#1e3a5f;color:#fff;padding:10px 12px;font-size:.8rem;font-weight:700;"
+          "white-space:nowrap;border-bottom:2px solid #2563eb;text-align:left;")
+    TD = "padding:9px 12px;font-size:.82rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
 
-    rows_html = []
+    headers = "".join(f'<th style="{TH}">{COL_LABELS.get(c, c)}</th>' for c in df.columns)
+    rows = []
     for i, (_, row) in enumerate(df.iterrows()):
         bg = "#fff" if i % 2 == 0 else "#f8fafc"
         cells = []
         for col in df.columns:
             val = row[col]
             if col == "URL":
-                cell = f'<td style="{td_base}text-align:center;"><a href="{val}" target="_blank" style="color:#2563eb;font-weight:600;text-decoration:none;">🔗 보기</a></td>'
+                cell = f'<td style="{TD}text-align:center;"><a href="{val}" target="_blank" style="color:#2563eb;font-weight:600;text-decoration:none;">🔗 보기</a></td>'
             elif col == "남은기간":
-                cell = f'<td style="{td_base}">{_status_badge(str(val))}</td>'
+                cell = f'<td style="{TD}">{status_badge(str(val))}</td>'
             elif col == "계약금액":
-                try:    formatted = f"{int(val):,}"
-                except: formatted = str(val)
-                cell = f'<td style="{td_base}text-align:right;font-variant-numeric:tabular-nums;">{formatted}</td>'
+                try:    fmt = f"{int(val):,}"
+                except: fmt = str(val)
+                cell = f'<td style="{TD}text-align:right;font-variant-numeric:tabular-nums;">{fmt}</td>'
             elif col in ("수요기관", "계약명", "업체명"):
-                cell = f'<td style="{td_base}max-width:220px;word-break:keep-all;">{str(val)}</td>'
+                cell = f'<td style="{TD}max-width:220px;word-break:keep-all;">{str(val)}</td>'
             else:
-                cell = f'<td style="{td_base}white-space:nowrap;">{str(val)}</td>'
+                cell = f'<td style="{TD}white-space:nowrap;">{str(val)}</td>'
             cells.append(cell)
-        rows_html.append(
-            f'<tr style="background:{bg};" onmouseover="this.style.background=\'#eff6ff\'" onmouseout="this.style.background=\'{bg}\'">'
+        rows.append(
+            f'<tr style="background:{bg};" '
+            f'onmouseover="this.style.background=\'#eff6ff\'" '
+            f'onmouseout="this.style.background=\'{bg}\'">'
             + "".join(cells) + "</tr>"
         )
 
-    return f"""
-    <div style="width:100%;overflow-x:auto;border-radius:12px;
-                box-shadow:0 2px 12px rgba(0,0,0,.08);margin-top:.5rem;">
-      <table style="width:100%;border-collapse:collapse;min-width:900px;">
-        <thead><tr>{headers}</tr></thead>
-        <tbody>{"".join(rows_html)}</tbody>
-      </table>
-    </div>
-    """
+    return (f'<div style="width:100%;overflow-x:auto;border-radius:12px;'
+            f'box-shadow:0 2px 12px rgba(0,0,0,.08);margin-top:.5rem;">'
+            f'<table style="width:100%;border-collapse:collapse;min-width:900px;">'
+            f'<thead><tr>{headers}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody>'
+            f'</table></div>')
 
 
-st.markdown(render_html_table(final_out), unsafe_allow_html=True)
+st.markdown(render_table(final_out), unsafe_allow_html=True)
