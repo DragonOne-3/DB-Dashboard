@@ -160,10 +160,10 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cond1 = (this_vals != total_vals) & total_finish.notna()
     expire = expire.where(~cond1, total_finish)
 
-    # 후보 2: 총 개월수 × 30.44일
+    # 후보 2: total_vals는 일수(days) — 원본 코드 relativedelta(days=total_val)과 동일
     cond2 = expire.isna() & (total_vals > 0) & base_date.notna()
     if cond2.any():
-        expire[cond2] = base_date[cond2] + pd.to_timedelta((total_vals[cond2] * 30.44).round().astype(int), unit="D")
+        expire[cond2] = base_date[cond2] + pd.to_timedelta(total_vals[cond2].astype(int), unit="D")
 
     # 후보 3: period_raw 안에 8자리 날짜
     cond3 = expire.isna()
@@ -236,22 +236,11 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
         ascending=[True, True, True, False],
     )
 
-    active_df  = df[df["남은기간"] != "만료됨"].drop_duplicates(["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first")
-    expired_df = df[df["남은기간"] == "만료됨"].copy()
-
-    active_agencies   = set(active_df["★가공_수요기관"])
-    fallback_agencies = [a for a in df["★가공_수요기관"].unique() if a not in active_agencies]
-
-    fallback_df = (
-        expired_df[expired_df["★가공_수요기관"].isin(fallback_agencies)]
-        .drop_duplicates("★가공_수요기관", keep="first")
-        .copy()
-    )
-    fallback_df["남은기간"] = fallback_df["★가공_계약만료일"].apply(
-        lambda d: f"{str(d)[:4]}년 계약만료" if d and len(str(d)) >= 4 else "계약만료"
+    active_df = df[df["남은기간"] != "만료됨"].drop_duplicates(
+        ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
     )
 
-    out = pd.concat([active_df, fallback_df], ignore_index=True)
+    out = active_df.copy()
     out["광역단위"] = out["★가공_수요기관"].astype(str).apply(get_metro)
 
     # ── 계약금액: ★가공_계약금액 우선, 0이면 금차계약금액 fallback ──
