@@ -133,10 +133,10 @@ def load_raw_data() -> pd.DataFrame:
         if ws is None:
             st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
             return pd.DataFrame()
-        all_vals = ws.get_all_values()
-        if not all_vals:
+        records = ws.get_all_records()
+        if not records:
             return pd.DataFrame()
-        return pd.DataFrame(all_vals[1:], columns=all_vals[0])
+        return pd.DataFrame(records)
     except Exception as e:
         st.error(f"❌ 시트 로드 오류: {e}")
         return pd.DataFrame()
@@ -278,16 +278,12 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
 
     out["광역단위"] = out["★가공_수요기관"].apply(_metro)
 
-    out["★가공_계약금액"] = (
-        out["★가공_계약금액"]
-        .astype(str)
-        .str.strip()
-        .str.replace(r"[^\d]", "", regex=True)   # 숫자 외 모든 문자 제거
-        .replace("", "0")
-        .pipe(pd.to_numeric, errors="coerce")
-        .fillna(0)
-        .astype(int)
-    )
+    main_amt = pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0)
+    if "금차계약금액" in out.columns:
+        fallback_amt = pd.to_numeric(out["금차계약금액"], errors="coerce").fillna(0)
+    else:
+        fallback_amt = pd.Series(0, index=out.index)
+    out["★가공_계약금액"] = main_amt.where(main_amt != 0, fallback_amt).astype(int)
 
     return out
 
