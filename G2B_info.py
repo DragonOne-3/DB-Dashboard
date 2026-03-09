@@ -354,7 +354,7 @@ with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
     with fc2:
         sel_company = st.multiselect("업체명",    sorted(display_df["★가공_업체명"].dropna().unique()),   placeholder="전체")
     with fc3:
-        sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료", "만료됨"],                  placeholder="전체")
+        sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료"],                  placeholder="전체")
     kw = st.text_input("🔎 계약명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...")
 
 filtered_df = display_df.copy()
