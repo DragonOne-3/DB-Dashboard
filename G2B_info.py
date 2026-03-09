@@ -375,7 +375,7 @@ if sel_status:
     conds = []
     if "진행중"        in sel_status: conds.append(~filtered_df["남은기간"].str.contains("만료|정보부족|오류", na=True))
     if "3개월 내 만료" in sel_status: conds.append(filtered_df["남은기간"].str.match(r"^[0-3]개월", na=False))
-    if "계약만료"      in sel_status: conds.append(filtered_df["남은기간"] == "만료됨")
+    if "만료됨"        in sel_status: conds.append(filtered_df["남은기간"] == "만료됨")
     if conds:
         combined = conds[0]
         for c in conds[1:]: combined |= c
