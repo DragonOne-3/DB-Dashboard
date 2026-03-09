@@ -237,11 +237,21 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
         ascending=[True, True, True, False],
     )
 
+    today = pd.Timestamp(datetime.now().date())
+    one_year_ago = today - pd.DateOffset(years=1)
+
     active_df = df[df["남은기간"] != "만료됨"].drop_duplicates(
         ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
     )
 
-    out = active_df.copy()
+    # 최근 1년 이내 만료된 계약만 포함
+    recent_expired_df = df[df["남은기간"] == "만료됨"].copy()
+    expire_dt = pd.to_datetime(recent_expired_df["★가공_계약만료일"], errors="coerce")
+    recent_expired_df = recent_expired_df[expire_dt >= one_year_ago].drop_duplicates(
+        ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
+    )
+
+    out = pd.concat([active_df, recent_expired_df], ignore_index=True)
     out["광역단위"] = out["★가공_수요기관"].astype(str).apply(get_metro)
 
     # ── 계약금액: ★가공_계약금액 우선, 0이면 금차계약금액 fallback ──
@@ -354,7 +364,7 @@ with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
     with fc2:
         sel_company = st.multiselect("업체명",    sorted(display_df["★가공_업체명"].dropna().unique()),   placeholder="전체")
     with fc3:
-        sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료"],                  placeholder="전체")
+        sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료", "만료됨"],                  placeholder="전체")
     kw = st.text_input("🔎 계약명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...")
 
 filtered_df = display_df.copy()
@@ -365,7 +375,7 @@ if sel_status:
     conds = []
     if "진행중"        in sel_status: conds.append(~filtered_df["남은기간"].str.contains("만료|정보부족|오류", na=True))
     if "3개월 내 만료" in sel_status: conds.append(filtered_df["남은기간"].str.match(r"^[0-3]개월", na=False))
-    if "만료됨"        in sel_status: conds.append(filtered_df["남은기간"].str.contains("만료", na=False))
+    if "계약만료"      in sel_status: conds.append(filtered_df["남은기간"] == "만료됨")
     if conds:
         combined = conds[0]
         for c in conds[1:]: combined |= c
