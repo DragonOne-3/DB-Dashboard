@@ -339,6 +339,19 @@ with st.spinner("📡 데이터 준비 중…"):
     if not _prefetch_raw.empty:
         _prefetch_processed = build_processed_df(_prefetch_raw)
 
+# ── 진단용 expander (문제 파악 후 제거) ──────────────────
+if not _prefetch_raw.empty:
+    with st.expander("🔧 [진단] 컬럼명 & 금액 샘플 확인", expanded=False):
+        st.write("**전체 컬럼명 목록:**")
+        st.write(list(_prefetch_raw.columns))
+        # 금액 관련 컬럼만 추출
+        amt_cols = [c for c in _prefetch_raw.columns if "계약금액" in c or "금차" in c]
+        st.write(f"**금액 관련 컬럼:** {amt_cols}")
+        if amt_cols:
+            st.write("**금액 컬럼 샘플 (상위 5행):**")
+            st.dataframe(_prefetch_raw[amt_cols].head())
+# ─────────────────────────────────────────────────────────
+
 if not st.session_state["search_done"]:
     st.markdown("""
     <div style="text-align:center; padding: 5rem 0; color: #94a3b8;">
