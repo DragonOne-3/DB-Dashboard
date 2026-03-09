@@ -126,7 +126,7 @@ def load_raw_data() -> pd.DataFrame:
         if ws is None:
             st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
             return pd.DataFrame()
-        records = ws.get_all_records()
+        records = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
         return pd.DataFrame(records) if records else pd.DataFrame()
     except Exception as e:
         st.error(f"❌ 시트 로드 오류: {e}")
