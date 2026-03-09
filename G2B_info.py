@@ -278,17 +278,14 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
 
     out["광역단위"] = out["★가공_수요기관"].apply(_metro)
 
-    def to_amount(series: pd.Series) -> pd.Series:
-        # 쉼표·공백·원화기호 제거 후 숫자 변환
-        cleaned = series.astype(str).str.replace(r"[,\s₩원]", "", regex=True)
-        return pd.to_numeric(cleaned, errors="coerce").fillna(0)
-
-    main_amt = to_amount(out["★가공_계약금액"])
-    if "금차계약금액" in out.columns:
-        fallback_amt = to_amount(out["금차계약금액"])
-    else:
-        fallback_amt = pd.Series(0, index=out.index)
-    out["★가공_계약금액"] = main_amt.where(main_amt != 0, fallback_amt).astype(int)
+    out["★가공_계약금액"] = (
+        out["★가공_계약금액"]
+        .astype(str)
+        .str.replace(r"[,\s₩원]", "", regex=True)
+        .pipe(pd.to_numeric, errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
 
     return out
 
