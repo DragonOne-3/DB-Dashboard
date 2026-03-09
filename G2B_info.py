@@ -281,7 +281,9 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
     out["★가공_계약금액"] = (
         out["★가공_계약금액"]
         .astype(str)
-        .str.replace(r"[,\s₩원]", "", regex=True)
+        .str.strip()
+        .str.replace(r"[^\d]", "", regex=True)   # 숫자 외 모든 문자 제거
+        .replace("", "0")
         .pipe(pd.to_numeric, errors="coerce")
         .fillna(0)
         .astype(int)
@@ -342,14 +344,27 @@ with st.spinner("📡 데이터 준비 중…"):
 # ── 진단용 expander (문제 파악 후 제거) ──────────────────
 if not _prefetch_raw.empty:
     with st.expander("🔧 [진단] 컬럼명 & 금액 샘플 확인", expanded=False):
-        st.write("**전체 컬럼명 목록:**")
-        st.write(list(_prefetch_raw.columns))
-        # 금액 관련 컬럼만 추출
         amt_cols = [c for c in _prefetch_raw.columns if "계약금액" in c or "금차" in c]
         st.write(f"**금액 관련 컬럼:** {amt_cols}")
-        if amt_cols:
-            st.write("**금액 컬럼 샘플 (상위 5행):**")
-            st.dataframe(_prefetch_raw[amt_cols].head())
+
+        col_name = "★가공_계약금액"
+        if col_name in _prefetch_raw.columns:
+            sample = _prefetch_raw[col_name].head(10)
+            st.write("**raw 값 (repr — 숨은 문자 포함):**")
+            st.write({i: repr(v) for i, v in sample.items()})
+
+            # 변환 후 결과
+            cleaned = sample.astype(str).str.strip().str.replace(r"[^\d]", "", regex=True)
+            st.write("**숫자만 추출 후:**")
+            st.write(dict(cleaned.items()))
+
+        # 처리 후 0인 행 샘플
+        if "★가공_계약금액" in _prefetch_processed.columns:
+            zero_rows = _prefetch_processed[_prefetch_processed["★가공_계약금액"] == 0][
+                ["★가공_수요기관", "★가공_계약명", "★가공_계약금액"]
+            ].head(5)
+            st.write("**처리 후 0원인 행 샘플:**")
+            st.dataframe(zero_rows)
 # ─────────────────────────────────────────────────────────
 
 if not st.session_state["search_done"]:
