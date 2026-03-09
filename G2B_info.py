@@ -161,9 +161,10 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     expire = expire.where(~cond1, total_finish)
 
     # 후보 2: total_vals는 일수(days) — 원본 코드 relativedelta(days=total_val)과 동일
+    # 착수일 자체가 1일차이므로 -1 해야 마지막 날이 정확함 (예: 365일 → 12-31)
     cond2 = expire.isna() & (total_vals > 0) & base_date.notna()
     if cond2.any():
-        expire[cond2] = base_date[cond2] + pd.to_timedelta(total_vals[cond2].astype(int), unit="D")
+        expire[cond2] = base_date[cond2] + pd.to_timedelta(total_vals[cond2].astype(int) - 1, unit="D")
 
     # 후보 3: period_raw 안에 8자리 날짜
     cond3 = expire.isna()
