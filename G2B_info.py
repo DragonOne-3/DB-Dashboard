@@ -26,34 +26,37 @@ RE_MONTH_ONLY   = re.compile(r"^[0-3]개월")
 RE_CONTRACT_NUM = re.compile(r"\d+차분?|\d+")
 
 # ─────────────────────────────────────────────
-# CSS
+# CSS (폰트 크기 대폭 상향)
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
+  html, body, [class*="css"] { font-size: 18px; } /* 기본 폰트 크기 상향 */
   .stApp { background: #f4f6fb; }
   .hero {
     background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
-    border-radius: 16px; padding: 2.5rem 3rem; margin-bottom: 2rem;
+    border-radius: 16px; padding: 3rem 3rem; margin-bottom: 2rem;
     text-align: center; box-shadow: 0 4px 20px rgba(37,99,235,.25);
   }
-  .hero h1 { font-size: 2rem; font-weight: 800; color: #fff; margin: 0 0 .5rem; letter-spacing: -.5px; }
-  .hero p  { color: rgba(255,255,255,.75); font-size: 1rem; margin: 0; }
+  .hero h1 { font-size: 2.5rem; font-weight: 800; color: #fff; margin: 0 0 .8rem; letter-spacing: -.5px; }
+  .hero p  { color: rgba(255,255,255,.85); font-size: 1.2rem; margin: 0; }
   .search-panel {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
-    padding: 1.5rem 2rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    padding: 2rem 2.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,.06);
   }
   .stat-card {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
-    padding: 1.3rem 1.5rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    padding: 1.5rem 1.8rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.05);
   }
-  .stat-num   { font-size: 1.9rem; font-weight: 800; color: #2563eb; line-height: 1.1; }
-  .stat-label { font-size: .78rem; color: #64748b; margin-top: .3rem; font-weight: 500; letter-spacing: .3px; }
-  .section-title { font-size: 1rem; font-weight: 700; color: #1e293b; margin-bottom: .8rem; letter-spacing: -.2px; }
+  .stat-num   { font-size: 2.3rem; font-weight: 800; color: #2563eb; line-height: 1.1; }
+  .stat-label { font-size: 1rem; color: #64748b; margin-top: .5rem; font-weight: 500; letter-spacing: .3px; }
+  .section-title { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin-bottom: 1rem; letter-spacing: -.2px; }
+  
+  /* 버튼 폰트 키우기 */
+  div[data-testid="stButton"] > button { font-size: 1.1rem !important; height: auto !important; padding: 0.6rem 1rem !important; }
   div[data-testid="stButton"] > button[kind="primary"] {
     background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
     border: none !important; color: #fff !important; font-weight: 700 !important;
-    border-radius: 8px !important; padding: .55rem 2rem !important;
-    font-size: .95rem !important; box-shadow: 0 3px 10px rgba(37,99,235,.35) !important;
+    border-radius: 8px !important; box-shadow: 0 3px 10px rgba(37,99,235,.35) !important;
     transition: opacity .18s, transform .18s;
   }
   div[data-testid="stButton"] > button[kind="primary"]:hover { opacity: .9; transform: translateY(-1px); }
@@ -104,8 +107,6 @@ for k, v in [("search_done", False), ("search_region", "전국"), ("radio_region
 
 # ─────────────────────────────────────────────
 # 데이터 로드
-# gspread 클라이언트는 cache_resource로 한 번만 인증
-# raw 데이터는 cache_data(ttl=600)로 10분 캐싱
 # ─────────────────────────────────────────────
 @st.cache_resource
 def _get_worksheet():
@@ -156,22 +157,17 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     base_date = start_date.combine_first(cntrct_date)
     expire    = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
 
-    # 후보 1: 금차 ≠ 총차 + 총완수일자
     cond1 = (this_vals != total_vals) & total_finish.notna()
     expire = expire.where(~cond1, total_finish)
 
-    # 후보 2: total_vals는 일수(days) — 원본 코드 relativedelta(days=total_val)과 동일
-    # 착수일 자체가 1일차이므로 -1 해야 마지막 날이 정확함 (예: 365일 → 12-31)
     cond2 = expire.isna() & (total_vals > 0) & base_date.notna()
     if cond2.any():
         expire[cond2] = base_date[cond2] + pd.to_timedelta(total_vals[cond2].astype(int) - 1, unit="D")
 
-    # 후보 3: period_raw 안에 8자리 날짜
     cond3 = expire.isna()
     if cond3.any():
         expire[cond3] = parse_date_series(period_raw[cond3])
 
-    # 후보 4: total_finish fallback
     cond4 = expire.isna() & total_finish.notna()
     expire[cond4] = total_finish[cond4]
 
@@ -244,7 +240,6 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
         ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
     )
 
-    # 최근 1년 이내 만료된 계약만 포함
     recent_expired_df = df[df["남은기간"] == "만료됨"].copy()
     expire_dt = pd.to_datetime(recent_expired_df["★가공_계약만료일"], errors="coerce")
     recent_expired_df = recent_expired_df[expire_dt >= one_year_ago].drop_duplicates(
@@ -254,7 +249,6 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
     out = pd.concat([active_df, recent_expired_df], ignore_index=True)
     out["광역단위"] = out["★가공_수요기관"].astype(str).apply(get_metro)
 
-    # ── 계약금액: ★가공_계약금액 우선, 0이면 금차계약금액 fallback ──
     main_amt = pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0)
     if "금차계약금액" in out.columns:
         sub_amt = pd.to_numeric(out["금차계약금액"], errors="coerce").fillna(0)
@@ -298,10 +292,7 @@ if search_clicked:
     st.session_state["search_done"]   = True
     st.session_state["search_region"] = st.session_state["radio_region"]
 
-# ─────────────────────────────────────────────
-# 페이지 로드 시 즉시 프리페치 (캐시에 올려둠)
-# → 검색 버튼 클릭 시 캐시에서 즉시 반환
-# ─────────────────────────────────────────────
+# 프리페치
 with st.spinner("📡 데이터 준비 중…"):
     _raw = load_raw_data()
     if not _raw.empty:
@@ -310,15 +301,15 @@ with st.spinner("📡 데이터 준비 중…"):
 if not st.session_state["search_done"]:
     st.markdown("""
     <div style="text-align:center; padding: 5rem 0; color: #94a3b8;">
-      <div style="font-size:4rem; margin-bottom:1rem;">🔍</div>
-      <div style="font-size:1.3rem; font-weight:700; color:#334155; margin-bottom:.5rem;">지역을 선택하고 검색 버튼을 눌러주세요</div>
-      <div style="font-size:.95rem; color:#64748b;">전국 또는 광역시도를 선택하면 계약 현황이 표시됩니다</div>
+      <div style="font-size:5rem; margin-bottom:1rem;">🔍</div>
+      <div style="font-size:1.6rem; font-weight:700; color:#334155; margin-bottom:.5rem;">지역을 선택하고 검색 버튼을 눌러주세요</div>
+      <div style="font-size:1.1rem; color:#64748b;">전국 또는 광역시도를 선택하면 계약 현황이 표시됩니다</div>
     </div>
     """, unsafe_allow_html=True)
     st.stop()
 
 # ─────────────────────────────────────────────
-# 검색 결과 (캐시에서 즉시)
+# 검색 결과
 # ─────────────────────────────────────────────
 region_to_show = st.session_state["search_region"]
 
@@ -329,9 +320,7 @@ processed_df = build_processed_df(raw_df)
 
 display_df = processed_df.copy() if region_to_show == "전국" else processed_df[processed_df["광역단위"] == region_to_show].copy()
 
-# ─────────────────────────────────────────────
 # 통계 카드
-# ─────────────────────────────────────────────
 total_count   = len(display_df)
 active_count  = len(display_df[
     ~display_df["남은기간"].str.contains("만료", na=False) &
@@ -354,9 +343,7 @@ with c4:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
 # 세부 필터
-# ─────────────────────────────────────────────
 with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
     fc1, fc2, fc3 = st.columns(3)
     with fc1:
@@ -381,16 +368,14 @@ if sel_status:
         for c in conds[1:]: combined |= c
         filtered_df = filtered_df[combined]
 
-# ─────────────────────────────────────────────
-# 결과 헤더 + 다운로드
-# ─────────────────────────────────────────────
+# 결과 헤더
 COLS = ["★가공_수요기관", "★가공_계약명", "★가공_업체명", "★가공_계약금액",
         "계약일자", "착수일자", "★가공_계약만료일", "남은기간", "계약상세정보URL"]
 
 st.divider()
 rc, dc = st.columns([6, 2])
 with rc:
-    st.markdown(f'<div class="section-title">📊 {region_to_show} 계약 현황 — {len(filtered_df):,}건</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title" style="font-size:1.5rem;">📊 {region_to_show} 계약 현황 — {len(filtered_df):,}건</div>', unsafe_allow_html=True)
 with dc:
     exp_df = filtered_df[COLS].copy()
     exp_df.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in exp_df.columns]
@@ -402,14 +387,15 @@ with dc:
         use_container_width=True,
     )
 
-# 정렬
+# 정렬 기준 매핑
 sort_map = {
     "수요기관": "★가공_수요기관",
     "계약금액 (높은순)": "★가공_계약금액",
     "계약만료일 (빠른순)": "★가공_계약만료일",
     "계약일자 (최신순)": "계약일자",
 }
-sort_choice = st.selectbox("정렬 기준", list(sort_map.keys()), label_visibility="collapsed")
+# 기본값을 '계약일자 (최신순)' (index 3)으로 설정
+sort_choice = st.selectbox("정렬 기준", list(sort_map.keys()), index=3, label_visibility="collapsed")
 filtered_df = filtered_df.sort_values(sort_map[sort_choice], ascending=sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"])
 
 final_out = filtered_df[COLS].copy()
@@ -417,7 +403,7 @@ final_out.columns = [c.replace("★가공_", "").replace("계약상세정보URL"
 
 
 # ─────────────────────────────────────────────
-# HTML 테이블 렌더링
+# HTML 테이블 렌더링 (테이블 폰트 상향)
 # ─────────────────────────────────────────────
 def status_badge(val: str) -> str:
     if "만료됨" in val or "계약만료" in val:
@@ -428,8 +414,8 @@ def status_badge(val: str) -> str:
         color, bg = "#64748b", "#f1f5f9"
     else:
         color, bg = "#15803d", "#f0fdf4"
-    return (f'<span style="background:{bg};color:{color};padding:2px 8px;'
-            f'border-radius:999px;font-size:.78rem;font-weight:600;white-space:nowrap;">{val}</span>')
+    return (f'<span style="background:{bg};color:{color};padding:3px 10px;'
+            f'border-radius:999px;font-size:.85rem;font-weight:600;white-space:nowrap;">{val}</span>')
 
 
 def render_table(df: pd.DataFrame) -> str:
@@ -438,9 +424,10 @@ def render_table(df: pd.DataFrame) -> str:
         "계약금액": "계약금액(원)", "계약일자": "계약일자", "착수일자": "착수일자",
         "계약만료일": "계약만료일", "남은기간": "남은기간", "URL": "상세",
     }
-    TH = ("background:#1e3a5f;color:#fff;padding:10px 12px;font-size:.8rem;font-weight:700;"
+    # 폰트 크기 0.95rem~1.0rem으로 상향
+    TH = ("background:#1e3a5f;color:#fff;padding:12px 14px;font-size:0.95rem;font-weight:700;"
           "white-space:nowrap;border-bottom:2px solid #2563eb;text-align:left;")
-    TD = "padding:9px 12px;font-size:.82rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
+    TD = "padding:11px 14px;font-size:1rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
 
     headers = "".join(f'<th style="{TH}">{COL_LABELS.get(c, c)}</th>' for c in df.columns)
     rows = []
@@ -454,11 +441,11 @@ def render_table(df: pd.DataFrame) -> str:
             elif col == "남은기간":
                 cell = f'<td style="{TD}">{status_badge(str(val))}</td>'
             elif col == "계약금액":
-                try:    fmt = f"{int(val):,}"
+                try:   fmt = f"{int(val):,}"
                 except: fmt = str(val)
                 cell = f'<td style="{TD}text-align:right;font-variant-numeric:tabular-nums;">{fmt}</td>'
             elif col in ("수요기관", "계약명", "업체명"):
-                cell = f'<td style="{TD}max-width:220px;word-break:keep-all;">{str(val)}</td>'
+                cell = f'<td style="{TD}max-width:250px;word-break:keep-all;">{str(val)}</td>'
             else:
                 cell = f'<td style="{TD}white-space:nowrap;">{str(val)}</td>'
             cells.append(cell)
@@ -471,7 +458,7 @@ def render_table(df: pd.DataFrame) -> str:
 
     return (f'<div style="width:100%;overflow-x:auto;border-radius:12px;'
             f'box-shadow:0 2px 12px rgba(0,0,0,.08);margin-top:.5rem;">'
-            f'<table style="width:100%;border-collapse:collapse;min-width:900px;">'
+            f'<table style="width:100%;border-collapse:collapse;min-width:1000px;">'
             f'<thead><tr>{headers}</tr></thead>'
             f'<tbody>{"".join(rows)}</tbody>'
             f'</table></div>')
