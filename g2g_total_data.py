@@ -69,9 +69,7 @@ button[kind="primary"]:hover { box-shadow: 0 5px 18px rgba(37,99,235,0.5) !impor
 
 
 # ═══════════════════════════════════════════════════════════
-# ★ 핵심 변경 1: 전체 데이터를 서버 메모리에 공유 캐시로 저장
-#   - @st.cache_resource → 모든 유저가 같은 데이터 공유
-#   - 유저 3명이 접속해도 메모리는 1배만 사용
+# 공유 캐시: 서비스 계정 인증 (1회)
 # ═══════════════════════════════════════════════════════════
 @st.cache_resource
 def get_drive_service():
@@ -86,17 +84,12 @@ def get_drive_service():
 
 
 # ═══════════════════════════════════════════════════════════
-# ★ 핵심 변경 2: 데이터 로딩을 청크 단위로 처리
-#   - 전체를 한 번에 메모리에 올리지 않고
-#   - 날짜 컬럼만 먼저 읽어서 필터링 후 필요한 행만 로딩
-#   - dtype 최적화로 메모리 사용량 50~70% 감소
+# dtype 최적화 (메모리 절약)
 # ═══════════════════════════════════════════════════════════
-def optimize_dtypes(df):
-    """컬럼 타입 최적화로 메모리 절약"""
+def optimize_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     for col in df.columns:
         if df[col].dtype == 'object':
-            # 카디널리티 낮은 컬럼은 category 타입으로
-            if df[col].nunique() / len(df) < 0.5:
+            if df[col].nunique() / max(len(df), 1) < 0.5:
                 df[col] = df[col].astype('category')
         elif df[col].dtype == 'float64':
             df[col] = pd.to_numeric(df[col], downcast='float')
@@ -106,29 +99,18 @@ def optimize_dtypes(df):
 
 
 # ═══════════════════════════════════════════════════════════
-# ★ 핵심 변경 3: @st.cache_resource 로 전체 데이터 공유
-#   - ttl=3600: 1시간마다 갱신
-#   - 유저별로 데이터를 새로 로딩하지 않음
+# 공유 캐시: 전체 원본 데이터 (모든 유저 공유, 복사 없음)
 # ═══════════════════════════════════════════════════════════
 @st.cache_resource(ttl=3600)
 def fetch_data_shared(file_id, is_sheet=True):
-    """
-    [변경 전] @st.cache_data → 유저마다 별도 메모리 (3명 = 3배)
-    [변경 후] @st.cache_resource → 전체 공유 메모리 (3명 = 1배)
-    """
     svc, creds = get_drive_service()
     creds.refresh(google.auth.transport.requests.Request())
     hdrs = {'Authorization': f'Bearer {creds.token}'}
 
     if is_sheet:
-        url  = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv"
+        url     = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=csv"
         content = requests.get(url, headers=hdrs).content
-        # ★ 청크로 읽어서 dtype 최적화 적용
-        df = pd.read_csv(
-            io.BytesIO(content),
-            low_memory=True,       # 청크 방식으로 타입 추론
-            dtype_backend='numpy_nullable'  # 메모리 효율적인 백엔드
-        )
+        df = pd.read_csv(io.BytesIO(content), low_memory=True, dtype_backend='numpy_nullable')
         return optimize_dtypes(df)
 
     results = svc.files().list(
@@ -140,14 +122,13 @@ def fetch_data_shared(file_id, is_sheet=True):
             f"https://www.googleapis.com/drive/v3/files/{f['id']}?alt=media",
             headers=hdrs
         ).content
-        df = pd.read_csv(io.BytesIO(content), low_memory=True)
-        dfs.append(optimize_dtypes(df))
+        dfs.append(optimize_dtypes(pd.read_csv(io.BytesIO(content), low_memory=True)))
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
-# ── 나라장터_공고 전용: 연도별 CSV 로딩 ──────────────────────────────────────────
-NOTICE_FOLDER_ID = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
-NOTICE_CATS      = ['공사', '물품', '용역']
+# ── 나라장터_공고 연도별 CSV ────────────────────────────────
+NOTICE_FOLDER_ID  = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
+NOTICE_CATS       = ['공사', '물품', '용역']
 NOTICE_COL_RENAME = {
     "dminsttNm":     "수요기관명",
     "bidNtceNm":     "공고명",
@@ -158,10 +139,9 @@ NOTICE_COL_RENAME = {
 
 @st.cache_resource(ttl=3600)
 def fetch_notice_csv_by_year(cat_name, year):
-    """나라장터 공고 연도별 CSV - 공유 캐시로 메모리 절약"""
     svc, creds = get_drive_service()
     creds.refresh(google.auth.transport.requests.Request())
-    hdrs = {'Authorization': f'Bearer {creds.token}'}
+    hdrs      = {'Authorization': f'Bearer {creds.token}'}
     file_name = f"나라장터_공고_{cat_name}_{year}년.csv"
     files = svc.files().list(
         q=f"name='{file_name}' and '{NOTICE_FOLDER_ID}' in parents and trashed=false",
@@ -181,63 +161,124 @@ def fetch_notice_csv_by_year(cat_name, year):
 
 
 def load_notice_data(cat_name, s_s, e_s):
-    start_year = int(s_s[:4])
-    end_year   = int(e_s[:4])
     dfs = []
-    for year in range(start_year, end_year + 1):
+    for year in range(int(s_s[:4]), int(e_s[:4]) + 1):
         df_y = fetch_notice_csv_by_year(cat_name, year)
         if not df_y.empty:
             dfs.append(df_y)
     if not dfs:
         return pd.DataFrame()
     df = pd.concat(dfs, ignore_index=True)
-    if 'bidNtceDt' in df.columns:
-        df['tmp_dt'] = df['bidNtceDt'].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
-    else:
-        df['tmp_dt'] = "0"
-    return df[(df['tmp_dt'] >= s_s) & (df['tmp_dt'] <= e_s)].copy()
+    df['tmp_dt'] = (
+        df['bidNtceDt'].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
+        if 'bidNtceDt' in df.columns else "0"
+    )
+    return df[(df['tmp_dt'] >= s_s) & (df['tmp_dt'] <= e_s)]
 
 
 # ═══════════════════════════════════════════════════════════
-# ★ 핵심 변경 4: 검색 결과만 session_state에 저장
-#   - 전체 데이터가 아닌 필터링된 결과만 유저별로 보관
-#   - 예: 전체 100만 행 중 검색결과 500행만 session에 저장
+# ★ 수정 1: apply_keyword — ALL 모드 최적화
+#   기존: df.astype(str) → 모든 컬럼 문자열 변환 (메모리 폭발)
+#   수정: object/category 컬럼만 검색 → 불필요한 변환 제거
 # ═══════════════════════════════════════════════════════════
-def filter_data(df_raw, cat, s_s, e_s, k1_val, k2_val, f_val, l_val):
-    """전체 데이터에서 필요한 행만 추출 - 결과만 메모리에 보관"""
+# 각 카테고리별로 검색 대상이 되는 텍스트 컬럼 후보
+_TEXT_COL_CANDIDATES = ["수요기관명","수요기관","발주기관","공고기관",
+                         "업체명","상호","상호명","계약상대자","계약상대자명",
+                         "계약명","공고명","세부품명","품명"]
+
+def apply_keyword(df: pd.DataFrame, keyword: str, field: str) -> pd.Series:
+    # 특정 필드 검색
+    target_col = None
+    if field == "업체명":
+        for c in ["업체명","상호","상호명","계약상대자","계약상대자명"]:
+            if c in df.columns: target_col = c; break
+    elif field == "수요기관명":
+        for c in ["수요기관명","수요기관","발주기관","공고기관"]:
+            if c in df.columns: target_col = c; break
+    elif field == "계약명":
+        for c in ["계약명","공고명"]:
+            if c in df.columns: target_col = c; break
+    elif field == "세부품명":
+        if "세부품명" in df.columns: target_col = "세부품명"
+    elif field != "ALL":
+        if field in df.columns: target_col = field
+
+    if target_col:
+        return df[target_col].astype(str).str.contains(keyword, case=False, na=False)
+
+    # ★ ALL 모드: object/category 컬럼만 검색 (숫자 컬럼 제외)
+    text_cols = [
+        c for c in df.columns
+        if df[c].dtype in ('object', 'category', 'string')
+        or c in _TEXT_COL_CANDIDATES
+    ]
+    if not text_cols:
+        # fallback: 전체 (최후 수단)
+        return df.astype(str).apply(
+            lambda x: x.str.contains(keyword, case=False, na=False)
+        ).any(axis=1)
+
+    mask = pd.Series(False, index=df.index)
+    for col in text_cols:
+        mask |= df[col].astype(str).str.contains(keyword, case=False, na=False)
+    return mask
+
+
+# ═══════════════════════════════════════════════════════════
+# ★ 수정 2: filter_data — .copy() 최소화
+#   기존: 조건마다 .copy() 호출 → 메모리 중복
+#   수정: boolean mask만 누적, 마지막에 1번만 .copy()
+# ═══════════════════════════════════════════════════════════
+DATE_COL_MAP = {
+    '나라장터_발주': None,
+    '나라장터_공고': 'bidNtceDt',
+    '나라장터_계약': '★가공_계약일',
+    '군수품_발주':   '발주예정월',
+    '군수품_공고':   '공고일자',
+    '군수품_계약':   '계약일자',
+    '군수품_수의':   '개찰일자',
+    '종합쇼핑몰':   '계약납품요구일자'
+}
+
+def filter_data(df_raw: pd.DataFrame, cat: str, s_s: str, e_s: str,
+                k1_val: str, k2_val: str, f_val: str, l_val: str) -> pd.DataFrame:
     d_col = DATE_COL_MAP.get(cat)
 
+    # ── 날짜 mask ──────────────────────────────────────────
     if cat == '나라장터_발주':
-        df_raw['tmp_dt'] = s_s
-        df_f = df_raw.copy()
+        date_mask = pd.Series(True, index=df_raw.index)
+        tmp_dt    = pd.Series(s_s, index=df_raw.index)
     elif cat == '군수품_발주':
-        df_raw['tmp_dt'] = (
-            df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
+        tmp_dt = (
+            df_raw[d_col].astype(str)
+            .str.replace(r'[^0-9]', '', regex=True).str[:6] + "01"
         )
-        s_s2 = s_s[:6] + "01"
-        e_s2 = e_s[:6] + "01"
-        df_f = df_raw[(df_raw['tmp_dt'] >= s_s2) & (df_raw['tmp_dt'] <= e_s2)].copy()
+        date_mask = (tmp_dt >= s_s[:6] + "01") & (tmp_dt <= e_s[:6] + "01")
     else:
-        df_raw['tmp_dt'] = (
-            df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
-            if d_col and d_col in df_raw.columns else "0"
-        )
-        df_f = df_raw[(df_raw['tmp_dt'] >= s_s) & (df_raw['tmp_dt'] <= e_s)].copy()
-
-    # 키워드 필터
-    if k1_val and k1_val.strip():
-        m1 = apply_keyword(df_f, k1_val.strip(), f_val)
-        if l_val == "AND" and k2_val and k2_val.strip():
-            df_f = df_f[m1 & apply_keyword(df_f, k2_val.strip(), f_val)]
-        elif l_val == "OR" and k2_val and k2_val.strip():
-            df_f = df_f[m1 | apply_keyword(df_f, k2_val.strip(), f_val)]
+        if d_col and d_col in df_raw.columns:
+            tmp_dt = df_raw[d_col].astype(str).str.replace(r'[^0-9]', '', regex=True).str[:8]
         else:
-            df_f = df_f[m1]
+            tmp_dt = pd.Series("0", index=df_raw.index)
+        date_mask = (tmp_dt >= s_s) & (tmp_dt <= e_s)
 
-    return df_f.sort_values(by='tmp_dt', ascending=False)
+    # ── 키워드 mask ────────────────────────────────────────
+    kw_mask = pd.Series(True, index=df_raw.index)
+    if k1_val and k1_val.strip():
+        m1 = apply_keyword(df_raw, k1_val.strip(), f_val)
+        if l_val == "AND" and k2_val and k2_val.strip():
+            kw_mask = m1 & apply_keyword(df_raw, k2_val.strip(), f_val)
+        elif l_val == "OR" and k2_val and k2_val.strip():
+            kw_mask = m1 | apply_keyword(df_raw, k2_val.strip(), f_val)
+        else:
+            kw_mask = m1
+
+    # ★ 최종 1번만 .copy() — 필터된 결과만 메모리에 보관
+    result = df_raw[date_mask & kw_mask].copy()
+    result['tmp_dt'] = tmp_dt[date_mask & kw_mask]
+    return result.sort_values('tmp_dt', ascending=False)
 
 
-# ── 설정값 ────────────────────────────────────────────────────────────────────────
+# ── 설정값 ────────────────────────────────────────────────
 SHEET_FILE_IDS = {
     '나라장터_발주': '1pGnb6O5Z1ahaHYuQdydyoY1Ayf147IoGmLRdA3WAHi4',
     '나라장터_공고': None,
@@ -260,43 +301,124 @@ DISPLAY_INDEX_MAP = {
     '종합쇼핑몰':   ["수요기관명", "계약납품요구일자", "세부품명", "계약명", "업체명", "수량", "금액"]
 }
 
-DATE_COL_MAP = {
-    '나라장터_발주': None,
-    '나라장터_공고': 'bidNtceDt',
-    '나라장터_계약': '★가공_계약일',
-    '군수품_발주':   '발주예정월',
-    '군수품_공고':   '공고일자',
-    '군수품_계약':   '계약일자',
-    '군수품_수의':   '개찰일자',
-    '종합쇼핑몰':   '계약납품요구일자'
-}
-
 TAB_ICONS = {
     '나라장터_발주': '📋', '나라장터_공고': '📢',
     '나라장터_계약': '📝', '군수품_발주':   '🛡',
-    '군수품_공고':   '📣','군수품_계약':   '✅', 
+    '군수품_공고':   '📣', '군수품_계약':   '✅',
     '군수품_수의':   '🤝', '종합쇼핑몰':   '🛒'
 }
 
 
-# ── 헬퍼 ─────────────────────────────────────────────────────────────────────────
-def apply_keyword(df, keyword, field):
-    target = field
-    if field == "업체명":
-        for c in ["업체명","상호","상호명","계약상대자","계약상대자명"]:
-            if c in df.columns: target = c; break
-    elif field == "수요기관명":
-        for c in ["수요기관명","수요기관","발주기관","공고기관"]:
-            if c in df.columns: target = c; break
-    elif field == "계약명":
-        for c in ["계약명","공고명"]:
-            if c in df.columns: target = c; break
-    if target != "ALL" and target in df.columns:
-        return df[target].astype(str).str.contains(keyword, case=False, na=False)
-    return df.astype(str).apply(lambda x: x.str.contains(keyword, case=False, na=False)).any(axis=1)
+# ═══════════════════════════════════════════════════════════
+# ★ 수정 3: Excel/CSV 생성을 검색 시점에 1번만 수행
+#   기존: show_result_table(@st.fragment) 안에서 생성
+#         → 페이지 버튼 클릭마다 Excel 재생성 (CPU 폭발)
+#   수정: 검색 완료 시 session_state에 bytes로 저장
+#         → 다운로드 버튼은 이미 만들어진 bytes만 전달
+# ═══════════════════════════════════════════════════════════
+def build_download_bytes(df: pd.DataFrame) -> tuple[bytes, bytes]:
+    """CSV + Excel bytes를 검색 시 1번만 생성해 session_state에 저장"""
+    csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine='xlsxwriter') as w:
+        df.to_excel(w, index=False)
+    return csv_bytes, out.getvalue()
 
 
-# ── 헤더 ─────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# 결과 테이블 Fragment
+# ─────────────────────────────────────────────────────────
+@st.fragment
+def show_result_table(cat, idx_list):
+    df = st.session_state.get(f"df_{cat}")
+    if df is None:
+        return
+
+    show_cols = [
+        df.columns[idx] if isinstance(idx, int) else idx
+        for idx in idx_list
+        if (isinstance(idx, int) and idx < len(df.columns))
+        or (isinstance(idx, str) and idx in df.columns)
+    ] or list(df.columns[:10])
+
+    st.markdown('<div class="info-bar">', unsafe_allow_html=True)
+    c_res, c_s1, c_s2, c_sb, c_lim, c_dl = st.columns([1.2, 2.0, 1.6, 0.7, 1.1, 2.2])
+    c_res.markdown(f'<div class="result-badge">✅ {len(df):,} 건</div>', unsafe_allow_html=True)
+    sort_by  = c_s1.selectbox("정렬", ["날짜순"] + show_cols, key=f"st_{cat}", label_visibility="collapsed")
+    sort_dir = c_s2.selectbox("순서", ["내림차순", "오름차순"], key=f"sd_sort_{cat}", label_visibility="collapsed")
+    if c_sb.button("↕", key=f"sb_{cat}", use_container_width=True):
+        st.session_state[f"df_{cat}"] = df.sort_values(
+            by='tmp_dt' if sort_by == "날짜순" else sort_by,
+            ascending=(sort_dir == "오름차순")
+        )
+        st.rerun()
+    p_lim = c_lim.selectbox("개수", [50, 100, 150, 200], key=f"ps_{cat}", label_visibility="collapsed")
+
+    # ★ 다운로드: 검색 시 저장된 bytes 그대로 전달 (재생성 없음)
+    with c_dl:
+        cc, cx = st.columns(2)
+        csv_bytes  = st.session_state.get(f"csv_{cat}", b"")
+        xlsx_bytes = st.session_state.get(f"xlsx_{cat}", b"")
+        cc.download_button("📑 CSV",   csv_bytes,  f"{cat}.csv",  "text/csv",
+                           use_container_width=True)
+        cx.download_button("📊 Excel", xlsx_bytes, f"{cat}.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    total = max((len(df) - 1) // p_lim + 1, 1)
+    curr  = st.session_state.get(f"p_num_{cat}", 1)
+
+    lcc = {}
+    if "계약상세정보URL" in show_cols:
+        lcc["계약상세정보URL"] = st.column_config.LinkColumn("계약상세정보URL", display_text="바로가기")
+    if "공고문" in show_cols:
+        lcc["공고문"] = st.column_config.LinkColumn("공고문", display_text="바로가기")
+
+    st.dataframe(
+        df[show_cols].iloc[(curr - 1) * p_lim: curr * p_lim],
+        use_container_width=True, height=500, column_config=lcc
+    )
+
+    pg = st.columns([1, 10, 1])
+    with pg[1]:
+        bc = st.columns(14)
+        sp = max(1, curr - 4)
+        ep = min(total, sp + 9)
+        if bc[0].button("«",  key=f"f10_{cat}"): st.session_state[f"p_num_{cat}"] = max(1, curr - 10);  st.rerun()
+        if bc[1].button("‹",  key=f"f1_{cat}"):  st.session_state[f"p_num_{cat}"] = max(1, curr - 1);   st.rerun()
+        for j, p in enumerate(range(sp, ep + 1)):
+            if bc[j + 2].button(str(p), key=f"pg_{cat}_{p}",
+                                type="primary" if p == curr else "secondary"):
+                st.session_state[f"p_num_{cat}"] = p
+                st.rerun()
+        if bc[12].button("›", key=f"n1_{cat}"):  st.session_state[f"p_num_{cat}"] = min(total, curr + 1);  st.rerun()
+        if bc[13].button("»", key=f"n10_{cat}"): st.session_state[f"p_num_{cat}"] = min(total, curr + 10); st.rerun()
+
+
+# ─────────────────────────────────────────────────────────
+# 세션 초기화
+# ─────────────────────────────────────────────────────────
+_today = date.today()
+_yed   = (_today - relativedelta(days=1)).strftime('%Y-%m-%d')
+_6m    = (_today - relativedelta(months=6)).strftime('%Y-%m-%d')
+for _cat in SHEET_FILE_IDS:
+    for key, val in [
+        (f"sd_in_{_cat}", _6m),
+        (f"ed_in_{_cat}", _yed),
+        (f"df_{_cat}",    None),
+        (f"csv_{_cat}",   b""),
+        (f"xlsx_{_cat}",  b""),
+    ]:
+        if key not in st.session_state:
+            st.session_state[key] = val
+if "nt_나라장터_공고" not in st.session_state:
+    st.session_state["nt_나라장터_공고"] = "전체"
+
+
+# ─────────────────────────────────────────────────────────
+# 헤더
+# ─────────────────────────────────────────────────────────
 c1, c2 = st.columns([5, 1])
 with c1:
     st.markdown("""
@@ -314,84 +436,9 @@ with c2:
 st.markdown('<div class="header-divider"></div>', unsafe_allow_html=True)
 
 
-# ── 결과 테이블 Fragment ──────────────────────────────────────────────────────────
-@st.fragment
-def show_result_table(cat, idx_list):
-    df = st.session_state.get(f"df_{cat}")
-    if df is None: return
-
-    show_cols = [
-        df.columns[idx] if isinstance(idx, int) else idx
-        for idx in idx_list
-        if (isinstance(idx, int) and idx < len(df.columns))
-        or (isinstance(idx, str) and idx in df.columns)
-    ]
-    if not show_cols:
-        show_cols = list(df.columns[:10])
-
-    st.markdown('<div class="info-bar">', unsafe_allow_html=True)
-    c_res, c_s1, c_s2, c_sb, c_lim, c_dl = st.columns([1.2, 2.0, 1.6, 0.7, 1.1, 2.2])
-    c_res.markdown(f'<div class="result-badge">✅ {len(df):,} 건</div>', unsafe_allow_html=True)
-    sort_by  = c_s1.selectbox("정렬", ["날짜순"]+show_cols, key=f"st_{cat}", label_visibility="collapsed")
-    sort_dir = c_s2.selectbox("순서", ["내림차순","오름차순"], key=f"sd_sort_{cat}", label_visibility="collapsed")
-    if c_sb.button("↕", key=f"sb_{cat}", use_container_width=True):
-        st.session_state[f"df_{cat}"] = df.sort_values(
-            by='tmp_dt' if sort_by=="날짜순" else sort_by, ascending=(sort_dir=="오름차순"))
-        st.rerun()
-    p_lim = c_lim.selectbox("개수", [50,100,150,200], key=f"ps_{cat}", label_visibility="collapsed")
-    with c_dl:
-        cc, cx = st.columns(2)
-        out = io.BytesIO()
-        with pd.ExcelWriter(out, engine='xlsxwriter') as w: df.to_excel(w, index=False)
-        cc.download_button("📑 CSV", df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig'),
-                           f"{cat}.csv", "text/csv", use_container_width=True)
-        cx.download_button("📊 Excel", out.getvalue(), f"{cat}.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           use_container_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    total = max((len(df)-1)//p_lim+1, 1)
-    curr  = st.session_state.get(f"p_num_{cat}", 1)
-
-    lcc = {}
-    if "계약상세정보URL" in show_cols:
-        lcc["계약상세정보URL"] = st.column_config.LinkColumn("계약상세정보URL", display_text="바로가기")
-    if "공고문" in show_cols:
-        lcc["공고문"] = st.column_config.LinkColumn("공고문", display_text="바로가기")
-
-    st.dataframe(df[show_cols].iloc[(curr-1)*p_lim: curr*p_lim],
-                 use_container_width=True, height=500, column_config=lcc)
-
-    pg = st.columns([1,10,1])
-    with pg[1]:
-        bc = st.columns(14)
-        sp = max(1, curr-4); ep = min(total, sp+9)
-        if bc[0].button("«", key=f"f10_{cat}"): st.session_state[f"p_num_{cat}"]=max(1,curr-10); st.rerun()
-        if bc[1].button("‹", key=f"f1_{cat}"): st.session_state[f"p_num_{cat}"]=max(1,curr-1); st.rerun()
-        for j, p in enumerate(range(sp, ep+1)):
-            if bc[j+2].button(str(p), key=f"pg_{cat}_{p}",
-                               type="primary" if p==curr else "secondary"):
-                st.session_state[f"p_num_{cat}"]=p; st.rerun()
-        if bc[12].button("›", key=f"n1_{cat}"): st.session_state[f"p_num_{cat}"]=min(total,curr+1); st.rerun()
-        if bc[13].button("»", key=f"n10_{cat}"): st.session_state[f"p_num_{cat}"]=min(total,curr+10); st.rerun()
-
-
-# ── 세션 초기화 ───────────────────────────────────────────────────────────────────
-_today = date.today()
-_yed   = (_today - relativedelta(days=1)).strftime('%Y-%m-%d')
-_6m    = (_today - relativedelta(months=6)).strftime('%Y-%m-%d')
-for _cat in SHEET_FILE_IDS:
-    if f"sd_in_{_cat}" not in st.session_state:
-        st.session_state[f"sd_in_{_cat}"] = _6m
-    if f"ed_in_{_cat}" not in st.session_state:
-        st.session_state[f"ed_in_{_cat}"] = _yed
-    if f"df_{_cat}" not in st.session_state:
-        st.session_state[f"df_{_cat}"] = None
-if "nt_나라장터_공고" not in st.session_state:
-    st.session_state["nt_나라장터_공고"] = "전체"
-
-
-# ── 메인 탭 루프 ──────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────
+# 메인 탭 루프
+# ─────────────────────────────────────────────────────────
 tab_labels = [f"{TAB_ICONS.get(k,'')} {k}" for k in SHEET_FILE_IDS]
 tabs = st.tabs(tab_labels)
 
@@ -407,14 +454,14 @@ for i, tab in enumerate(tabs):
 
         qb = st.columns([0.55, 0.55, 0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 6])
         QUICK = [
-            ("어제",  f"d1_{cat}",  yed_str,                                                 yed_str),
-            ("1주",   f"d7_{cat}",  (yesterday-relativedelta(days=6)).strftime('%Y-%m-%d'),   yed_str),
-            ("1개월", f"m1_{cat}",  (yesterday-relativedelta(months=1)).strftime('%Y-%m-%d'), yed_str),
-            ("3개월", f"m3_{cat}",  (yesterday-relativedelta(months=3)).strftime('%Y-%m-%d'), yed_str),
-            ("6개월", f"m6_{cat}",  (yesterday-relativedelta(months=6)).strftime('%Y-%m-%d'), yed_str),
-            ("9개월", f"m9_{cat}",  (yesterday-relativedelta(months=9)).strftime('%Y-%m-%d'), yed_str),
-            ("1년",   f"y1_{cat}",  (yesterday-relativedelta(years=1)).strftime('%Y-%m-%d'),  yed_str),
-            ("2년",   f"y2_{cat}",  (yesterday-relativedelta(years=2)).strftime('%Y-%m-%d'),  yed_str),
+            ("어제",  f"d1_{cat}",  yed_str,                                                  yed_str),
+            ("1주",   f"d7_{cat}",  (yesterday - relativedelta(days=6)).strftime('%Y-%m-%d'),  yed_str),
+            ("1개월", f"m1_{cat}",  (yesterday - relativedelta(months=1)).strftime('%Y-%m-%d'), yed_str),
+            ("3개월", f"m3_{cat}",  (yesterday - relativedelta(months=3)).strftime('%Y-%m-%d'), yed_str),
+            ("6개월", f"m6_{cat}",  (yesterday - relativedelta(months=6)).strftime('%Y-%m-%d'), yed_str),
+            ("9개월", f"m9_{cat}",  (yesterday - relativedelta(months=9)).strftime('%Y-%m-%d'), yed_str),
+            ("1년",   f"y1_{cat}",  (yesterday - relativedelta(years=1)).strftime('%Y-%m-%d'),  yed_str),
+            ("2년",   f"y2_{cat}",  (yesterday - relativedelta(years=2)).strftime('%Y-%m-%d'),  yed_str),
         ]
         for idx_q, (label, key, sd_q, ed_q) in enumerate(QUICK):
             if qb[idx_q].button(label, key=key):
@@ -426,39 +473,28 @@ for i, tab in enumerate(tabs):
 
         if cat == '나라장터_공고':
             fd1, fd2, sc0, sc1, sc2, sc3, sc4, sc5 = st.columns([1.0, 1.0, 0.8, 0.9, 2.3, 0.7, 2.3, 1.0])
-            sd_in = fd1.text_input("시작일", key=f"sd_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
-            ed_in = fd2.text_input("종료일", key=f"ed_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
-            notice_type = sc0.selectbox("공고유형", ["전체","공사","물품","용역"],
-                                        key=f"nt_{cat}", label_visibility="collapsed")
-            f_val  = sc1.selectbox("필드", ["ALL","수요기관명","공고명"],
-                                   key=f"f_{cat}", label_visibility="collapsed")
-            k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed",
-                                    placeholder="🔎  검색어를 입력하세요")
-            l_val  = sc3.selectbox("논리", ["NONE","AND","OR"],
-                                   key=f"l_{cat}", label_visibility="collapsed")
-            k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed",
-                                    placeholder="🔎  검색어2 (AND/OR 선택 시)")
-            search_exe = sc5.button("🔍  검색실행", key=f"search_{cat}",
-                                    use_container_width=True, type="primary")
+            sd_in       = fd1.text_input("시작일", key=f"sd_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
+            ed_in       = fd2.text_input("종료일", key=f"ed_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
+            notice_type = sc0.selectbox("공고유형", ["전체", "공사", "물품", "용역"], key=f"nt_{cat}", label_visibility="collapsed")
+            f_val       = sc1.selectbox("필드", ["ALL", "수요기관명", "공고명"], key=f"f_{cat}", label_visibility="collapsed")
+            k1_val      = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed", placeholder="🔎  검색어를 입력하세요")
+            l_val       = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
+            k2_val      = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", placeholder="🔎  검색어2 (AND/OR 선택 시)")
+            search_exe  = sc5.button("🔍  검색실행", key=f"search_{cat}", use_container_width=True, type="primary")
         else:
             fd1, fd2, sc1, sc2, sc3, sc4, sc5 = st.columns([1.1, 1.1, 1.0, 2.6, 0.7, 2.6, 1.1])
-            sd_in = fd1.text_input("시작일", key=f"sd_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
-            ed_in = fd2.text_input("종료일", key=f"ed_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
-            f_val  = sc1.selectbox("필드", ["ALL","수요기관명","업체명","계약명","세부품명"],
-                                   key=f"f_{cat}", label_visibility="collapsed")
-            k1_val = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed",
-                                    placeholder="🔎  검색어를 입력하세요")
-            l_val  = sc3.selectbox("논리", ["NONE","AND","OR"],
-                                   key=f"l_{cat}", label_visibility="collapsed")
-            k2_val = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed",
-                                    placeholder="🔎  검색어2 (AND/OR 선택 시)")
-            search_exe = sc5.button("🔍  검색실행", key=f"search_{cat}",
-                                    use_container_width=True, type="primary")
+            sd_in      = fd1.text_input("시작일", key=f"sd_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
+            ed_in      = fd2.text_input("종료일", key=f"ed_in_{cat}", placeholder="YYYY-MM-DD", label_visibility="collapsed")
+            f_val      = sc1.selectbox("필드", ["ALL", "수요기관명", "업체명", "계약명", "세부품명"], key=f"f_{cat}", label_visibility="collapsed")
+            k1_val     = sc2.text_input("검색어1", key=f"k1_{cat}", label_visibility="collapsed", placeholder="🔎  검색어를 입력하세요")
+            l_val      = sc3.selectbox("논리", ["NONE", "AND", "OR"], key=f"l_{cat}", label_visibility="collapsed")
+            k2_val     = sc4.text_input("검색어2", key=f"k2_{cat}", label_visibility="collapsed", placeholder="🔎  검색어2 (AND/OR 선택 시)")
+            search_exe = sc5.button("🔍  검색실행", key=f"search_{cat}", use_container_width=True, type="primary")
             notice_type = "전체"
 
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # ③ 검색 실행
+        # ── 검색 실행 ────────────────────────────────────────
         if search_exe:
             try:
                 sd = datetime.strptime(sd_in.strip(), '%Y-%m-%d').date()
@@ -471,57 +507,61 @@ for i, tab in enumerate(tabs):
 
             try:
                 with st.spinner("데이터를 불러오는 중..."):
-
                     if cat == '나라장터_공고':
                         cats_to_load = NOTICE_CATS if notice_type == "전체" else [notice_type]
                         dfs = []
                         for nc in cats_to_load:
                             df_t = load_notice_data(nc, s_s, e_s)
                             if not df_t.empty:
+                                df_t = df_t.copy()
                                 df_t['공고유형'] = nc
                                 dfs.append(df_t)
-
                         df_f = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-
                         if not df_f.empty:
                             df_f = df_f.rename(columns=NOTICE_COL_RENAME)
                             if '추정가격' in df_f.columns:
                                 def fmt_price(v):
-                                    try: return f"{int(float(str(v).replace(',','')))  :,}"
+                                    try: return f"{int(float(str(v).replace(',', ''))):,}"
                                     except: return v
                                 df_f['추정가격'] = df_f['추정가격'].apply(fmt_price)
                             if k1_val and k1_val.strip():
                                 m1 = apply_keyword(df_f, k1_val.strip(), f_val)
-                                if l_val=="AND" and k2_val and k2_val.strip():
+                                if l_val == "AND" and k2_val and k2_val.strip():
                                     df_f = df_f[m1 & apply_keyword(df_f, k2_val.strip(), f_val)]
-                                elif l_val=="OR" and k2_val and k2_val.strip():
+                                elif l_val == "OR" and k2_val and k2_val.strip():
                                     df_f = df_f[m1 | apply_keyword(df_f, k2_val.strip(), f_val)]
                                 else:
                                     df_f = df_f[m1]
                             st.session_state[f"df_{cat}"] = df_f.sort_values('tmp_dt', ascending=False)
                         else:
                             st.session_state[f"df_{cat}"] = pd.DataFrame()
-                        st.session_state[f"p_num_{cat}"] = 1
-
                     else:
-                        # ★ 핵심: 공유 캐시에서 가져옴 (유저마다 새로 로딩 안 함)
+                        # 공유 캐시에서 원본 참조 (복사 없음)
                         df_raw = fetch_data_shared(
                             SHEET_FILE_IDS[cat],
                             is_sheet=(cat != '종합쇼핑몰')
                         )
-                        if not df_raw.empty:
-                            # ★ 필터링된 결과만 session_state에 저장
-                            df_f = filter_data(df_raw, cat, s_s, e_s, k1_val, k2_val, f_val, l_val)
-                            st.session_state[f"df_{cat}"] = df_f
-                            st.session_state[f"p_num_{cat}"] = 1
-                        else:
-                            st.session_state[f"df_{cat}"] = pd.DataFrame()
+                        df_f = filter_data(df_raw, cat, s_s, e_s, k1_val, k2_val, f_val, l_val) \
+                               if not df_raw.empty else pd.DataFrame()
+                        st.session_state[f"df_{cat}"] = df_f
+
+                    # ★ 검색 완료 시 다운로드 bytes 1번만 생성
+                    df_result = st.session_state[f"df_{cat}"]
+                    if df_result is not None and not df_result.empty:
+                        csv_b, xlsx_b = build_download_bytes(df_result)
+                        st.session_state[f"csv_{cat}"]  = csv_b
+                        st.session_state[f"xlsx_{cat}"] = xlsx_b
+                    else:
+                        st.session_state[f"csv_{cat}"]  = b""
+                        st.session_state[f"xlsx_{cat}"] = b""
+
+                    st.session_state[f"p_num_{cat}"] = 1
 
             except Exception as e:
                 st.error(f"오류: {e}")
                 st.session_state[f"df_{cat}"] = pd.DataFrame()
 
-        # ④ 결과 출력
+        # ── 결과 출력 ─────────────────────────────────────────
         if st.session_state[f"df_{cat}"] is not None:
             if len(st.session_state[f"df_{cat}"]) == 0:
                 st.markdown('<div class="no-data-msg"><div class="no-data-icon">🔍</div>검색 결과가 없습니다.</div>', unsafe_allow_html=True)
