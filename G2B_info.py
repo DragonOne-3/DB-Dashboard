@@ -26,11 +26,11 @@ RE_MONTH_ONLY   = re.compile(r"^[0-3]개월")
 RE_CONTRACT_NUM = re.compile(r"\d+차분?|\d+")
 
 # ─────────────────────────────────────────────
-# CSS (폰트 크기 대폭 상향)
+# CSS
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
-  html, body, [class*="css"] { font-size: 18px; } /* 기본 폰트 크기 상향 */
+  html, body, [class*="css"] { font-size: 18px; }
   .stApp { background: #f4f6fb; }
   .hero {
     background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
@@ -50,8 +50,6 @@ st.markdown("""
   .stat-num   { font-size: 2.3rem; font-weight: 800; color: #2563eb; line-height: 1.1; }
   .stat-label { font-size: 1rem; color: #64748b; margin-top: .5rem; font-weight: 500; letter-spacing: .3px; }
   .section-title { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin-bottom: 1rem; letter-spacing: -.2px; }
-  
-  /* 버튼 폰트 키우기 */
   div[data-testid="stButton"] > button { font-size: 1.1rem !important; height: auto !important; padding: 0.6rem 1rem !important; }
   div[data-testid="stButton"] > button[kind="primary"] {
     background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
@@ -97,41 +95,54 @@ METRO_LIST = [
     "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도",
 ]
 
+PAGE_SIZE = 50  # 페이지당 표시 행 수
+
 # ─────────────────────────────────────────────
 # session_state 초기화
 # ─────────────────────────────────────────────
-for k, v in [("search_done", False), ("search_region", "전국"), ("radio_region", "전국")]:
+for k, v in [("search_done", False), ("search_region", "전국"), ("radio_region", "전국"), ("page", 1)]:
     if k not in st.session_state:
         st.session_state[k] = v
 
 
 # ─────────────────────────────────────────────
-# 데이터 로드
+# 데이터 로드 — 인자 없이 캐시 (해싱 비용 0)
 # ─────────────────────────────────────────────
 @st.cache_resource
 def _get_worksheet():
     auth_json = os.environ.get("GOOGLE_AUTH_JSON")
     if not auth_json:
         return None
-    creds_dict = json.loads(auth_json)
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    return client.open("나라장터_용역계약내역").get_worksheet(0)
+    try:
+        creds_dict = json.loads(auth_json)
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        return client.open("나라장터_용역계약내역").get_worksheet(0)
+    except Exception as e:
+        st.error(f"❌ 시트 연결 오류: {e}")
+        return None
 
 
-@st.cache_data(ttl=600, show_spinner=False)
-def load_raw_data() -> pd.DataFrame:
+# ✅ 핵심 수정: load + build를 인자 없는 단일 함수로 통합
+# → 모든 유저가 동일 캐시 1개를 공유, DF 해싱 비용 완전 제거
+@st.cache_data(ttl=1800, show_spinner=False)  # TTL 30분으로 상향
+def get_processed_df() -> pd.DataFrame:
+    """Google Sheets 로드 + 전처리를 한 번에. 인자 없으므로 해싱 비용 없음."""
     try:
         ws = _get_worksheet()
         if ws is None:
             st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
             return pd.DataFrame()
         records = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
-        return pd.DataFrame(records) if records else pd.DataFrame()
+        if not records:
+            return pd.DataFrame()
+        raw = pd.DataFrame(records)
     except Exception as e:
         st.error(f"❌ 시트 로드 오류: {e}")
         return pd.DataFrame()
+
+    return _build_processed(raw)
 
 
 # ─────────────────────────────────────────────
@@ -151,7 +162,7 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     total_finish = parse_date_series(df["총완수일자"])
     period_raw   = df["계약기간"].astype(str)
 
-    this_vals  = period_raw.str.extract(r"금차\s*[:\s]*(\d+)",         expand=False).astype(float).fillna(0)
+    this_vals  = period_raw.str.extract(r"금차\s*[:\s]*(\d+)",          expand=False).astype(float).fillna(0)
     total_vals = period_raw.str.extract(r"(?:총차|총용역|총)\s*[:\s]*(\d+)", expand=False).astype(float).fillna(0)
 
     base_date = start_date.combine_first(cntrct_date)
@@ -181,16 +192,16 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     remaining[is_expired] = "만료됨"
 
     if is_active.any():
-        delta      = (expire[is_active] - today).dt.days
-        months     = (delta // 30).astype(int)
-        days_left  = (delta % 30).astype(int)
+        delta     = (expire[is_active] - today).dt.days
+        months    = (delta // 30).astype(int)
+        days_left = (delta % 30).astype(int)
         remaining[is_active] = months.astype(str) + "개월 " + days_left.astype(str) + "일"
 
     return pd.DataFrame({"★가공_계약만료일": expire_str, "남은기간": remaining})
 
 
 # ─────────────────────────────────────────────
-# 전처리
+# 전처리 내부 함수 (캐시 함수에서만 호출)
 # ─────────────────────────────────────────────
 def clean_contract_name(name: str) -> str:
     name = str(name).replace(" ", "")
@@ -204,16 +215,13 @@ def get_metro(a: str) -> str:
     return "기타"
 
 
-@st.cache_data(ttl=600, show_spinner=False)
-def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
+def _build_processed(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw.copy()
 
-    # 수요기관 필터
     agency_col = df["★가공_수요기관"].astype(str).str.strip()
     mask = agency_col.apply(lambda a: any(a.startswith(d) for d in FULL_DISTRICT_LIST))
     df = df[mask & ~agency_col.str.contains("교육청", na=False)].copy()
 
-    # 계약명 필터
     cn = df["★가공_계약명"].astype(str)
     df = df[
         cn.str.contains("유지", na=False) &
@@ -221,10 +229,8 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
         ~cn.str.contains("상수도|청사|악취|미세먼지", na=False)
     ].copy()
 
-    # 만료일 & 남은기간
     df[["★가공_계약만료일", "남은기간"]] = calculate_logic_vectorized(df).values
 
-    # 정렬용 컬럼
     df["temp_date"]          = pd.to_datetime(df["계약일자"].astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8], format="%Y%m%d", errors="coerce")
     df["contract_group_key"] = df["★가공_계약명"].apply(clean_contract_name)
 
@@ -233,7 +239,7 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
         ascending=[True, True, True, False],
     )
 
-    today = pd.Timestamp(datetime.now().date())
+    today        = pd.Timestamp(datetime.now().date())
     one_year_ago = today - pd.DateOffset(years=1)
 
     active_df = df[df["남은기간"] != "만료됨"].drop_duplicates(
@@ -241,7 +247,7 @@ def build_processed_df(raw: pd.DataFrame) -> pd.DataFrame:
     )
 
     recent_expired_df = df[df["남은기간"] == "만료됨"].copy()
-    expire_dt = pd.to_datetime(recent_expired_df["★가공_계약만료일"], errors="coerce")
+    expire_dt         = pd.to_datetime(recent_expired_df["★가공_계약만료일"], errors="coerce")
     recent_expired_df = recent_expired_df[expire_dt >= one_year_ago].drop_duplicates(
         ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
     )
@@ -291,12 +297,11 @@ st.markdown("</div>", unsafe_allow_html=True)
 if search_clicked:
     st.session_state["search_done"]   = True
     st.session_state["search_region"] = st.session_state["radio_region"]
+    st.session_state["page"]          = 1  # 지역 바꾸면 페이지 초기화
 
-# 프리페치
+# 프리페치 — 인자 없는 단일 호출로 단순화
 with st.spinner("📡 데이터 준비 중…"):
-    _raw = load_raw_data()
-    if not _raw.empty:
-        _processed = build_processed_df(_raw)
+    processed_df = get_processed_df()
 
 if not st.session_state["search_done"]:
     st.markdown("""
@@ -308,17 +313,20 @@ if not st.session_state["search_done"]:
     """, unsafe_allow_html=True)
     st.stop()
 
+if processed_df.empty:
+    st.stop()
+
 # ─────────────────────────────────────────────
 # 검색 결과
 # ─────────────────────────────────────────────
 region_to_show = st.session_state["search_region"]
 
-raw_df = load_raw_data()
-if raw_df.empty:
-    st.stop()
-processed_df = build_processed_df(raw_df)
-
-display_df = processed_df.copy() if region_to_show == "전국" else processed_df[processed_df["광역단위"] == region_to_show].copy()
+# ✅ 핵심 수정: .copy() 제거 — 뷰(view)만 생성, 메모리 복사 없음
+display_df = (
+    processed_df
+    if region_to_show == "전국"
+    else processed_df[processed_df["광역단위"] == region_to_show]
+)
 
 # 통계 카드
 total_count   = len(display_df)
@@ -354,7 +362,8 @@ with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
         sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료", "만료됨"],                  placeholder="전체")
     kw = st.text_input("🔎 계약명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...")
 
-filtered_df = display_df.copy()
+# ✅ 핵심 수정: display_df 복사 없이 필터링 체이닝
+filtered_df = display_df
 if sel_agency:  filtered_df = filtered_df[filtered_df["★가공_수요기관"].isin(sel_agency)]
 if sel_company: filtered_df = filtered_df[filtered_df["★가공_업체명"].isin(sel_company)]
 if kw:          filtered_df = filtered_df[filtered_df["★가공_계약명"].str.contains(kw, case=False, na=False)]
@@ -387,23 +396,55 @@ with dc:
         use_container_width=True,
     )
 
-# 정렬 기준 매핑
+# 정렬
 sort_map = {
     "수요기관": "★가공_수요기관",
     "계약금액 (높은순)": "★가공_계약금액",
     "계약만료일 (빠른순)": "★가공_계약만료일",
     "계약일자 (최신순)": "계약일자",
 }
-# 기본값을 '계약일자 (최신순)' (index 3)으로 설정
 sort_choice = st.selectbox("정렬 기준", list(sort_map.keys()), index=3, label_visibility="collapsed")
-filtered_df = filtered_df.sort_values(sort_map[sort_choice], ascending=sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"])
+sorted_df   = filtered_df.sort_values(sort_map[sort_choice], ascending=sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"])
 
-final_out = filtered_df[COLS].copy()
+final_out = sorted_df[COLS].copy()
 final_out.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in final_out.columns]
 
 
 # ─────────────────────────────────────────────
-# HTML 테이블 렌더링 (테이블 폰트 상향)
+# ✅ 페이지네이션 — 50행씩 분할 렌더링
+# ─────────────────────────────────────────────
+total_rows  = len(final_out)
+total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+
+# 페이지 번호가 범위를 벗어나지 않도록 보정
+if st.session_state["page"] > total_pages:
+    st.session_state["page"] = 1
+
+pg_col1, pg_col2, pg_col3 = st.columns([3, 2, 3])
+with pg_col1:
+    st.markdown(
+        f'<div style="padding-top:8px;color:#64748b;font-size:1rem;">'
+        f'총 <b>{total_rows:,}건</b> · {total_pages}페이지</div>',
+        unsafe_allow_html=True,
+    )
+with pg_col2:
+    page = st.number_input(
+        "페이지",
+        min_value=1,
+        max_value=total_pages,
+        value=st.session_state["page"],
+        step=1,
+        label_visibility="collapsed",
+        key="page_input",
+    )
+    st.session_state["page"] = page
+
+# 현재 페이지 50행만 슬라이싱 → HTML 크기 대폭 감소
+paged_df = final_out.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
+
+
+# ─────────────────────────────────────────────
+# HTML 테이블 렌더링
 # ─────────────────────────────────────────────
 def status_badge(val: str) -> str:
     if "만료됨" in val or "계약만료" in val:
@@ -424,7 +465,6 @@ def render_table(df: pd.DataFrame) -> str:
         "계약금액": "계약금액(원)", "계약일자": "계약일자", "착수일자": "착수일자",
         "계약만료일": "계약만료일", "남은기간": "남은기간", "URL": "상세",
     }
-    # 폰트 크기 0.95rem~1.0rem으로 상향
     TH = ("background:#1e3a5f;color:#fff;padding:12px 14px;font-size:0.95rem;font-weight:700;"
           "white-space:nowrap;border-bottom:2px solid #2563eb;text-align:left;")
     TD = "padding:11px 14px;font-size:1rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
@@ -464,4 +504,12 @@ def render_table(df: pd.DataFrame) -> str:
             f'</table></div>')
 
 
-st.markdown(render_table(final_out), unsafe_allow_html=True)
+st.markdown(render_table(paged_df), unsafe_allow_html=True)
+
+# 하단 페이지 정보
+st.markdown(
+    f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">'
+    f'{page} / {total_pages} 페이지 &nbsp;·&nbsp; '
+    f'{(page-1)*PAGE_SIZE + 1}–{min(page*PAGE_SIZE, total_rows)}번째 항목</div>',
+    unsafe_allow_html=True,
+)
