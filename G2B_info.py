@@ -139,6 +139,13 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cond4 = expire.isna() & total_finish.notna()
     expire[cond4] = total_finish[cond4]
 
+    # ✅ 추가: 총완수일자가 계산된 만료일보다 늦으면 총완수일자로 덮어쓰기
+    override = total_finish.notna() & expire.notna() & (total_finish > expire)
+    expire[override] = total_finish[override]
+    # 총완수일자만 있고 expire가 NaT인 경우도 커버
+    only_total = total_finish.notna() & expire.isna()
+    expire[only_total] = total_finish[only_total]
+
     today      = pd.Timestamp(datetime.now().date())
     expire_str = expire.dt.strftime("%Y-%m-%d").fillna("정보부족")
     remaining  = pd.Series("정보부족", index=df.index)
