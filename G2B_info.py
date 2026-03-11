@@ -398,20 +398,25 @@ total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
 if st.session_state["page"] > total_pages:
     st.session_state["page"] = 1
 
-pg_col1, pg_col2, _ = st.columns([3, 2, 3])
-with pg_col1:
-    st.markdown(
-        f'<div style="padding-top:8px;color:#64748b;font-size:1rem;">'
-        f'총 <b>{total_rows:,}건</b> · {total_pages}페이지</div>',
-        unsafe_allow_html=True,
-    )
-with pg_col2:
-    page = st.number_input(
-        "페이지", min_value=1, max_value=total_pages,
-        value=st.session_state["page"], step=1,
-        label_visibility="collapsed",
-    )
-    st.session_state["page"] = page
+st.markdown(
+    f'<div style="padding-top:4px;color:#64748b;font-size:1rem;margin-bottom:.5rem;">'
+    f'총 <b>{total_rows:,}건</b> · {total_pages}페이지</div>',
+    unsafe_allow_html=True,
+)
+
+# 페이지 번호 버튼 — 한 줄에 최대 20개
+MAX_BTN  = 20
+btn_cols = st.columns(min(total_pages, MAX_BTN))
+for i in range(total_pages):
+    col_idx = i % MAX_BTN
+    with btn_cols[col_idx]:
+        is_current = (st.session_state["page"] == i + 1)
+        label      = f"**{i+1}**" if is_current else str(i + 1)
+        if st.button(label, key=f"pg_{i+1}", use_container_width=True):
+            st.session_state["page"] = i + 1
+            st.rerun()
+
+page = st.session_state["page"]
 
 # 50행 슬라이스 후 컬럼명 변환 → 작은 DF에만 복사 발생
 paged_df = final_out.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE].rename(columns=col_rename)
