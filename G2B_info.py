@@ -206,7 +206,7 @@ def get_processed_df() -> pd.DataFrame:
     df = df[
         cn.str.contains("유지", na=False) &
         cn.str.contains("통합관제|통합|CCTV", na=False) &
-        ~cn.str.contains("상수도|청사|악취|미세먼지", na=False)
+        ~cn.str.contains("상수도|청사|악취|미세먼지|상담실|보건소", na=False)
     ].copy()
 
     df[["★가공_계약만료일", "남은기간"]] = calculate_logic_vectorized(df).values
