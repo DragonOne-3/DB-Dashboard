@@ -5,7 +5,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import os
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 import re
 
 # ─────────────────────────────────────────────
@@ -55,9 +54,7 @@ st.markdown("""
     background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
     border: none !important; color: #fff !important; font-weight: 700 !important;
     border-radius: 8px !important; box-shadow: 0 3px 10px rgba(37,99,235,.35) !important;
-    transition: opacity .18s, transform .18s;
   }
-  div[data-testid="stButton"] > button[kind="primary"]:hover { opacity: .9; transform: translateY(-1px); }
   div[data-testid="stDownloadButton"] > button {
     background: #fff !important; border: 1.5px solid #2563eb !important;
     color: #2563eb !important; font-weight: 600 !important; border-radius: 8px !important;
@@ -95,7 +92,7 @@ METRO_LIST = [
     "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도",
 ]
 
-PAGE_SIZE = 50  # 페이지당 표시 행 수
+PAGE_SIZE = 50
 
 # ─────────────────────────────────────────────
 # session_state 초기화
@@ -106,47 +103,7 @@ for k, v in [("search_done", False), ("search_region", "전국"), ("radio_region
 
 
 # ─────────────────────────────────────────────
-# 데이터 로드 — 인자 없이 캐시 (해싱 비용 0)
-# ─────────────────────────────────────────────
-@st.cache_resource
-def _get_worksheet():
-    auth_json = os.environ.get("GOOGLE_AUTH_JSON")
-    if not auth_json:
-        return None
-    try:
-        creds_dict = json.loads(auth_json)
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        return client.open("나라장터_용역계약내역").get_worksheet(0)
-    except Exception as e:
-        st.error(f"❌ 시트 연결 오류: {e}")
-        return None
-
-
-# ✅ 핵심 수정: load + build를 인자 없는 단일 함수로 통합
-# → 모든 유저가 동일 캐시 1개를 공유, DF 해싱 비용 완전 제거
-@st.cache_data(ttl=1800, show_spinner=False)  # TTL 30분으로 상향
-def get_processed_df() -> pd.DataFrame:
-    """Google Sheets 로드 + 전처리를 한 번에. 인자 없으므로 해싱 비용 없음."""
-    try:
-        ws = _get_worksheet()
-        if ws is None:
-            st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
-            return pd.DataFrame()
-        records = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
-        if not records:
-            return pd.DataFrame()
-        raw = pd.DataFrame(records)
-    except Exception as e:
-        st.error(f"❌ 시트 로드 오류: {e}")
-        return pd.DataFrame()
-
-    return _build_processed(raw)
-
-
-# ─────────────────────────────────────────────
-# 날짜 파싱 (벡터화)
+# 날짜 파싱
 # ─────────────────────────────────────────────
 def parse_date_series(s: pd.Series) -> pd.Series:
     cleaned = s.astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8]
@@ -154,7 +111,7 @@ def parse_date_series(s: pd.Series) -> pd.Series:
 
 
 # ─────────────────────────────────────────────
-# 계약 만료일 & 남은기간 계산 (벡터화)
+# 계약 만료일 & 남은기간 계산
 # ─────────────────────────────────────────────
 def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cntrct_date  = parse_date_series(df["계약일자"])
@@ -188,7 +145,6 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
 
     is_expired = expire.notna() & (expire < today)
     is_active  = expire.notna() & (expire >= today)
-
     remaining[is_expired] = "만료됨"
 
     if is_active.any():
@@ -200,12 +156,8 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame({"★가공_계약만료일": expire_str, "남은기간": remaining})
 
 
-# ─────────────────────────────────────────────
-# 전처리 내부 함수 (캐시 함수에서만 호출)
-# ─────────────────────────────────────────────
 def clean_contract_name(name: str) -> str:
-    name = str(name).replace(" ", "")
-    return RE_CONTRACT_NUM.sub("", name)
+    return RE_CONTRACT_NUM.sub("", str(name).replace(" ", ""))
 
 
 def get_metro(a: str) -> str:
@@ -215,12 +167,40 @@ def get_metro(a: str) -> str:
     return "기타"
 
 
-def _build_processed(raw: pd.DataFrame) -> pd.DataFrame:
-    df = raw.copy()
+# ─────────────────────────────────────────────
+# ✅ 핵심: @st.cache_resource 사용
+#
+# ❌ cache_data  → 캐시 HIT 시에도 pickle → unpickle 실행
+#                 유저마다 20MB DF 역직렬화 → 더 느림
+#
+# ✅ cache_resource → 메모리에 객체 1개만 유지
+#                    pickle 없음, 모든 유저가 같은 객체 참조
+# ─────────────────────────────────────────────
+@st.cache_resource
+def get_processed_df() -> pd.DataFrame:
+    """GSheets 로드 + 전처리. 서버에서 딱 1번만 실행, 결과를 모든 유저가 공유."""
+    auth_json = os.environ.get("GOOGLE_AUTH_JSON")
+    if not auth_json:
+        st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
+        return pd.DataFrame()
+    try:
+        creds_dict = json.loads(auth_json)
+        scope      = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client     = gspread.authorize(creds)
+        ws         = client.open("나라장터_용역계약내역").get_worksheet(0)
+        records    = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
+    except Exception as e:
+        st.error(f"❌ 시트 로드 오류: {e}")
+        return pd.DataFrame()
 
+    if not records:
+        return pd.DataFrame()
+
+    df         = pd.DataFrame(records)
     agency_col = df["★가공_수요기관"].astype(str).str.strip()
-    mask = agency_col.apply(lambda a: any(a.startswith(d) for d in FULL_DISTRICT_LIST))
-    df = df[mask & ~agency_col.str.contains("교육청", na=False)].copy()
+    mask       = agency_col.apply(lambda a: any(a.startswith(d) for d in FULL_DISTRICT_LIST))
+    df         = df[mask & ~agency_col.str.contains("교육청", na=False)].copy()
 
     cn = df["★가공_계약명"].astype(str)
     df = df[
@@ -230,10 +210,11 @@ def _build_processed(raw: pd.DataFrame) -> pd.DataFrame:
     ].copy()
 
     df[["★가공_계약만료일", "남은기간"]] = calculate_logic_vectorized(df).values
-
-    df["temp_date"]          = pd.to_datetime(df["계약일자"].astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8], format="%Y%m%d", errors="coerce")
+    df["temp_date"]          = pd.to_datetime(
+        df["계약일자"].astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8],
+        format="%Y%m%d", errors="coerce"
+    )
     df["contract_group_key"] = df["★가공_계약명"].apply(clean_contract_name)
-
     df = df.sort_values(
         ["★가공_수요기관", "contract_group_key", "★가공_업체명", "temp_date"],
         ascending=[True, True, True, False],
@@ -242,10 +223,9 @@ def _build_processed(raw: pd.DataFrame) -> pd.DataFrame:
     today        = pd.Timestamp(datetime.now().date())
     one_year_ago = today - pd.DateOffset(years=1)
 
-    active_df = df[df["남은기간"] != "만료됨"].drop_duplicates(
+    active_df         = df[df["남은기간"] != "만료됨"].drop_duplicates(
         ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
     )
-
     recent_expired_df = df[df["남은기간"] == "만료됨"].copy()
     expire_dt         = pd.to_datetime(recent_expired_df["★가공_계약만료일"], errors="coerce")
     recent_expired_df = recent_expired_df[expire_dt >= one_year_ago].drop_duplicates(
@@ -280,7 +260,6 @@ st.markdown("""
 # ─────────────────────────────────────────────
 st.markdown('<div class="search-panel">', unsafe_allow_html=True)
 st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
-
 st.radio("", options=METRO_LIST, horizontal=True, key="radio_region", label_visibility="collapsed")
 
 col_btn1, col_btn2 = st.columns([1, 8])
@@ -288,7 +267,6 @@ with col_btn1:
     search_clicked = st.button("🔍 검색", type="primary", use_container_width=True)
 with col_btn2:
     if st.button("🔄 데이터 새로고침"):
-        st.cache_data.clear()
         st.cache_resource.clear()
         st.rerun()
 
@@ -297,9 +275,9 @@ st.markdown("</div>", unsafe_allow_html=True)
 if search_clicked:
     st.session_state["search_done"]   = True
     st.session_state["search_region"] = st.session_state["radio_region"]
-    st.session_state["page"]          = 1  # 지역 바꾸면 페이지 초기화
+    st.session_state["page"]          = 1
 
-# 프리페치 — 인자 없는 단일 호출로 단순화
+# 프리페치 — 최초 1회만 실행, 이후는 메모리 참조
 with st.spinner("📡 데이터 준비 중…"):
     processed_df = get_processed_df()
 
@@ -317,11 +295,10 @@ if processed_df.empty:
     st.stop()
 
 # ─────────────────────────────────────────────
-# 검색 결과
+# 검색 결과 — boolean mask만 사용, 복사 없음
 # ─────────────────────────────────────────────
 region_to_show = st.session_state["search_region"]
 
-# ✅ 핵심 수정: .copy() 제거 — 뷰(view)만 생성, 메모리 복사 없음
 display_df = (
     processed_df
     if region_to_show == "전국"
@@ -362,7 +339,7 @@ with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
         sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료", "만료됨"],                  placeholder="전체")
     kw = st.text_input("🔎 계약명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...")
 
-# ✅ 핵심 수정: display_df 복사 없이 필터링 체이닝
+# 필터링 — 전부 boolean mask(뷰), 복사 없음
 filtered_df = display_df
 if sel_agency:  filtered_df = filtered_df[filtered_df["★가공_수요기관"].isin(sel_agency)]
 if sel_company: filtered_df = filtered_df[filtered_df["★가공_업체명"].isin(sel_company)]
@@ -377,7 +354,6 @@ if sel_status:
         for c in conds[1:]: combined |= c
         filtered_df = filtered_df[combined]
 
-# 결과 헤더
 COLS = ["★가공_수요기관", "★가공_계약명", "★가공_업체명", "★가공_계약금액",
         "계약일자", "착수일자", "★가공_계약만료일", "남은기간", "계약상세정보URL"]
 
@@ -386,6 +362,7 @@ rc, dc = st.columns([6, 2])
 with rc:
     st.markdown(f'<div class="section-title" style="font-size:1.5rem;">📊 {region_to_show} 계약 현황 — {len(filtered_df):,}건</div>', unsafe_allow_html=True)
 with dc:
+    # CSV 다운로드는 클릭 시에만 소량 복사 발생 — 허용
     exp_df = filtered_df[COLS].copy()
     exp_df.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in exp_df.columns]
     st.download_button(
@@ -396,7 +373,6 @@ with dc:
         use_container_width=True,
     )
 
-# 정렬
 sort_map = {
     "수요기관": "★가공_수요기관",
     "계약금액 (높은순)": "★가공_계약금액",
@@ -404,23 +380,25 @@ sort_map = {
     "계약일자 (최신순)": "계약일자",
 }
 sort_choice = st.selectbox("정렬 기준", list(sort_map.keys()), index=3, label_visibility="collapsed")
-sorted_df   = filtered_df.sort_values(sort_map[sort_choice], ascending=sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"])
+sorted_df   = filtered_df.sort_values(
+    sort_map[sort_choice],
+    ascending=sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"]
+)
 
-final_out = sorted_df[COLS].copy()
-final_out.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in final_out.columns]
-
+# 컬럼명 변환은 paged_df(50행)에만 적용
+final_out         = sorted_df[COLS]
+col_rename        = {c: c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in COLS}
 
 # ─────────────────────────────────────────────
-# ✅ 페이지네이션 — 50행씩 분할 렌더링
+# 페이지네이션 — 50행씩만 렌더링
 # ─────────────────────────────────────────────
 total_rows  = len(final_out)
 total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
 
-# 페이지 번호가 범위를 벗어나지 않도록 보정
 if st.session_state["page"] > total_pages:
     st.session_state["page"] = 1
 
-pg_col1, pg_col2, pg_col3 = st.columns([3, 2, 3])
+pg_col1, pg_col2, _ = st.columns([3, 2, 3])
 with pg_col1:
     st.markdown(
         f'<div style="padding-top:8px;color:#64748b;font-size:1rem;">'
@@ -429,18 +407,14 @@ with pg_col1:
     )
 with pg_col2:
     page = st.number_input(
-        "페이지",
-        min_value=1,
-        max_value=total_pages,
-        value=st.session_state["page"],
-        step=1,
+        "페이지", min_value=1, max_value=total_pages,
+        value=st.session_state["page"], step=1,
         label_visibility="collapsed",
-        key="page_input",
     )
     st.session_state["page"] = page
 
-# 현재 페이지 50행만 슬라이싱 → HTML 크기 대폭 감소
-paged_df = final_out.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE]
+# 50행 슬라이스 후 컬럼명 변환 → 작은 DF에만 복사 발생
+paged_df = final_out.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE].rename(columns=col_rename)
 
 
 # ─────────────────────────────────────────────
@@ -506,7 +480,6 @@ def render_table(df: pd.DataFrame) -> str:
 
 st.markdown(render_table(paged_df), unsafe_allow_html=True)
 
-# 하단 페이지 정보
 st.markdown(
     f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">'
     f'{page} / {total_pages} 페이지 &nbsp;·&nbsp; '
