@@ -252,12 +252,13 @@ def get_processed_df() -> pd.DataFrame:
     out = pd.concat([active_df, recent_expired_df], ignore_index=True)
     out["광역단위"] = out["★가공_수요기관"].astype(str).apply(get_metro)
 
-    main_amt = pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0)
+    total_amt = pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0)
     if "금차계약금액" in out.columns:
         sub_amt = pd.to_numeric(out["금차계약금액"], errors="coerce").fillna(0)
-        out["★가공_계약금액"] = main_amt.where(main_amt != 0, sub_amt).astype(int)
+        # ✅ 금차계약금액 우선, 없으면(0이면) 총계약금액 사용
+        out["★가공_계약금액"] = sub_amt.where(sub_amt != 0, total_amt).astype(int)
     else:
-        out["★가공_계약금액"] = main_amt.astype(int)
+        out["★가공_계약금액"] = total_amt.astype(int)
 
     return out
 
