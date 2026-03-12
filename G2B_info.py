@@ -114,12 +114,13 @@ def parse_date_series(s: pd.Series) -> pd.Series:
 # 계약 만료일 & 남은기간 계산
 # ─────────────────────────────────────────────
 def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
-    cntrct_date  = parse_date_series(df["계약일자"])
-    start_date   = parse_date_series(df["착수일자"])
-    total_finish = parse_date_series(df["총완수일자"])
-    period_raw   = df["계약기간"].astype(str)
+    cntrct_date   = parse_date_series(df["계약일자"])
+    start_date    = parse_date_series(df["착수일자"])
+    this_finish   = parse_date_series(df["금차완수일자"])   # AP
+    total_finish  = parse_date_series(df["총완수일자"])     # AQ
+    period_raw    = df["계약기간"].astype(str)
 
-    this_vals  = period_raw.str.extract(r"금차\s*[:\s]*(\d+)",          expand=False).astype(float).fillna(0)
+    this_vals  = period_raw.str.extract(r"금차\s*[:\s]*(\d+)",             expand=False).astype(float).fillna(0)
     total_vals = period_raw.str.extract(r"(?:총차|총용역|총)\s*[:\s]*(\d+)", expand=False).astype(float).fillna(0)
 
     base_date = start_date.combine_first(cntrct_date)
@@ -139,11 +140,20 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cond4 = expire.isna() & total_finish.notna()
     expire[cond4] = total_finish[cond4]
 
-    # ✅ 추가: 총완수일자가 계산된 만료일보다 늦으면 총완수일자로 덮어쓰기
-    override = total_finish.notna() & expire.notna() & (total_finish > expire)
+    # ✅ 조건 1: 마지막 차수이거나 금차/총차 정보 없음
+    is_last = (this_vals == total_vals) | (this_vals == 0)
+
+    # ✅ 조건 2: 금차완수일자 vs 총완수일자 차이 10일 미만 (거의 동일 계약)
+    day_diff = (total_finish - this_finish).dt.days.abs()
+    is_close = day_diff.notna() & (day_diff < 10)
+
+    # ✅ 둘 중 하나라도 해당되면 총완수일자로 override
+    can_override = is_last | is_close
+
+    override   = total_finish.notna() & expire.notna() & (total_finish > expire) & can_override
     expire[override] = total_finish[override]
-    # 총완수일자만 있고 expire가 NaT인 경우도 커버
-    only_total = total_finish.notna() & expire.isna()
+
+    only_total = total_finish.notna() & expire.isna() & can_override
     expire[only_total] = total_finish[only_total]
 
     today      = pd.Timestamp(datetime.now().date())
