@@ -120,8 +120,8 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     total_finish = parse_date_series(df["총완수일자"])
     period_raw   = df["계약기간"].astype(str)
 
-    this_vals  = period_raw.str.extract(r"금차\s*[:\s]*(\d+)",             expand=False).astype(float).fillna(0)
-    total_vals = period_raw.str.extract(r"(?:총차|총용역|총)\s*[:\s]*(\d+)", expand=False).astype(float).fillna(0)
+    this_vals  = period_raw.str.extract(r"금차\s*[:\s]?\s*(\d+)",              expand=False).astype(float).fillna(0)
+    total_vals = period_raw.str.extract(r"(?:총차|총용역|총)\s*[:\s]?\s*(\d+)", expand=False).astype(float).fillna(0)
 
     base_date = start_date.combine_first(cntrct_date)
     expire    = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns]")
@@ -140,14 +140,20 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cond4 = expire.isna() & total_finish.notna()
     expire[cond4] = total_finish[cond4]
 
-    # ✅ 금차완수일자 vs 총완수일자 차이 10일 미만일 때만 총완수일자로 override
+    # ✅ override 조건 1: 금차완수일자 vs 총완수일자 차이 10일 미만
     day_diff = (total_finish - this_finish).dt.days.abs()
     is_close = this_finish.notna() & total_finish.notna() & (day_diff < 10)
 
-    override = total_finish.notna() & expire.notna() & (total_finish > expire) & is_close
+    # ✅ override 조건 2: 계약일자에서 금차완수일자까지 30일 미만 (단기 1차 계약)
+    contract_to_finish = (this_finish - cntrct_date).dt.days
+    is_short_term = contract_to_finish.notna() & (contract_to_finish < 30)
+
+    can_override = is_close | (is_short_term & total_finish.notna())
+
+    override = total_finish.notna() & expire.notna() & (total_finish > expire) & can_override
     expire[override] = total_finish[override]
 
-    only_total = total_finish.notna() & expire.isna() & is_close
+    only_total = total_finish.notna() & expire.isna() & can_override
     expire[only_total] = total_finish[only_total]
 
     today      = pd.Timestamp(datetime.now().date())
