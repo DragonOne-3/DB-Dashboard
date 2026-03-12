@@ -140,13 +140,13 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cond4 = expire.isna() & total_finish.notna()
     expire[cond4] = total_finish[cond4]
 
-    # ✅ 조건 1: 마지막 차수이거나 금차/총차 정보 없음
-    is_last = (this_vals == total_vals) | (this_vals == 0)
-
-    # ✅ 조건 2: 금차완수일자 vs 총완수일자 차이 10일 미만 (거의 동일 계약)
+    # ✅ 조건 1: 금차==총차인 경우만 (정보 없으면 is_last 적용 안 함)
+    is_last = (this_vals > 0) & (total_vals > 0) & (this_vals == total_vals)
+    
+    # ✅ 조건 2: 금차완수일자 vs 총완수일자 차이 10일 미만
     day_diff = (total_finish - this_finish).dt.days.abs()
     is_close = day_diff.notna() & (day_diff < 10)
-
+    
     # ✅ 둘 중 하나라도 해당되면 총완수일자로 override
     can_override = is_last | is_close
 
