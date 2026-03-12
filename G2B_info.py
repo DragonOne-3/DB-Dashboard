@@ -140,21 +140,14 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cond4 = expire.isna() & total_finish.notna()
     expire[cond4] = total_finish[cond4]
 
-    # ✅ 금차완수일자 vs 총완수일자 차이가 10일 미만일 때만 override
-    # (금차==총차 명시된 경우 OR 날짜가 거의 같은 경우)
-    has_차수_info = (this_vals > 0) & (total_vals > 0)
-    is_last  = has_차수_info & (this_vals == total_vals)
-    
+    # ✅ 금차완수일자 vs 총완수일자 차이 10일 미만일 때만 총완수일자로 override
     day_diff = (total_finish - this_finish).dt.days.abs()
     is_close = this_finish.notna() & total_finish.notna() & (day_diff < 10)
 
-    # 차수정보 없을 땐 날짜 차이(10일)만으로 판단, 차수정보 있을 땐 마지막 차수일 때만
-    can_override = is_close | is_last
-
-    override = total_finish.notna() & expire.notna() & (total_finish > expire) & can_override
+    override = total_finish.notna() & expire.notna() & (total_finish > expire) & is_close
     expire[override] = total_finish[override]
 
-    only_total = total_finish.notna() & expire.isna() & can_override
+    only_total = total_finish.notna() & expire.isna() & is_close
     expire[only_total] = total_finish[only_total]
 
     today      = pd.Timestamp(datetime.now().date())
