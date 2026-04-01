@@ -139,6 +139,8 @@ defaults = {
     "search_done": False, "search_region": "전국", "radio_region": "전국", "page": 1,
     # 발주계획 탭
     "plan_search_done": False, "plan_search_region": "전국", "plan_radio_region": "전국", "plan_page": 1,
+    # 공고 탭 ← 추가
+    "gong_search_done": False, "gong_search_region": "전국", "gong_radio_region": "전국", "gong_page": 1,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -352,6 +354,70 @@ def get_baljoo_df() -> pd.DataFrame:
     df["발주월_표시"] = df["발주일자"].dt.strftime("%Y년 %m월").fillna("정보없음")
 
     return df
+    
+@st.cache_resource
+def get_gong_df() -> pd.DataFrame:
+    auth_json = os.environ.get("GOOGLE_AUTH_JSON")
+    if not auth_json:
+        return pd.DataFrame()
+    try:
+        creds_dict = json.loads(auth_json)
+        scope      = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client     = gspread.authorize(creds)
+        ws         = client.open("나라장터_유지보수_공고").get_worksheet(0)
+        records    = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
+    except Exception as e:
+        st.error(f"❌ 공고 시트 로드 오류: {e}")
+        return pd.DataFrame()
+
+    if not records:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(records)
+
+    # 수요기관 기준 지자체 필터 + 교육청 제외
+    agency_col = df["수요기관명"].astype(str).str.strip()
+    mask       = agency_col.apply(lambda a: any(a.startswith(d) for d in FULL_DISTRICT_LIST))
+    df         = df[mask & ~agency_col.str.contains("교육청", na=False)].copy()
+
+    # 키워드 필터 (기존과 동일)
+    sn           = df["입찰공고명"].astype(str)
+    include_mask = sn.str.contains("유지", na=False) & sn.str.contains("통합관제|통합|CCTV", na=False)
+    exclude_mask = sn.str.contains("상수도|청사|악취|미세먼지|상담실|보건소", na=False)
+    df           = df[include_mask & ~exclude_mask].copy()
+
+    # 날짜 파싱 (입찰개시일시 기준, 최근 6개월)
+    df["입찰개시일시_dt"] = pd.to_datetime(
+        df["입찰개시일시"].astype(str).str[:8],
+        format="%Y%m%d", errors="coerce"
+    )
+    today      = pd.Timestamp(datetime.now().date())
+    six_months = today - relativedelta(months=6)
+    df         = df[df["입찰개시일시_dt"].notna() & (df["입찰개시일시_dt"] >= six_months)].copy()
+
+    # 마감일시 파싱
+    df["입찰마감일시_dt"] = pd.to_datetime(
+        df["입찰마감일시"].astype(str).str[:8],
+        format="%Y%m%d", errors="coerce"
+    )
+
+    # 표시용 날짜 (날짜만)
+    df["입찰개시일_표시"] = df["입찰개시일시_dt"].dt.strftime("%Y-%m-%d").fillna("-")
+    df["입찰마감일_표시"] = df["입찰마감일시_dt"].dt.strftime("%Y-%m-%d").fillna("-")
+
+    # 마감 여부 배지용
+    df["마감여부"] = df["입찰마감일시_dt"].apply(
+        lambda d: "마감" if pd.notna(d) and d < today else "진행중"
+    )
+
+    # 금액 정제
+    df["배정예산금액"] = pd.to_numeric(df["배정예산금액"], errors="coerce").fillna(0).astype(int)
+
+    # 광역단위
+    df["광역단위"] = df["수요기관명"].astype(str).apply(get_metro)
+
+    return df
 
 
 # ─────────────────────────────────────────────
@@ -498,7 +564,7 @@ def render_pagination(total_pages: int, page_key: str) -> int:
 # ═══════════════════════════════════════════════════════════════
 # 메인 탭 UI
 # ═══════════════════════════════════════════════════════════════
-tab1, tab2 = st.tabs(["🏛️ 유지보수 계약 내역", "📋 유지보수 발주 계획"])
+tab1, tab2, tab3 = st.tabs(["🏛️ 유지보수 계약 내역", "📋 유지보수 발주 계획", "📢 유지보수 공고"])
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -756,3 +822,196 @@ with tab2:
         """, unsafe_allow_html=True)
         
         st.markdown(f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">{page2} / {total_pages2} 페이지 &nbsp;·&nbsp; {(page2-1)*PAGE_SIZE+1}–{min(page2*PAGE_SIZE, total_rows2)}번째 항목</div>', unsafe_allow_html=True)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TAB 3 : 유지보수 공고
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+with tab3:
+    st.markdown("""
+    <div style="background:linear-gradient(135deg,#4c1d95 0%,#7c3aed 100%);
+    border-radius:16px;padding:2.5rem 3rem;margin-bottom:2rem;text-align:center;
+    box-shadow:0 4px 20px rgba(124,58,237,.25);">
+      <h1 style="font-size:2.3rem;font-weight:800;color:#fff;margin:0 0 .6rem;letter-spacing:-.5px;">
+        📢 전국 지자체 유지보수 공고
+      </h1>
+      <p style="color:rgba(255,255,255,.85);font-size:1.1rem;margin:0;">
+        나라장터 통합관제·CCTV 유지보수 입찰 공고 | 최근 6개월 기준
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="search-panel">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
+    st.radio("", options=METRO_LIST, horizontal=True, key="gong_radio_region", label_visibility="collapsed")
+
+    gb1, gb2 = st.columns([1, 8])
+    with gb1:
+        gong_search = st.button("🔍 검색", type="primary", use_container_width=True, key="gong_search_btn")
+    with gb2:
+        if st.button("🔄 데이터 새로고침", key="gong_refresh_btn"):
+            st.cache_resource.clear()
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if gong_search:
+        st.session_state["gong_search_done"]   = True
+        st.session_state["gong_search_region"] = st.session_state["gong_radio_region"]
+        st.session_state["gong_page"]          = 1
+
+    with st.spinner("📡 공고 데이터 준비 중…"):
+        gong_df = get_gong_df()
+
+    if not st.session_state["gong_search_done"]:
+        st.markdown("""
+        <div style="text-align:center;padding:5rem 0;color:#94a3b8;">
+          <div style="font-size:5rem;margin-bottom:1rem;">📢</div>
+          <div style="font-size:1.6rem;font-weight:700;color:#334155;margin-bottom:.5rem;">
+            지역을 선택하고 검색 버튼을 눌러주세요
+          </div>
+          <div style="font-size:1.1rem;color:#64748b;">최근 6개월 내 입찰 공고가 표시됩니다</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    elif gong_df.empty:
+        st.warning("⚠️ 조건에 맞는 공고 데이터가 없습니다.")
+
+    else:
+        gong_region  = st.session_state["gong_search_region"]
+        gong_display = (
+            gong_df if gong_region == "전국"
+            else gong_df[gong_df["광역단위"] == gong_region]
+        )
+
+        today         = pd.Timestamp(datetime.now().date())
+        total_count   = len(gong_display)
+        active_count  = len(gong_display[gong_display["마감여부"] == "진행중"])
+        agency_count  = gong_display["수요기관명"].nunique()
+        total_amount  = gong_display["배정예산금액"].sum()
+        amount_str    = f"{total_amount/100_000_000:.1f}억" if total_amount >= 100_000_000 else f"{total_amount:,}원"
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#7c3aed">{total_count:,}</div><div class="stat-label">공고 건수</div></div>', unsafe_allow_html=True)
+        with c2: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#16a34a">{active_count:,}</div><div class="stat-label">진행중 공고</div></div>', unsafe_allow_html=True)
+        with c3: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#0284c7">{agency_count:,}</div><div class="stat-label">공고 기관 수</div></div>', unsafe_allow_html=True)
+        with c4: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#7c3aed">{amount_str}</div><div class="stat-label">배정예산 합계</div></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
+            fc1, fc2, fc3 = st.columns(3)
+            with fc1: sel_gong_agency = st.multiselect("수요기관명", sorted(gong_display["수요기관명"].dropna().unique()), placeholder="전체", key="gong_f_agency")
+            with fc2: sel_gong_status = st.multiselect("마감여부",   ["진행중", "마감"],                                   placeholder="전체", key="gong_f_status")
+            with fc3: sel_gong_method = st.multiselect("입찰방식",   sorted(gong_display["입찰방식명"].dropna().unique()),  placeholder="전체", key="gong_f_method") if "입찰방식명" in gong_display.columns else None
+            kw3 = st.text_input("🔎 공고명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...", key="gong_kw")
+
+        filtered_gong = gong_display
+        if sel_gong_agency: filtered_gong = filtered_gong[filtered_gong["수요기관명"].isin(sel_gong_agency)]
+        if sel_gong_status: filtered_gong = filtered_gong[filtered_gong["마감여부"].isin(sel_gong_status)]
+        if sel_gong_method and "입찰방식명" in filtered_gong.columns:
+            filtered_gong = filtered_gong[filtered_gong["입찰방식명"].isin(sel_gong_method)]
+        if kw3: filtered_gong = filtered_gong[filtered_gong["입찰공고명"].str.contains(kw3, case=False, na=False)]
+
+        st.divider()
+        rc3, dc3 = st.columns([6, 2])
+        with rc3:
+            st.markdown(f'<div class="section-title" style="font-size:1.5rem;">📢 {gong_region} 유지보수 공고 — {len(filtered_gong):,}건</div>', unsafe_allow_html=True)
+        with dc3:
+            GONG_EXP_COLS = ["입찰공고명", "공고기관명", "수요기관명", "입찰개시일_표시",
+                             "입찰마감일_표시", "배정예산금액", "마감여부", "입찰공고상세URL"]
+            gong_exp_cols = [c for c in GONG_EXP_COLS if c in filtered_gong.columns]
+            exp_gong = filtered_gong[gong_exp_cols].copy()
+            st.download_button(
+                "📥 CSV 다운로드",
+                data=exp_gong.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
+                file_name=f"유지보수공고_{gong_region}_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv", use_container_width=True, key="gong_download"
+            )
+
+        gong_sort_map = {
+            "입찰개시일 (최신순)": "입찰개시일시_dt",
+            "입찰마감일 (빠른순)": "입찰마감일시_dt",
+            "예산금액 (높은순)":   "배정예산금액",
+            "수요기관명":          "수요기관명",
+        }
+        sort_choice3  = st.selectbox("정렬 기준", list(gong_sort_map.keys()), index=0, label_visibility="collapsed", key="gong_sort")
+        sorted_gong   = filtered_gong.sort_values(
+            gong_sort_map[sort_choice3],
+            ascending=sort_choice3 == "수요기관명"
+        )
+
+        total_rows3  = len(sorted_gong)
+        total_pages3 = max(1, (total_rows3 + PAGE_SIZE - 1) // PAGE_SIZE)
+        if st.session_state["gong_page"] > total_pages3:
+            st.session_state["gong_page"] = 1
+
+        st.markdown(f'<div style="padding-top:4px;color:#64748b;font-size:1rem;margin-bottom:.5rem;">총 <b>{total_rows3:,}건</b> · {total_pages3}페이지</div>', unsafe_allow_html=True)
+        page3 = render_pagination(total_pages3, "gong_page")
+
+        # 테이블 렌더링용 컬럼
+        GONG_TABLE_COLS = ["입찰공고명", "공고기관명", "수요기관명",
+                           "입찰개시일_표시", "입찰마감일_표시",
+                           "배정예산금액", "마감여부", "입찰공고상세URL"]
+        gong_table_cols = [c for c in GONG_TABLE_COLS if c in sorted_gong.columns]
+        paged_gong = sorted_gong[gong_table_cols].iloc[(page3-1)*PAGE_SIZE : page3*PAGE_SIZE].copy()
+
+        # ── 공고 전용 HTML 테이블
+        GONG_COL_LABELS = {
+            "입찰공고명":     "입찰공고명",
+            "공고기관명":     "공고기관",
+            "수요기관명":     "수요기관",
+            "입찰개시일_표시": "입찰개시일",
+            "입찰마감일_표시": "입찰마감일",
+            "배정예산금액":   "배정예산(원)",
+            "마감여부":       "상태",
+            "입찰공고상세URL": "공고 상세",
+        }
+        TH_G = ("background:#4c1d95;color:#fff;padding:12px 14px;font-size:0.95rem;font-weight:700;"
+                "white-space:nowrap;border-bottom:2px solid #7c3aed;text-align:left;")
+        TD_G = "padding:11px 14px;font-size:1rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
+
+        headers_g = "".join(f'<th style="{TH_G}">{GONG_COL_LABELS.get(c,c)}</th>' for c in paged_gong.columns)
+        rows_g = []
+        for i, (_, row) in enumerate(paged_gong.iterrows()):
+            bg = "#fff" if i % 2 == 0 else "#f8fafc"
+            cells = []
+            for col in paged_gong.columns:
+                val = row[col]
+                if col == "입찰공고상세URL":
+                    url = str(val).strip()
+                    if url and url != "nan":
+                        cell = f'<td style="{TD_G}text-align:center;"><a href="{url}" target="_blank" style="background:#7c3aed;color:#fff;padding:4px 12px;border-radius:6px;font-size:.85rem;font-weight:600;text-decoration:none;white-space:nowrap;">🔗 바로가기</a></td>'
+                    else:
+                        cell = f'<td style="{TD_G}text-align:center;color:#94a3b8;">-</td>'
+                elif col == "배정예산금액":
+                    try:   fmt = f"{int(val):,}"
+                    except: fmt = str(val)
+                    cell = f'<td style="{TD_G}text-align:right;font-variant-numeric:tabular-nums;">{fmt}</td>'
+                elif col == "마감여부":
+                    if val == "진행중":
+                        badge = '<span style="background:#f0fdf4;color:#15803d;padding:3px 10px;border-radius:999px;font-size:.85rem;font-weight:600;">진행중</span>'
+                    else:
+                        badge = '<span style="background:#fef2f2;color:#b91c1c;padding:3px 10px;border-radius:999px;font-size:.85rem;font-weight:600;">마감</span>'
+                    cell = f'<td style="{TD_G}">{badge}</td>'
+                elif col in ("입찰공고명",):
+                    cell = f'<td style="{TD_G}max-width:280px;word-break:keep-all;">{str(val)}</td>'
+                else:
+                    cell = f'<td style="{TD_G}white-space:nowrap;">{str(val) if str(val) != "nan" else "-"}</td>'
+                cells.append(cell)
+            rows_g.append(
+                f'<tr style="background:{bg};" '
+                f'onmouseover="this.style.background=\'#f5f3ff\'" '
+                f'onmouseout="this.style.background=\'{bg}\'">'
+                + "".join(cells) + "</tr>"
+            )
+
+        table_html = (
+            f'<div style="width:100%;overflow-x:auto;border-radius:12px;'
+            f'box-shadow:0 2px 12px rgba(0,0,0,.08);margin-top:.5rem;">'
+            f'<table style="width:100%;border-collapse:collapse;min-width:1100px;">'
+            f'<thead><tr>{headers_g}</tr></thead>'
+            f'<tbody>{"".join(rows_g)}</tbody>'
+            f'</table></div>'
+        )
+        st.markdown(table_html, unsafe_allow_html=True)
+
+        st.markdown(f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">{page3} / {total_pages3} 페이지 &nbsp;·&nbsp; {(page3-1)*PAGE_SIZE+1}–{min(page3*PAGE_SIZE, total_rows3)}번째 항목</div>', unsafe_allow_html=True)
