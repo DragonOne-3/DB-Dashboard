@@ -58,7 +58,7 @@ def _write_log(event_type: str, detail: str, session_id: str, ip: str):
         scope      = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client     = gspread.authorize(creds)
-        ws         = client.open("나라장터_usage_log").get_worksheet(0)
+        ws         = client.open("나라장터_usage_log2").get_worksheet(0)
         now        = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ws.append_row([now, session_id, ip, event_type, detail])
     except Exception:
