@@ -7,7 +7,11 @@ streamlit
 pytimekr
 st-files-connection
 gcsfs
-google-api-python-client
+
 google-auth-httplib2
 google-auth-oauthlib
 python-dateutil
+google-auth==2.29.0
+google-api-python-client==2.127.0
+
+ 
