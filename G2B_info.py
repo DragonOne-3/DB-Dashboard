@@ -86,7 +86,7 @@ def log_event(event_type: str, detail: str = "-"):
         target=_write_log,
         args=(event_type, detail, session_id, ip),
         daemon=True
-    ).start()start()
+    ).start()
 
 # ─────────────────────────────────────────────
 # 상수
