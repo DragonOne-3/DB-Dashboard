@@ -5,6 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import os
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import re
 
 # ─────────────────────────────────────────────
@@ -31,13 +32,41 @@ st.markdown("""
 <style>
   html, body, [class*="css"] { font-size: 18px; }
   .stApp { background: #f4f6fb; }
-  .hero {
+
+  /* ── 탭 스타일 ── */
+  div[data-testid="stTabs"] > div:first-child {
+    border-bottom: 2px solid #e2e8f0;
+    margin-bottom: 1.5rem;
+  }
+  button[data-baseweb="tab"] {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+    padding: 0.8rem 2rem !important;
+    color: #64748b !important;
+  }
+  button[data-baseweb="tab"][aria-selected="true"] {
+    color: #2563eb !important;
+    border-bottom: 3px solid #2563eb !important;
+  }
+
+  .hero-blue {
     background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
-    border-radius: 16px; padding: 3rem 3rem; margin-bottom: 2rem;
+    border-radius: 16px; padding: 2.5rem 3rem; margin-bottom: 2rem;
     text-align: center; box-shadow: 0 4px 20px rgba(37,99,235,.25);
   }
-  .hero h1 { font-size: 2.5rem; font-weight: 800; color: #fff; margin: 0 0 .8rem; letter-spacing: -.5px; }
-  .hero p  { color: rgba(255,255,255,.85); font-size: 1.2rem; margin: 0; }
+  .hero-green {
+    background: linear-gradient(135deg, #064e3b 0%, #059669 100%);
+    border-radius: 16px; padding: 2.5rem 3rem; margin-bottom: 2rem;
+    text-align: center; box-shadow: 0 4px 20px rgba(5,150,105,.25);
+  }
+  .hero-blue h1, .hero-green h1 {
+    font-size: 2.3rem; font-weight: 800; color: #fff;
+    margin: 0 0 .6rem; letter-spacing: -.5px;
+  }
+  .hero-blue p, .hero-green p {
+    color: rgba(255,255,255,.85); font-size: 1.1rem; margin: 0;
+  }
+
   .search-panel {
     background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
     padding: 2rem 2.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,.06);
@@ -46,10 +75,14 @@ st.markdown("""
     background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
     padding: 1.5rem 1.8rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.05);
   }
-  .stat-num   { font-size: 2.3rem; font-weight: 800; color: #2563eb; line-height: 1.1; }
+  .stat-num-blue  { font-size: 2.3rem; font-weight: 800; color: #2563eb; line-height: 1.1; }
+  .stat-num-green { font-size: 2.3rem; font-weight: 800; color: #059669; line-height: 1.1; }
   .stat-label { font-size: 1rem; color: #64748b; margin-top: .5rem; font-weight: 500; letter-spacing: .3px; }
   .section-title { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin-bottom: 1rem; letter-spacing: -.2px; }
-  div[data-testid="stButton"] > button { font-size: 1.1rem !important; height: auto !important; padding: 0.6rem 1rem !important; }
+
+  div[data-testid="stButton"] > button {
+    font-size: 1.1rem !important; height: auto !important; padding: 0.6rem 1rem !important;
+  }
   div[data-testid="stButton"] > button[kind="primary"] {
     background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
     border: none !important; color: #fff !important; font-weight: 700 !important;
@@ -58,6 +91,10 @@ st.markdown("""
   div[data-testid="stDownloadButton"] > button {
     background: #fff !important; border: 1.5px solid #2563eb !important;
     color: #2563eb !important; font-weight: 600 !important; border-radius: 8px !important;
+  }
+  .copy-notice {
+    background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px;
+    padding: .6rem 1rem; font-size: .9rem; color: #065f46; margin-top: .5rem;
   }
   hr { border-color: #e2e8f0; }
 </style>
@@ -76,7 +113,7 @@ FULL_DISTRICT_LIST = [
     "울산광역시", "울산광역시 중구", "울산광역시 남구", "울산광역시 동구", "울산광역시 북구", "울산광역시 울주군",
     "세종특별자치시",
     "경기도 수원시", "경기도 성남시", "경기도 의정부시", "경기도 안양시", "경기도 부천시", "경기도 광명시", "경기도 평택시", "경기도 동두천시", "경기도 안산시", "경기도 고양시", "경기도 과천시", "경기도 구리시", "경기도 남양주시", "경기도 오산시", "경기도 시흥시", "경기도 군포시", "경기도 의왕시", "경기도 하남시", "경기도 용인시", "경기도 파주시", "경기도 이천시", "경기도 안성시", "경기도 김포시", "경기도 화성시", "경기도 광주시", "경기도 양주시", "경기도 포천시", "경기도 여주시", "경기도 연천군", "경기도 가평군", "경기도 양평군",
-    "강원특별자치도 춘천시", "강원특별자치도 원주시", "강원특별자치도 강릉시", "강원특별자치도 동해시", "강원특별자치도 태백시", "강원특별자치도 속초시", "강원특별자치도 삼척시", "강원특별자치도 홍천군", "강원특별자치도 횡성군", "강원특별자치도 영월군", "강원특별자치도 평창군", "강원특별자치도 정선군", "강원특별자치도 철원군", "강원특별자치도 화천군", "강원특별자치도 양구군", "강원특별자치도 인제군", "강원특별자치도 고성군", "강원특별자치도 양양군", "강원특별자치도 원주시 도시정보센터",
+    "강원특별자치도 춘천시", "강원특별자치도 원주시", "강원특별자치도 강릉시", "강원특별자치도 동해시", "강원특별자치도 태백시", "강원특별자치도 속초시", "강원특별자치도 삼척시", "강원특별자치도 홍천군", "강원특별자치도 횡성군", "강원특별자치도 영월군", "강원특별자치도 평창군", "강원특별자치도 정선군", "강원특별자치도 철원군", "강원특별자치도 화천군", "강원특별자치도 양구군", "강원특별자치도 인제군", "강원특별자치도 고성군", "강원특별자치도 양양군",
     "충청북도 청주시", "충청북도 충주시", "충청북도 제천시", "충청북도 보은군", "충청북도 옥천군", "충청북도 영동군", "충청북도 증평군", "충청북도 진천군", "충청북도 괴산군", "충청북도 음성군", "충청북도 단양군",
     "충청남도 천안시", "충청남도 공주시", "충청남도 보령시", "충청남도 아산시", "충청남도 서산시", "충청남도 논산시", "충청남도 계룡시", "충청남도 당진시", "충청남도 금산군", "충청남도 부여군", "충청남도 서천군", "충청남도 청양군", "충청남도 홍성군", "충청남도 예산군", "충청남도 태안군",
     "전북특별자치도 전주시", "전북특별자치도 군산시", "전북특별자치도 익산시", "전북특별자치도 정읍시", "전북특별자치도 남원시", "전북특별자치도 김제시", "전북특별자치도 완주군", "전북특별자치도 진안군", "전북특별자치도 무주군", "전북특별자치도 장수군", "전북특별자치도 임실군", "전북특별자치도 순창군", "전북특별자치도 고창군", "전북특별자치도 부안군",
@@ -97,21 +134,33 @@ PAGE_SIZE = 50
 # ─────────────────────────────────────────────
 # session_state 초기화
 # ─────────────────────────────────────────────
-for k, v in [("search_done", False), ("search_region", "전국"), ("radio_region", "전국"), ("page", 1)]:
+defaults = {
+    # 계약내역 탭
+    "search_done": False, "search_region": "전국", "radio_region": "전국", "page": 1,
+    # 발주계획 탭
+    "plan_search_done": False, "plan_search_region": "전국", "plan_radio_region": "전국", "plan_page": 1,
+}
+for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 
 # ─────────────────────────────────────────────
-# 날짜 파싱
+# 공통 함수
 # ─────────────────────────────────────────────
+def get_metro(a: str) -> str:
+    for m in METRO_LIST[1:]:
+        if str(a).startswith(m):
+            return m
+    return "기타"
+
 def parse_date_series(s: pd.Series) -> pd.Series:
     cleaned = s.astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8]
     return pd.to_datetime(cleaned, format="%Y%m%d", errors="coerce")
 
 
 # ─────────────────────────────────────────────
-# 계약 만료일 & 남은기간 계산
+# [탭1] 계약 만료일 & 남은기간 계산
 # ─────────────────────────────────────────────
 def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cntrct_date  = parse_date_series(df["계약일자"])
@@ -140,19 +189,14 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cond4 = expire.isna() & total_finish.notna()
     expire[cond4] = total_finish[cond4]
 
-    # ✅ override 조건 1: 금차완수일자 vs 총완수일자 차이 10일 미만
-    day_diff = (total_finish - this_finish).dt.days.abs()
-    is_close = this_finish.notna() & total_finish.notna() & (day_diff < 10)
-
-    # ✅ override 조건 2: 계약일자에서 금차완수일자까지 30일 미만 (단기 1차 계약)
+    day_diff      = (total_finish - this_finish).dt.days.abs()
+    is_close      = this_finish.notna() & total_finish.notna() & (day_diff < 10)
     contract_to_finish = (this_finish - cntrct_date).dt.days
     is_short_term = contract_to_finish.notna() & (contract_to_finish < 30)
+    can_override  = is_close | (is_short_term & total_finish.notna())
 
-    can_override = is_close | (is_short_term & total_finish.notna())
-
-    override = total_finish.notna() & expire.notna() & (total_finish > expire) & can_override
+    override   = total_finish.notna() & expire.notna() & (total_finish > expire) & can_override
     expire[override] = total_finish[override]
-
     only_total = total_finish.notna() & expire.isna() & can_override
     expire[only_total] = total_finish[only_total]
 
@@ -177,25 +221,11 @@ def clean_contract_name(name: str) -> str:
     return RE_CONTRACT_NUM.sub("", str(name).replace(" ", ""))
 
 
-def get_metro(a: str) -> str:
-    for m in METRO_LIST[1:]:
-        if a.startswith(m):
-            return m
-    return "기타"
-
-
 # ─────────────────────────────────────────────
-# ✅ 핵심: @st.cache_resource 사용
-#
-# ❌ cache_data  → 캐시 HIT 시에도 pickle → unpickle 실행
-#                 유저마다 20MB DF 역직렬화 → 더 느림
-#
-# ✅ cache_resource → 메모리에 객체 1개만 유지
-#                    pickle 없음, 모든 유저가 같은 객체 참조
+# [탭1] 데이터 로드
 # ─────────────────────────────────────────────
 @st.cache_resource
 def get_processed_df() -> pd.DataFrame:
-    """GSheets 로드 + 전처리. 서버에서 딱 1번만 실행, 결과를 모든 유저가 공유."""
     auth_json = os.environ.get("GOOGLE_AUTH_JSON")
     if not auth_json:
         st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
@@ -227,7 +257,7 @@ def get_processed_df() -> pd.DataFrame:
     ].copy()
 
     df[["★가공_계약만료일", "남은기간"]] = calculate_logic_vectorized(df).values
-    df["temp_date"]          = pd.to_datetime(
+    df["temp_date"] = pd.to_datetime(
         df["계약일자"].astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8],
         format="%Y%m%d", errors="coerce"
     )
@@ -255,7 +285,6 @@ def get_processed_df() -> pd.DataFrame:
     total_amt = pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0)
     if "금차계약금액" in out.columns:
         sub_amt = pd.to_numeric(out["금차계약금액"], errors="coerce").fillna(0)
-        # ✅ 금차계약금액 우선, 없으면(0이면) 총계약금액 사용
         out["★가공_계약금액"] = sub_amt.where(sub_amt != 0, total_amt).astype(int)
     else:
         out["★가공_계약금액"] = total_amt.astype(int)
@@ -264,184 +293,69 @@ def get_processed_df() -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────
-# 헤더
+# [탭2] 발주월 파싱
 # ─────────────────────────────────────────────
-st.markdown("""
-<div class="hero">
-  <h1>🏛️ 전국 지자체 유지보수 계약 현황</h1>
-  <p>나라장터 통합관제·CCTV 유지보수 계약 데이터 | 실시간 계약 만료 분석</p>
-</div>
-""", unsafe_allow_html=True)
+def parse_baljoo_date(year_val, month_val) -> pd.Timestamp:
+    try:
+        year  = int(str(year_val).strip())
+        month = int(re.sub(r"[^0-9]", "", str(month_val))[:2])
+        if 1 <= month <= 12 and year >= 2000:
+            return pd.Timestamp(year=year, month=month, day=1)
+    except Exception:
+        pass
+    return pd.NaT
 
-# ─────────────────────────────────────────────
-# 검색 패널
-# ─────────────────────────────────────────────
-st.markdown('<div class="search-panel">', unsafe_allow_html=True)
-st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
-st.radio("", options=METRO_LIST, horizontal=True, key="radio_region", label_visibility="collapsed")
-
-col_btn1, col_btn2 = st.columns([1, 8])
-with col_btn1:
-    search_clicked = st.button("🔍 검색", type="primary", use_container_width=True)
-with col_btn2:
-    if st.button("🔄 데이터 새로고침"):
-        st.cache_resource.clear()
-        st.rerun()
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-if search_clicked:
-    st.session_state["search_done"]   = True
-    st.session_state["search_region"] = st.session_state["radio_region"]
-    st.session_state["page"]          = 1
-
-# 프리페치 — 최초 1회만 실행, 이후는 메모리 참조
-with st.spinner("📡 데이터 준비 중…"):
-    processed_df = get_processed_df()
-
-if not st.session_state["search_done"]:
-    st.markdown("""
-    <div style="text-align:center; padding: 5rem 0; color: #94a3b8;">
-      <div style="font-size:5rem; margin-bottom:1rem;">🔍</div>
-      <div style="font-size:1.6rem; font-weight:700; color:#334155; margin-bottom:.5rem;">지역을 선택하고 검색 버튼을 눌러주세요</div>
-      <div style="font-size:1.1rem; color:#64748b;">전국 또는 광역시도를 선택하면 계약 현황이 표시됩니다</div>
-    </div>
-    """, unsafe_allow_html=True)
-    st.stop()
-
-if processed_df.empty:
-    st.stop()
 
 # ─────────────────────────────────────────────
-# 검색 결과 — boolean mask만 사용, 복사 없음
+# [탭2] 발주계획 데이터 로드
 # ─────────────────────────────────────────────
-region_to_show = st.session_state["search_region"]
+@st.cache_resource
+def get_baljoo_df() -> pd.DataFrame:
+    auth_json = os.environ.get("GOOGLE_AUTH_JSON")
+    if not auth_json:
+        return pd.DataFrame()
+    try:
+        creds_dict = json.loads(auth_json)
+        scope      = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client     = gspread.authorize(creds)
+        # ★ 실제 Google Sheet 파일명으로 변경하세요
+        ws         = client.open("발주계획").get_worksheet(0)
+        records    = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
+    except Exception as e:
+        st.error(f"❌ 발주계획 시트 로드 오류: {e}")
+        return pd.DataFrame()
 
-display_df = (
-    processed_df
-    if region_to_show == "전국"
-    else processed_df[processed_df["광역단위"] == region_to_show]
-)
+    if not records:
+        return pd.DataFrame()
 
-# 통계 카드
-total_count   = len(display_df)
-active_count  = len(display_df[
-    ~display_df["남은기간"].str.contains("만료", na=False) &
-    (display_df["남은기간"] != "정보부족") &
-    (display_df["남은기간"] != "계산불가")
-])
-expiring_soon = len(display_df[display_df["남은기간"].str.match(r"^[0-3]개월", na=False)])
-total_amount  = display_df["★가공_계약금액"].sum()
-amount_str    = f"{total_amount/100_000_000:.1f}억" if total_amount >= 100_000_000 else f"{total_amount:,}원"
+    df         = pd.DataFrame(records)
+    agency_col = df["기관명"].astype(str).str.strip()
+    mask       = agency_col.apply(lambda a: any(a.startswith(d) for d in FULL_DISTRICT_LIST))
+    df         = df[mask & ~agency_col.str.contains("교육청", na=False)].copy()
 
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.markdown(f'<div class="stat-card"><div class="stat-num">{total_count:,}</div><div class="stat-label">전체 계약 건수</div></div>', unsafe_allow_html=True)
-with c2:
-    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#16a34a">{active_count:,}</div><div class="stat-label">진행중 계약</div></div>', unsafe_allow_html=True)
-with c3:
-    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#ea580c">{expiring_soon:,}</div><div class="stat-label">3개월 내 만료 예정</div></div>', unsafe_allow_html=True)
-with c4:
-    st.markdown(f'<div class="stat-card"><div class="stat-num" style="color:#7c3aed">{amount_str}</div><div class="stat-label">총 계약금액</div></div>', unsafe_allow_html=True)
+    sn           = df["사업명"].astype(str)
+    include_mask = sn.str.contains("유지", na=False) & sn.str.contains("통합관제|통합|CCTV", na=False)
+    exclude_mask = sn.str.contains("상수도|청사|악취|미세먼지|상담실|보건소", na=False)
+    df           = df[include_mask & ~exclude_mask].copy()
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-# 세부 필터
-with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
-    fc1, fc2, fc3 = st.columns(3)
-    with fc1:
-        sel_agency  = st.multiselect("수요기관",  sorted(display_df["★가공_수요기관"].dropna().unique()), placeholder="전체")
-    with fc2:
-        sel_company = st.multiselect("업체명",    sorted(display_df["★가공_업체명"].dropna().unique()),   placeholder="전체")
-    with fc3:
-        sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료", "만료됨"],                  placeholder="전체")
-    kw = st.text_input("🔎 계약명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...")
-
-# 필터링 — 전부 boolean mask(뷰), 복사 없음
-filtered_df = display_df
-if sel_agency:  filtered_df = filtered_df[filtered_df["★가공_수요기관"].isin(sel_agency)]
-if sel_company: filtered_df = filtered_df[filtered_df["★가공_업체명"].isin(sel_company)]
-if kw:          filtered_df = filtered_df[filtered_df["★가공_계약명"].str.contains(kw, case=False, na=False)]
-if sel_status:
-    conds = []
-    if "진행중"        in sel_status: conds.append(~filtered_df["남은기간"].str.contains("만료|정보부족|오류", na=True))
-    if "3개월 내 만료" in sel_status: conds.append(filtered_df["남은기간"].str.match(r"^[0-3]개월", na=False))
-    if "만료됨"        in sel_status: conds.append(filtered_df["남은기간"] == "만료됨")
-    if conds:
-        combined = conds[0]
-        for c in conds[1:]: combined |= c
-        filtered_df = filtered_df[combined]
-
-COLS = ["★가공_수요기관", "★가공_계약명", "★가공_업체명", "★가공_계약금액",
-        "계약일자", "착수일자", "★가공_계약만료일", "남은기간", "계약상세정보URL"]
-
-st.divider()
-rc, dc = st.columns([6, 2])
-with rc:
-    st.markdown(f'<div class="section-title" style="font-size:1.5rem;">📊 {region_to_show} 계약 현황 — {len(filtered_df):,}건</div>', unsafe_allow_html=True)
-with dc:
-    # CSV 다운로드는 클릭 시에만 소량 복사 발생 — 허용
-    exp_df = filtered_df[COLS].copy()
-    exp_df.columns = [c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in exp_df.columns]
-    st.download_button(
-        "📥 CSV 다운로드",
-        data=exp_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
-        file_name=f"계약현황_{region_to_show}_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime="text/csv",
-        use_container_width=True,
+    df["발주일자"] = df.apply(
+        lambda r: parse_baljoo_date(r.get("발주년도", ""), r.get("발주월", "")), axis=1
     )
 
-sort_map = {
-    "수요기관": "★가공_수요기관",
-    "계약금액 (높은순)": "★가공_계약금액",
-    "계약만료일 (빠른순)": "★가공_계약만료일",
-    "계약일자 (최신순)": "계약일자",
-}
-sort_choice = st.selectbox("정렬 기준", list(sort_map.keys()), index=3, label_visibility="collapsed")
-sorted_df   = filtered_df.sort_values(
-    sort_map[sort_choice],
-    ascending=sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"]
-)
+    today      = pd.Timestamp(datetime.now().date())
+    six_months = today - relativedelta(months=6)
+    df         = df[df["발주일자"].notna() & (df["발주일자"] >= six_months)].copy()
 
-# 컬럼명 변환은 paged_df(50행)에만 적용
-final_out         = sorted_df[COLS]
-col_rename        = {c: c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in COLS}
+    df["광역단위"]   = df["기관명"].astype(str).apply(get_metro)
+    df["합계발주금액"] = pd.to_numeric(df["합계발주금액"], errors="coerce").fillna(0).astype(int)
+    df["발주월_표시"] = df["발주일자"].dt.strftime("%Y년 %m월").fillna("정보없음")
 
-# ─────────────────────────────────────────────
-# 페이지네이션 — 50행씩만 렌더링
-# ─────────────────────────────────────────────
-total_rows  = len(final_out)
-total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
-
-if st.session_state["page"] > total_pages:
-    st.session_state["page"] = 1
-
-st.markdown(
-    f'<div style="padding-top:4px;color:#64748b;font-size:1rem;margin-bottom:.5rem;">'
-    f'총 <b>{total_rows:,}건</b> · {total_pages}페이지</div>',
-    unsafe_allow_html=True,
-)
-
-# 페이지 번호 버튼 — 한 줄에 최대 20개
-MAX_BTN  = 20
-btn_cols = st.columns(min(total_pages, MAX_BTN))
-for i in range(total_pages):
-    col_idx = i % MAX_BTN
-    with btn_cols[col_idx]:
-        is_current = (st.session_state["page"] == i + 1)
-        label      = f"**{i+1}**" if is_current else str(i + 1)
-        if st.button(label, key=f"pg_{i+1}", use_container_width=True):
-            st.session_state["page"] = i + 1
-            st.rerun()
-
-page = st.session_state["page"]
-
-# 50행 슬라이스 후 컬럼명 변환 → 작은 DF에만 복사 발생
-paged_df = final_out.iloc[(page - 1) * PAGE_SIZE : page * PAGE_SIZE].rename(columns=col_rename)
+    return df
 
 
 # ─────────────────────────────────────────────
-# HTML 테이블 렌더링
+# HTML 테이블 — 계약내역
 # ─────────────────────────────────────────────
 def status_badge(val: str) -> str:
     if "만료됨" in val or "계약만료" in val:
@@ -456,7 +370,7 @@ def status_badge(val: str) -> str:
             f'border-radius:999px;font-size:.85rem;font-weight:600;white-space:nowrap;">{val}</span>')
 
 
-def render_table(df: pd.DataFrame) -> str:
+def render_info_table(df: pd.DataFrame) -> str:
     COL_LABELS = {
         "수요기관": "수요기관", "계약명": "계약명", "업체명": "업체명",
         "계약금액": "계약금액(원)", "계약일자": "계약일자", "착수일자": "착수일자",
@@ -492,7 +406,6 @@ def render_table(df: pd.DataFrame) -> str:
             f'onmouseout="this.style.background=\'{bg}\'">'
             + "".join(cells) + "</tr>"
         )
-
     return (f'<div style="width:100%;overflow-x:auto;border-radius:12px;'
             f'box-shadow:0 2px 12px rgba(0,0,0,.08);margin-top:.5rem;">'
             f'<table style="width:100%;border-collapse:collapse;min-width:1000px;">'
@@ -501,11 +414,340 @@ def render_table(df: pd.DataFrame) -> str:
             f'</table></div>')
 
 
-st.markdown(render_table(paged_df), unsafe_allow_html=True)
+# ─────────────────────────────────────────────
+# HTML 테이블 — 발주계획
+# ─────────────────────────────────────────────
+def render_plan_table(df: pd.DataFrame) -> str:
+    COL_LABELS = {
+        "기관명": "기관명", "사업명": "사업명", "발주월_표시": "발주월",
+        "합계발주금액": "발주금액(원)", "계약방법명": "계약방법", "조달방식": "조달방식",
+        "담당자명": "담당자", "전화번호": "전화번호", "공사지역명": "공사지역",
+        "부서명": "부서명", "비고내용": "비고", "발주계획통합번호": "발주계획번호",
+    }
+    TH = ("background:#064e3b;color:#fff;padding:12px 14px;font-size:0.95rem;font-weight:700;"
+          "white-space:nowrap;border-bottom:2px solid #059669;text-align:left;")
+    TD = "padding:11px 14px;font-size:1rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
+    G2B_URL = "https://www.g2b.go.kr"
 
-st.markdown(
-    f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">'
-    f'{page} / {total_pages} 페이지 &nbsp;·&nbsp; '
-    f'{(page-1)*PAGE_SIZE + 1}–{min(page*PAGE_SIZE, total_rows)}번째 항목</div>',
-    unsafe_allow_html=True,
-)
+    headers = "".join(f'<th style="{TH}">{COL_LABELS.get(c, c)}</th>' for c in df.columns)
+    rows = []
+    for i, (_, row) in enumerate(df.iterrows()):
+        bg = "#fff" if i % 2 == 0 else "#f8fafc"
+        cells = []
+        for col in df.columns:
+            val = row[col]
+            if col == "발주계획통합번호":
+                num = str(val).strip() if val and str(val).strip() not in ("", "nan") else ""
+                if num:
+                    cell = (
+                        f'<td style="{TD}text-align:center;">'
+                        f'<span style="font-size:.8rem;color:#475569;display:block;margin-bottom:3px;">{num}</span>'
+                        f'<a href="{G2B_URL}" target="_blank" '
+                        f'style="background:#059669;color:#fff;padding:3px 10px;border-radius:6px;'
+                        f'font-size:.82rem;font-weight:600;text-decoration:none;white-space:nowrap;">'
+                        f'🔗 나라장터</a></td>'
+                    )
+                else:
+                    cell = f'<td style="{TD}text-align:center;color:#94a3b8;">-</td>'
+            elif col == "합계발주금액":
+                try:   fmt = f"{int(val):,}"
+                except: fmt = str(val)
+                cell = f'<td style="{TD}text-align:right;font-variant-numeric:tabular-nums;">{fmt}</td>'
+            elif col == "발주월_표시":
+                cell = (f'<td style="{TD}text-align:center;">'
+                        f'<span style="background:#ecfdf5;color:#065f46;padding:3px 10px;'
+                        f'border-radius:999px;font-size:.85rem;font-weight:600;">{str(val)}</span></td>')
+            elif col in ("기관명", "사업명"):
+                cell = f'<td style="{TD}max-width:220px;word-break:keep-all;">{str(val)}</td>'
+            elif col == "비고내용":
+                cell = f'<td style="{TD}max-width:180px;font-size:.9rem;color:#475569;word-break:keep-all;">{str(val) if str(val) != "nan" else "-"}</td>'
+            else:
+                display_val = str(val) if str(val) != "nan" else "-"
+                cell = f'<td style="{TD}white-space:nowrap;">{display_val}</td>'
+            cells.append(cell)
+        rows.append(
+            f'<tr style="background:{bg};" '
+            f'onmouseover="this.style.background=\'#ecfdf5\'" '
+            f'onmouseout="this.style.background=\'{bg}\'">'
+            + "".join(cells) + "</tr>"
+        )
+    return (f'<div style="width:100%;overflow-x:auto;border-radius:12px;'
+            f'box-shadow:0 2px 12px rgba(0,0,0,.08);margin-top:.5rem;">'
+            f'<table style="width:100%;border-collapse:collapse;min-width:1200px;">'
+            f'<thead><tr>{headers}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody>'
+            f'</table></div>')
+
+
+# ─────────────────────────────────────────────
+# 공통 — 페이지네이션 버튼
+# ─────────────────────────────────────────────
+def render_pagination(total_pages: int, page_key: str) -> int:
+    MAX_BTN  = 20
+    btn_cols = st.columns(min(total_pages, MAX_BTN))
+    for i in range(min(total_pages, MAX_BTN)):
+        with btn_cols[i]:
+            is_current = (st.session_state[page_key] == i + 1)
+            label      = f"**{i+1}**" if is_current else str(i + 1)
+            if st.button(label, key=f"{page_key}_btn_{i+1}", use_container_width=True):
+                st.session_state[page_key] = i + 1
+                st.rerun()
+    return st.session_state[page_key]
+
+
+# ═══════════════════════════════════════════════════════════════
+# 메인 탭 UI
+# ═══════════════════════════════════════════════════════════════
+tab1, tab2 = st.tabs(["🏛️ 유지보수 계약 내역", "📋 유지보수 발주 계획"])
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TAB 1 : 유지보수 계약 내역
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+with tab1:
+    st.markdown("""
+    <div class="hero-blue">
+      <h1>🏛️ 전국 지자체 유지보수 계약 현황</h1>
+      <p>나라장터 통합관제·CCTV 유지보수 계약 데이터 | 실시간 계약 만료 분석</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="search-panel">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
+    st.radio("", options=METRO_LIST, horizontal=True, key="radio_region", label_visibility="collapsed")
+
+    cb1, cb2 = st.columns([1, 8])
+    with cb1:
+        info_search = st.button("🔍 검색", type="primary", use_container_width=True, key="info_search_btn")
+    with cb2:
+        if st.button("🔄 데이터 새로고침", key="info_refresh_btn"):
+            st.cache_resource.clear()
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if info_search:
+        st.session_state["search_done"]   = True
+        st.session_state["search_region"] = st.session_state["radio_region"]
+        st.session_state["page"]          = 1
+
+    with st.spinner("📡 데이터 준비 중…"):
+        processed_df = get_processed_df()
+
+    if not st.session_state["search_done"]:
+        st.markdown("""
+        <div style="text-align:center;padding:5rem 0;color:#94a3b8;">
+          <div style="font-size:5rem;margin-bottom:1rem;">🔍</div>
+          <div style="font-size:1.6rem;font-weight:700;color:#334155;margin-bottom:.5rem;">지역을 선택하고 검색 버튼을 눌러주세요</div>
+          <div style="font-size:1.1rem;color:#64748b;">전국 또는 광역시도를 선택하면 계약 현황이 표시됩니다</div>
+        </div>
+        """, unsafe_allow_html=True)
+    elif processed_df.empty:
+        st.warning("⚠️ 데이터를 불러올 수 없습니다.")
+    else:
+        region_to_show = st.session_state["search_region"]
+        display_df = (
+            processed_df if region_to_show == "전국"
+            else processed_df[processed_df["광역단위"] == region_to_show]
+        )
+
+        total_count   = len(display_df)
+        active_count  = len(display_df[
+            ~display_df["남은기간"].str.contains("만료", na=False) &
+            (display_df["남은기간"] != "정보부족") &
+            (display_df["남은기간"] != "계산불가")
+        ])
+        expiring_soon = len(display_df[display_df["남은기간"].str.match(r"^[0-3]개월", na=False)])
+        total_amount  = display_df["★가공_계약금액"].sum()
+        amount_str    = f"{total_amount/100_000_000:.1f}억" if total_amount >= 100_000_000 else f"{total_amount:,}원"
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: st.markdown(f'<div class="stat-card"><div class="stat-num-blue">{total_count:,}</div><div class="stat-label">전체 계약 건수</div></div>', unsafe_allow_html=True)
+        with c2: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#16a34a">{active_count:,}</div><div class="stat-label">진행중 계약</div></div>', unsafe_allow_html=True)
+        with c3: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#ea580c">{expiring_soon:,}</div><div class="stat-label">3개월 내 만료 예정</div></div>', unsafe_allow_html=True)
+        with c4: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#7c3aed">{amount_str}</div><div class="stat-label">총 계약금액</div></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
+            fc1, fc2, fc3 = st.columns(3)
+            with fc1: sel_agency  = st.multiselect("수요기관",  sorted(display_df["★가공_수요기관"].dropna().unique()), placeholder="전체", key="info_f_agency")
+            with fc2: sel_company = st.multiselect("업체명",    sorted(display_df["★가공_업체명"].dropna().unique()),   placeholder="전체", key="info_f_company")
+            with fc3: sel_status  = st.multiselect("계약 상태", ["진행중", "3개월 내 만료", "만료됨"],                  placeholder="전체", key="info_f_status")
+            kw = st.text_input("🔎 계약명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...", key="info_kw")
+
+        filtered_df = display_df
+        if sel_agency:  filtered_df = filtered_df[filtered_df["★가공_수요기관"].isin(sel_agency)]
+        if sel_company: filtered_df = filtered_df[filtered_df["★가공_업체명"].isin(sel_company)]
+        if kw:          filtered_df = filtered_df[filtered_df["★가공_계약명"].str.contains(kw, case=False, na=False)]
+        if sel_status:
+            conds = []
+            if "진행중"        in sel_status: conds.append(~filtered_df["남은기간"].str.contains("만료|정보부족|오류", na=True))
+            if "3개월 내 만료" in sel_status: conds.append(filtered_df["남은기간"].str.match(r"^[0-3]개월", na=False))
+            if "만료됨"        in sel_status: conds.append(filtered_df["남은기간"] == "만료됨")
+            if conds:
+                combined = conds[0]
+                for c in conds[1:]: combined |= c
+                filtered_df = filtered_df[combined]
+
+        COLS = ["★가공_수요기관", "★가공_계약명", "★가공_업체명", "★가공_계약금액",
+                "계약일자", "착수일자", "★가공_계약만료일", "남은기간", "계약상세정보URL"]
+        col_rename = {c: c.replace("★가공_", "").replace("계약상세정보URL", "URL") for c in COLS}
+
+        st.divider()
+        rc, dc = st.columns([6, 2])
+        with rc:
+            st.markdown(f'<div class="section-title" style="font-size:1.5rem;">📊 {region_to_show} 계약 현황 — {len(filtered_df):,}건</div>', unsafe_allow_html=True)
+        with dc:
+            exp_df = filtered_df[COLS].copy()
+            exp_df.columns = [col_rename[c] for c in COLS]
+            st.download_button(
+                "📥 CSV 다운로드",
+                data=exp_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
+                file_name=f"계약현황_{region_to_show}_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv", use_container_width=True, key="info_download"
+            )
+
+        sort_map = {
+            "수요기관": "★가공_수요기관",
+            "계약금액 (높은순)": "★가공_계약금액",
+            "계약만료일 (빠른순)": "★가공_계약만료일",
+            "계약일자 (최신순)": "계약일자",
+        }
+        sort_choice = st.selectbox("정렬 기준", list(sort_map.keys()), index=3, label_visibility="collapsed", key="info_sort")
+        sorted_df   = filtered_df.sort_values(sort_map[sort_choice], ascending=sort_choice not in ["계약금액 (높은순)", "계약일자 (최신순)"])
+
+        total_rows  = len(sorted_df)
+        total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+        if st.session_state["page"] > total_pages:
+            st.session_state["page"] = 1
+
+        st.markdown(f'<div style="padding-top:4px;color:#64748b;font-size:1rem;margin-bottom:.5rem;">총 <b>{total_rows:,}건</b> · {total_pages}페이지</div>', unsafe_allow_html=True)
+        page = render_pagination(total_pages, "page")
+
+        paged_df = sorted_df[COLS].iloc[(page-1)*PAGE_SIZE : page*PAGE_SIZE].rename(columns=col_rename)
+        st.markdown(render_info_table(paged_df), unsafe_allow_html=True)
+        st.markdown(f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">{page} / {total_pages} 페이지 &nbsp;·&nbsp; {(page-1)*PAGE_SIZE+1}–{min(page*PAGE_SIZE, total_rows)}번째 항목</div>', unsafe_allow_html=True)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TAB 2 : 유지보수 발주 계획
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+with tab2:
+    st.markdown("""
+    <div class="hero-green">
+      <h1>📋 전국 지자체 유지보수 발주 계획</h1>
+      <p>나라장터 통합관제·CCTV 유지보수 발주 계획 | 최근 6개월 기준</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="search-panel">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
+    st.radio("", options=METRO_LIST, horizontal=True, key="plan_radio_region", label_visibility="collapsed")
+
+    pb1, pb2 = st.columns([1, 8])
+    with pb1:
+        plan_search = st.button("🔍 검색", type="primary", use_container_width=True, key="plan_search_btn")
+    with pb2:
+        if st.button("🔄 데이터 새로고침", key="plan_refresh_btn"):
+            st.cache_resource.clear()
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if plan_search:
+        st.session_state["plan_search_done"]   = True
+        st.session_state["plan_search_region"] = st.session_state["plan_radio_region"]
+        st.session_state["plan_page"]          = 1
+
+    with st.spinner("📡 발주 계획 데이터 준비 중…"):
+        baljoo_df = get_baljoo_df()
+
+    if not st.session_state["plan_search_done"]:
+        st.markdown("""
+        <div style="text-align:center;padding:5rem 0;color:#94a3b8;">
+          <div style="font-size:5rem;margin-bottom:1rem;">📋</div>
+          <div style="font-size:1.6rem;font-weight:700;color:#334155;margin-bottom:.5rem;">지역을 선택하고 검색 버튼을 눌러주세요</div>
+          <div style="font-size:1.1rem;color:#64748b;">최근 6개월 내 발주 계획이 표시됩니다</div>
+        </div>
+        """, unsafe_allow_html=True)
+    elif baljoo_df.empty:
+        st.warning("⚠️ 조건에 맞는 발주 계획 데이터가 없습니다.")
+    else:
+        plan_region = st.session_state["plan_search_region"]
+        plan_display = (
+            baljoo_df if plan_region == "전국"
+            else baljoo_df[baljoo_df["광역단위"] == plan_region]
+        )
+
+        today      = pd.Timestamp(datetime.now().date())
+        next_month = today + relativedelta(months=1)
+        total_count  = len(plan_display)
+        agency_count = plan_display["기관명"].nunique()
+        soon_count   = len(plan_display[plan_display["발주일자"] <= next_month])
+        total_amount = plan_display["합계발주금액"].sum()
+        amount_str   = f"{total_amount/100_000_000:.1f}억" if total_amount >= 100_000_000 else f"{total_amount:,}원"
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: st.markdown(f'<div class="stat-card"><div class="stat-num-green">{total_count:,}</div><div class="stat-label">발주 계획 건수</div></div>', unsafe_allow_html=True)
+        with c2: st.markdown(f'<div class="stat-card"><div class="stat-num-green" style="color:#0284c7">{agency_count:,}</div><div class="stat-label">발주 기관 수</div></div>', unsafe_allow_html=True)
+        with c3: st.markdown(f'<div class="stat-card"><div class="stat-num-green" style="color:#ea580c">{soon_count:,}</div><div class="stat-label">이번달·다음달 발주</div></div>', unsafe_allow_html=True)
+        with c4: st.markdown(f'<div class="stat-card"><div class="stat-num-green" style="color:#7c3aed">{amount_str}</div><div class="stat-label">합계 발주금액</div></div>', unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
+            fc1, fc2, fc3 = st.columns(3)
+            with fc1: sel_agency  = st.multiselect("기관명",   sorted(plan_display["기관명"].dropna().unique()),     placeholder="전체", key="plan_f_agency")
+            with fc2: sel_month   = st.multiselect("발주월",   sorted(plan_display["발주월_표시"].dropna().unique()), placeholder="전체", key="plan_f_month")
+            with fc3: sel_method  = st.multiselect("계약방법", sorted(plan_display["계약방법명"].dropna().unique()),  placeholder="전체", key="plan_f_method")
+            kw2 = st.text_input("🔎 사업명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...", key="plan_kw")
+
+        filtered_plan = plan_display
+        if sel_agency:  filtered_plan = filtered_plan[filtered_plan["기관명"].isin(sel_agency)]
+        if sel_month:   filtered_plan = filtered_plan[filtered_plan["발주월_표시"].isin(sel_month)]
+        if sel_method:  filtered_plan = filtered_plan[filtered_plan["계약방법명"].isin(sel_method)]
+        if kw2:         filtered_plan = filtered_plan[filtered_plan["사업명"].str.contains(kw2, case=False, na=False)]
+
+        st.divider()
+        rc2, dc2 = st.columns([6, 2])
+        with rc2:
+            st.markdown(f'<div class="section-title" style="font-size:1.5rem;">📋 {plan_region} 발주 계획 — {len(filtered_plan):,}건</div>', unsafe_allow_html=True)
+        with dc2:
+            PLAN_COLS = ["기관명", "사업명", "발주월_표시", "합계발주금액", "계약방법명",
+                         "조달방식", "담당자명", "전화번호", "공사지역명", "부서명", "비고내용", "발주계획통합번호"]
+            plan_exp_cols = [c for c in PLAN_COLS if c in filtered_plan.columns]
+            exp_plan = filtered_plan[plan_exp_cols].copy()
+            exp_plan.rename(columns={"발주월_표시": "발주월"}, inplace=True)
+            st.download_button(
+                "📥 CSV 다운로드",
+                data=exp_plan.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig"),
+                file_name=f"발주계획_{plan_region}_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv", use_container_width=True, key="plan_download"
+            )
+
+        plan_sort_map = {
+            "기관명": "기관명",
+            "발주월 (빠른순)": "발주일자",
+            "발주금액 (높은순)": "합계발주금액",
+        }
+        sort_choice2 = st.selectbox("정렬 기준", list(plan_sort_map.keys()), index=1, label_visibility="collapsed", key="plan_sort")
+        sorted_plan  = filtered_plan.sort_values(plan_sort_map[sort_choice2], ascending=sort_choice2 != "발주금액 (높은순)")
+
+        total_rows2  = len(sorted_plan)
+        total_pages2 = max(1, (total_rows2 + PAGE_SIZE - 1) // PAGE_SIZE)
+        if st.session_state["plan_page"] > total_pages2:
+            st.session_state["plan_page"] = 1
+
+        st.markdown(f'<div style="padding-top:4px;color:#64748b;font-size:1rem;margin-bottom:.5rem;">총 <b>{total_rows2:,}건</b> · {total_pages2}페이지</div>', unsafe_allow_html=True)
+        page2 = render_pagination(total_pages2, "plan_page")
+
+        plan_table_cols = [c for c in PLAN_COLS if c in sorted_plan.columns]
+        paged_plan = sorted_plan[plan_table_cols].iloc[(page2-1)*PAGE_SIZE : page2*PAGE_SIZE].copy()
+        st.markdown(render_plan_table(paged_plan), unsafe_allow_html=True)
+
+        st.markdown("""
+        <div class="copy-notice">
+          💡 <b>나라장터 검색 방법</b> : "나라장터" 버튼 클릭 → 나라장터 접속 후 상단 검색창에 <b>발주계획번호</b>를 직접 입력해주세요.
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown(f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">{page2} / {total_pages2} 페이지 &nbsp;·&nbsp; {(page2-1)*PAGE_SIZE+1}–{min(page2*PAGE_SIZE, total_rows2)}번째 항목</div>', unsafe_allow_html=True)
