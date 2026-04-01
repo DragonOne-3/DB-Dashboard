@@ -955,17 +955,17 @@ with tab3:
 
         # ── 공고 전용 HTML 테이블
         # ③ GONG_COL_LABELS (헤더명)
-            GONG_COL_LABELS = {
-                "입찰공고명":      "입찰공고명",
-                "공고기관명":      "공고기관",
-                "수요기관명":      "수요기관",
-                "입찰개시일_표시": "입찰개시일",
-                "입찰마감일_표시": "입찰마감일",
-                "배정예산금액":    "배정예산(원)",
-                "계약체결방법명":  "계약방법",       # ← 추가
-                "마감여부":        "상태",
-                "입찰공고상세URL": "공고 상세",
-            }
+        GONG_COL_LABELS = {
+            "입찰공고명":      "입찰공고명",
+            "공고기관명":      "공고기관",
+            "수요기관명":      "수요기관",
+            "입찰개시일_표시": "입찰개시일",
+            "입찰마감일_표시": "입찰마감일",
+            "배정예산금액":    "배정예산(원)",
+            "계약체결방법명":  "계약방법",       # ← 추가
+            "마감여부":        "상태",
+            "입찰공고상세URL": "공고 상세",
+        }
         TH_G = ("background:#4c1d95;color:#fff;padding:12px 14px;font-size:0.95rem;font-weight:700;"
                 "white-space:nowrap;border-bottom:2px solid #7c3aed;text-align:left;")
         TD_G = "padding:11px 14px;font-size:1rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
