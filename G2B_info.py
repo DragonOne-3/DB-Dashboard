@@ -320,7 +320,7 @@ def get_baljoo_df() -> pd.DataFrame:
         creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client     = gspread.authorize(creds)
         # ★ 실제 Google Sheet 파일명으로 변경하세요
-        ws         = client.open("발주계획").get_worksheet(0)
+        ws         = client.open("나라장터_용역_발주계획").get_worksheet(0)
         records    = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
     except Exception as e:
         st.error(f"❌ 발주계획 시트 로드 오류: {e}")
