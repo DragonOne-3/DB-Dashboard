@@ -949,7 +949,7 @@ with tab3:
         # 테이블 렌더링용 컬럼
         GONG_TABLE_COLS = ["입찰공고명", "공고기관명", "수요기관명",
                    "입찰개시일_표시", "입찰마감일_표시",
-                   "배정예산금액", "계약체결방법명", "마감여부", "입찰공고상세URL"
+                   "배정예산금액", "계약체결방법명", "마감여부", "입찰공고상세URL"]
         gong_table_cols = [c for c in GONG_TABLE_COLS if c in sorted_gong.columns]
         paged_gong = sorted_gong[gong_table_cols].iloc[(page3-1)*PAGE_SIZE : page3*PAGE_SIZE].copy()
 
