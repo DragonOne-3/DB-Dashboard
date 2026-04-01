@@ -7,6 +7,8 @@ import os
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import re
+import uuid
+import threading
 
 # ─────────────────────────────────────────────
 # 페이지 설정
@@ -134,6 +136,11 @@ PAGE_SIZE = 50
 # ─────────────────────────────────────────────
 # session_state 초기화
 # ─────────────────────────────────────────────
+# 세션 ID 발급 + 접속 로그 (최초 1회만)
+if "session_id" not in st.session_state:
+    st.session_state["session_id"] = str(uuid.uuid4())[:8]
+    log_event("접속")
+
 defaults = {
     # 계약내역 탭
     "search_done": False, "search_region": "전국", "radio_region": "전국", "page": 1,
@@ -221,7 +228,29 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
 
 def clean_contract_name(name: str) -> str:
     return RE_CONTRACT_NUM.sub("", str(name).replace(" ", ""))
+# ─────────────────────────────────────────────
+# 로그 기록
+# ─────────────────────────────────────────────
+def _write_log(event_type: str, detail: str):
+    """백그라운드에서 Google Sheets에 로그 기록 (앱 속도에 영향 없음)"""
+    try:
+        auth_json = os.environ.get("GOOGLE_AUTH_JSON")
+        if not auth_json:
+            return
+        creds_dict = json.loads(auth_json)
+        scope      = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client     = gspread.authorize(creds)
+        ws         = client.open("나라장터_usage_log").get_worksheet(0)
+        now        = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        session_id = st.session_state.get("session_id", "unknown")
+        ws.append_row([now, session_id, event_type, detail])
+    except Exception:
+        pass  # 로그 실패해도 앱은 정상 동작
 
+def log_event(event_type: str, detail: str = "-"):
+    """메인 스레드에서 호출 → 백그라운드로 넘겨서 UI 지연 없음"""
+    threading.Thread(target=_write_log, args=(event_type, detail), daemon=True).start()
 
 # ─────────────────────────────────────────────
 # [탭1] 데이터 로드
@@ -596,6 +625,7 @@ with tab1:
     st.markdown("</div>", unsafe_allow_html=True)
 
     if info_search:
+        log_event("검색_계약내역", st.session_state["radio_region"])
         st.session_state["search_done"]   = True
         st.session_state["search_region"] = st.session_state["radio_region"]
         st.session_state["page"]          = 1
@@ -722,6 +752,7 @@ with tab2:
     st.markdown("</div>", unsafe_allow_html=True)
 
     if plan_search:
+        log_event("검색_발주계획", st.session_state["plan_radio_region"])
         st.session_state["plan_search_done"]   = True
         st.session_state["plan_search_region"] = st.session_state["plan_radio_region"]
         st.session_state["plan_page"]          = 1
@@ -854,6 +885,7 @@ with tab3:
     st.markdown("</div>", unsafe_allow_html=True)
 
     if gong_search:
+        log_event("검색_공고", st.session_state["gong_radio_region"])
         st.session_state["gong_search_done"]   = True
         st.session_state["gong_search_region"] = st.session_state["gong_radio_region"]
         st.session_state["gong_page"]          = 1
