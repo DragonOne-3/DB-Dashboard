@@ -336,7 +336,7 @@ def get_baljoo_df() -> pd.DataFrame:
 
     sn           = df["사업명"].astype(str)
     include_mask = sn.str.contains("유지", na=False) & sn.str.contains("통합관제|통합|CCTV", na=False)
-    exclude_mask = sn.str.contains("상수도|청사|악취|미세먼지|상담실|보건소", na=False)
+    exclude_mask = sn.str.contains("청사|악취|미세먼지|상담실|보건소|홈페이지|발급기|공간정보|계측기|부동산", na=False)
     df           = df[include_mask & ~exclude_mask].copy()
 
     df["발주일자"] = df.apply(
