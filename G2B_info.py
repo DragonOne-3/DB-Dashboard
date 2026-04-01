@@ -724,13 +724,18 @@ with tab2:
                 mime="text/csv", use_container_width=True, key="plan_download"
             )
 
+        st.markdown("""
+        <div class="copy-notice">
+          💡 <b>나라장터 검색 방법</b> : "나라장터" 버튼 클릭 → 나라장터 접속 후 상단 검색창에 <b>발주계획번호</b>를 직접 입력해주세요.
+        </div>
+        """, unsafe_allow_html=True)
         plan_sort_map = {
-            "기관명": "기관명",
-            "발주월 (빠른순)": "발주일자",
-            "발주금액 (높은순)": "합계발주금액",
+        "기관명": "기관명",
+        "발주월 (최신순)": "발주일자",   # ← 이름도 변경
+        "발주금액 (높은순)": "합계발주금액",
         }
         sort_choice2 = st.selectbox("정렬 기준", list(plan_sort_map.keys()), index=1, label_visibility="collapsed", key="plan_sort")
-        sorted_plan  = filtered_plan.sort_values(plan_sort_map[sort_choice2], ascending=sort_choice2 != "발주금액 (높은순)")
+        sorted_plan = filtered_plan.sort_values(plan_sort_map[sort_choice2], ascending=sort_choice2 == "기관명")
 
         total_rows2  = len(sorted_plan)
         total_pages2 = max(1, (total_rows2 + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -743,11 +748,11 @@ with tab2:
         plan_table_cols = [c for c in PLAN_COLS if c in sorted_plan.columns]
         paged_plan = sorted_plan[plan_table_cols].iloc[(page2-1)*PAGE_SIZE : page2*PAGE_SIZE].copy()
         st.markdown(render_plan_table(paged_plan), unsafe_allow_html=True)
-
+        
         st.markdown("""
         <div class="copy-notice">
           💡 <b>나라장터 검색 방법</b> : "나라장터" 버튼 클릭 → 나라장터 접속 후 상단 검색창에 <b>발주계획번호</b>를 직접 입력해주세요.
         </div>
         """, unsafe_allow_html=True)
-
+        
         st.markdown(f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">{page2} / {total_pages2} 페이지 &nbsp;·&nbsp; {(page2-1)*PAGE_SIZE+1}–{min(page2*PAGE_SIZE, total_rows2)}번째 항목</div>', unsafe_allow_html=True)
