@@ -899,14 +899,14 @@ with tab3:
             fc1, fc2, fc3 = st.columns(3)
             with fc1: sel_gong_agency = st.multiselect("수요기관명", sorted(gong_display["수요기관명"].dropna().unique()), placeholder="전체", key="gong_f_agency")
             with fc2: sel_gong_status = st.multiselect("마감여부",   ["진행중", "마감"],                                   placeholder="전체", key="gong_f_status")
-            with fc3: sel_gong_method = st.multiselect("입찰방식",   sorted(gong_display["입찰방식명"].dropna().unique()),  placeholder="전체", key="gong_f_method") if "입찰방식명" in gong_display.columns else None
+            with fc3: sel_gong_method = st.multiselect("계약방식", sorted(gong_display["계약체결방법명"].dropna().unique()), placeholder="전체", key="gong_f_method") if "계약체결방법명" in gong_display.columns else None
             kw3 = st.text_input("🔎 공고명 키워드 검색", placeholder="예: CCTV, 통합관제, 영상...", key="gong_kw")
 
         filtered_gong = gong_display
         if sel_gong_agency: filtered_gong = filtered_gong[filtered_gong["수요기관명"].isin(sel_gong_agency)]
         if sel_gong_status: filtered_gong = filtered_gong[filtered_gong["마감여부"].isin(sel_gong_status)]
-        if sel_gong_method and "입찰방식명" in filtered_gong.columns:
-            filtered_gong = filtered_gong[filtered_gong["입찰방식명"].isin(sel_gong_method)]
+        if sel_gong_method and "계약체결방법명" in filtered_gong.columns:
+            filtered_gong = filtered_gong[filtered_gong["계약체결방법명"].isin(sel_gong_method)]
         if kw3: filtered_gong = filtered_gong[filtered_gong["입찰공고명"].str.contains(kw3, case=False, na=False)]
 
         st.divider()
@@ -989,8 +989,14 @@ with tab3:
                     cell = f'<td style="{TD_G}text-align:right;font-variant-numeric:tabular-nums;">{fmt}</td>'
                 elif col == "계약체결방법명":
                     display = str(val) if str(val) not in ("", "nan") else "-"
+                    if "수의" in display:
+                        bg_c, fg_c = "#fff7ed", "#c2410c"   # 주황 계열
+                    elif "제한" in display:
+                        bg_c, fg_c = "#eff6ff", "#1d4ed8"   # 파랑 계열
+                    else:
+                        bg_c, fg_c = "#f1f5f9", "#475569"   # 기본 회색
                     cell = (f'<td style="{TD_G}text-align:center;">'
-                            f'<span style="background:#eff6ff;color:#1d4ed8;padding:3px 10px;'
+                            f'<span style="background:{bg_c};color:{fg_c};padding:3px 10px;'
                             f'border-radius:999px;font-size:.85rem;font-weight:600;white-space:nowrap;">'
                             f'{display}</span></td>')
                 elif col == "마감여부":
