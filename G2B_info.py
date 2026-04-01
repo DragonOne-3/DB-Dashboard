@@ -389,8 +389,8 @@ def get_gong_df() -> pd.DataFrame:
 
     # 날짜 파싱 (입찰개시일시 기준, 최근 6개월)
     df["입찰개시일시_dt"] = pd.to_datetime(
-        df["입찰개시일시"].astype(str).str[:8],
-        format="%Y%m%d", errors="coerce"
+    df["입찰개시일시"].astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8],
+    format="%Y%m%d", errors="coerce"
     )
     today      = pd.Timestamp(datetime.now().date())
     six_months = today - relativedelta(months=6)
@@ -398,8 +398,8 @@ def get_gong_df() -> pd.DataFrame:
 
     # 마감일시 파싱
     df["입찰마감일시_dt"] = pd.to_datetime(
-        df["입찰마감일시"].astype(str).str[:8],
-        format="%Y%m%d", errors="coerce"
+    df["입찰마감일시"].astype(str).str.replace(RE_NONDIGIT, "", regex=True).str[:8],
+    format="%Y%m%d", errors="coerce"
     )
 
     # 표시용 날짜 (날짜만)
