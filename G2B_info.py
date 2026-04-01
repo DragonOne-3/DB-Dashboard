@@ -487,8 +487,8 @@ def render_plan_table(df: pd.DataFrame) -> str:
     COL_LABELS = {
         "기관명": "기관명", "사업명": "사업명", "발주월_표시": "발주월",
         "합계발주금액": "발주금액(원)", "계약방법명": "계약방법", "조달방식": "조달방식",
-        "담당자명": "담당자", "전화번호": "전화번호", "공사지역명": "공사지역",
-        "부서명": "부서명", "비고내용": "비고", "발주계획통합번호": "발주계획번호",
+        "담당자명": "담당자", "전화번호": "전화번호", 
+        "부서명": "부서명",  "발주계획통합번호": "발주계획번호",
     }
     TH = ("background:#064e3b;color:#fff;padding:12px 14px;font-size:0.95rem;font-weight:700;"
           "white-space:nowrap;border-bottom:2px solid #059669;text-align:left;")
@@ -779,7 +779,7 @@ with tab2:
             st.markdown(f'<div class="section-title" style="font-size:1.5rem;">📋 {plan_region} 발주 계획 — {len(filtered_plan):,}건</div>', unsafe_allow_html=True)
         with dc2:
             PLAN_COLS = ["기관명", "사업명", "발주월_표시", "합계발주금액", "계약방법명",
-                         "조달방식", "담당자명", "전화번호", "공사지역명", "부서명", "비고내용", "발주계획통합번호"]
+                         "조달방식", "담당자명", "전화번호",  "부서명",  "발주계획통합번호"]
             plan_exp_cols = [c for c in PLAN_COLS if c in filtered_plan.columns]
             exp_plan = filtered_plan[plan_exp_cols].copy()
             exp_plan.rename(columns={"발주월_표시": "발주월"}, inplace=True)
