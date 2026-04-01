@@ -1,0 +1,46 @@
+name: 나라장터 유지보수 공고 수집
+
+on:
+  schedule:
+    - cron: '0 21 * * *'   # 매일 UTC 21:00 = KST 06:00
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: '실행 모드 (daily 또는 init)'
+        required: true
+        default: 'daily'
+        type: choice
+        options:
+          - daily
+          - init
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 수집 실행 (스케줄 - 일일)
+        if: github.event_name == 'schedule'
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+        run: python collector.py daily
+
+      - name: 수집 실행 (수동)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+        run: python collector.py ${{ github.event.inputs.mode }}
