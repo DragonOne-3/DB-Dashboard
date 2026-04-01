@@ -49,7 +49,7 @@ st.markdown("""
 # ─────────────────────────────────────────────
 # 로그 기록 (session_state 초기화보다 반드시 먼저)
 # ─────────────────────────────────────────────
-def _write_log(event_type: str, detail: str):
+def _write_log(event_type: str, detail: str, session_id: str, ip: str):
     try:
         auth_json = os.environ.get("GOOGLE_AUTH_JSON")
         if not auth_json:
@@ -60,13 +60,33 @@ def _write_log(event_type: str, detail: str):
         client     = gspread.authorize(creds)
         ws         = client.open("나라장터_usage_log").get_worksheet(0)
         now        = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        session_id = st.session_state.get("session_id", "unknown")
-        ws.append_row([now, session_id, event_type, detail])
+        ws.append_row([now, session_id, ip, event_type, detail])
     except Exception:
         pass
 
+def _get_client_ip() -> str:
+    try:
+        from streamlit.web.server.websocket_headers import _get_websocket_headers
+        headers = _get_websocket_headers()
+        if headers:
+            return (
+                headers.get("X-Forwarded-For", "")
+                or headers.get("X-Real-Ip", "")
+                or "unknown"
+            ).split(",")[0].strip()
+    except Exception:
+        pass
+    return "unknown"
+
 def log_event(event_type: str, detail: str = "-"):
-    threading.Thread(target=_write_log, args=(event_type, detail), daemon=True).start()
+    # 메인 스레드에서 미리 캡처
+    session_id = st.session_state.get("session_id", "unknown")
+    ip         = _get_client_ip()
+    threading.Thread(
+        target=_write_log,
+        args=(event_type, detail, session_id, ip),
+        daemon=True
+    ).start()start()
 
 # ─────────────────────────────────────────────
 # 상수
@@ -102,9 +122,10 @@ PAGE_SIZE = 50
 # ─────────────────────────────────────────────
 # session_state 초기화
 # ─────────────────────────────────────────────
+# session_id 를 가장 먼저 확정
 if "session_id" not in st.session_state:
     st.session_state["session_id"] = str(uuid.uuid4())[:8]
-    log_event("접속")
+    log_event("접속")   # ← 이제 session_id가 확정된 뒤 호출됨
 
 defaults = {
     "search_done": False, "search_region": "전국", "radio_region": "전국", "page": 1,
