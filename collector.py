@@ -23,6 +23,7 @@ API_URL = 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancL
 KEYWORDS = ['통합관제', 'CCTV', '통합플랫폼', '스마트도시', '스마트시티', '주차', '출입']
 REQUIRED_WORD = '유지'
 
+# API 응답 영문 컬럼 → 한글 헤더 매핑
 COLUMNS = [
     'bidNtceNo',            # 입찰공고번호
     'rgstTyNm',             # 등록유형명
@@ -45,6 +46,30 @@ COLUMNS = [
     'presmptPrce',          # 추정가격
     'sucsfbidMthdNm',       # 낙찰방법명
 ]
+
+COLUMN_KR = {
+    'bidNtceNo':          '입찰공고번호',
+    'rgstTyNm':           '등록유형명',
+    'ntceKindNm':         '공고종류명',
+    'bidNtceDt':          '입찰공고일시',
+    'refNo':              '참조번호',
+    'bidNtceNm':          '입찰공고명',
+    'ntceInsttCd':        '공고기관코드',
+    'ntceInsttNm':        '공고기관명',
+    'dminsttCd':          '수요기관코드',
+    'dminsttNm':          '수요기관명',
+    'bidMethdNm':         '입찰방식명',
+    'cntrctCnclsMthdNm':  '계약체결방법명',
+    'ntceInsttOfclNm':    '공고기관담당자명',
+    'ntceInsttOfclTelNo': '공고기관담당자전화번호',
+    'bidNtceDtlUrl':      '입찰공고상세URL',
+    'bidBeginDt':         '입찰개시일시',
+    'bidClseDt':          '입찰마감일시',
+    'asignBdgtAmt':       '배정예산금액',
+    'presmptPrce':        '추정가격',
+    'sucsfbidMthdNm':     '낙찰방법명',
+    '수집일자':            '수집일자',
+}
 
 save_lock = threading.Lock()
 
@@ -84,23 +109,48 @@ def read_sheet(svc):
             return pd.DataFrame(columns=COLUMNS + ['수집일자'])
         headers = values[0]
         rows = [r + [''] * (len(headers) - len(r)) for r in values[1:]]
-        return pd.DataFrame(rows, columns=headers)
+        df = pd.DataFrame(rows, columns=headers)
+        # 한글 컬럼명 → 영문으로 역변환 (내부 처리용)
+        COLUMN_KR_INV = {v: k for k, v in COLUMN_KR.items()}
+        df.rename(columns=COLUMN_KR_INV, inplace=True)
+        return df
     except Exception as e:
         log(f"⚠️ 시트 읽기 오류: {e}")
         return pd.DataFrame(columns=COLUMNS + ['수집일자'])
 
 def write_sheet(svc, df):
-    values = [df.columns.tolist()] + df.fillna('').values.tolist()
-    values = [[str(c) for c in row] for row in values]
+    # 1행 헤더 확인 - 사용자가 한글로 바꿔놨으면 그대로 유지
+    existing_header = []
+    try:
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f'{SHEET_NAME}!1:1'
+        ).execute()
+        existing_header = result.get('values', [[]])[0]
+    except:
+        pass
+
+    # 헤더가 없으면 최초 1회만 영문 컬럼명으로 작성
+    if not existing_header:
+        svc.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f'{SHEET_NAME}!A1',
+            valueInputOption='RAW',
+            body={'values': [df.columns.tolist()]}
+        ).execute()
+
+    # 데이터는 2행부터만 클리어 후 재작성 (헤더 건드리지 않음)
     svc.spreadsheets().values().clear(
-        spreadsheetId=SPREADSHEET_ID, range=f'{SHEET_NAME}!A:Z'
+        spreadsheetId=SPREADSHEET_ID, range=f'{SHEET_NAME}!A2:Z'
     ).execute()
-    svc.spreadsheets().values().update(
-        spreadsheetId=SPREADSHEET_ID,
-        range=f'{SHEET_NAME}!A1',
-        valueInputOption='RAW',
-        body={'values': values}
-    ).execute()
+    data_values = [[str(c) for c in row] for row in df.fillna('').values.tolist()]
+    if data_values:
+        svc.spreadsheets().values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f'{SHEET_NAME}!A2',
+            valueInputOption='RAW',
+            body={'values': data_values}
+        ).execute()
     log(f"✅ 시트 저장 완료: 총 {len(df)}행")
 
 # ================= API 수집 =================
@@ -207,6 +257,8 @@ def merge_and_save(svc, new_df):
         if 'bidNtceNo' in combined.columns:
             combined.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
         combined = remove_old_data(combined)
+        # 컬럼명 한글로 변환 후 저장
+        combined.rename(columns=COLUMN_KR, inplace=True)
         write_sheet(svc, combined)
         gc.collect()
 
