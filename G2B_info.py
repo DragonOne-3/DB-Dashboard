@@ -564,6 +564,10 @@ def render_pagination(total_pages: int, page_key: str) -> int:
 # ═══════════════════════════════════════════════════════════════
 # 메인 탭 UI
 # ═══════════════════════════════════════════════════════════════
+with st.spinner("📡 데이터 준비 중…"):
+    processed_df = get_processed_df()
+    baljoo_df    = get_baljoo_df()
+    gong_df      = get_gong_df()
 tab1, tab2, tab3 = st.tabs(["🏛️ 유지보수 계약 내역", "📋 유지보수 발주 계획", "📢 유지보수 공고"])
 
 
@@ -596,8 +600,6 @@ with tab1:
         st.session_state["search_region"] = st.session_state["radio_region"]
         st.session_state["page"]          = 1
 
-    with st.spinner("📡 데이터 준비 중…"):
-        processed_df = get_processed_df()
 
     if not st.session_state["search_done"]:
         st.markdown("""
@@ -724,8 +726,6 @@ with tab2:
         st.session_state["plan_search_region"] = st.session_state["plan_radio_region"]
         st.session_state["plan_page"]          = 1
 
-    with st.spinner("📡 발주 계획 데이터 준비 중…"):
-        baljoo_df = get_baljoo_df()
 
     if not st.session_state["plan_search_done"]:
         st.markdown("""
@@ -858,8 +858,6 @@ with tab3:
         st.session_state["gong_search_region"] = st.session_state["gong_radio_region"]
         st.session_state["gong_page"]          = 1
 
-    with st.spinner("📡 공고 데이터 준비 중…"):
-        gong_df = get_gong_df()
 
     if not st.session_state["gong_search_done"]:
         st.markdown("""
