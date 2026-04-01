@@ -914,8 +914,9 @@ with tab3:
         with rc3:
             st.markdown(f'<div class="section-title" style="font-size:1.5rem;">📢 {gong_region} 유지보수 공고 — {len(filtered_gong):,}건</div>', unsafe_allow_html=True)
         with dc3:
+            # ① GONG_EXP_COLS (CSV 다운로드용)
             GONG_EXP_COLS = ["입찰공고명", "공고기관명", "수요기관명", "입찰개시일_표시",
-                             "입찰마감일_표시", "배정예산금액", "마감여부", "입찰공고상세URL"]
+                             "입찰마감일_표시", "배정예산금액", "계약체결방법명", "마감여부", "입찰공고상세URL"]
             gong_exp_cols = [c for c in GONG_EXP_COLS if c in filtered_gong.columns]
             exp_gong = filtered_gong[gong_exp_cols].copy()
             st.download_button(
@@ -947,22 +948,24 @@ with tab3:
 
         # 테이블 렌더링용 컬럼
         GONG_TABLE_COLS = ["입찰공고명", "공고기관명", "수요기관명",
-                           "입찰개시일_표시", "입찰마감일_표시",
-                           "배정예산금액", "마감여부", "입찰공고상세URL"]
+                   "입찰개시일_표시", "입찰마감일_표시",
+                   "배정예산금액", "계약체결방법명", "마감여부", "입찰공고상세URL"
         gong_table_cols = [c for c in GONG_TABLE_COLS if c in sorted_gong.columns]
         paged_gong = sorted_gong[gong_table_cols].iloc[(page3-1)*PAGE_SIZE : page3*PAGE_SIZE].copy()
 
         # ── 공고 전용 HTML 테이블
-        GONG_COL_LABELS = {
-            "입찰공고명":     "입찰공고명",
-            "공고기관명":     "공고기관",
-            "수요기관명":     "수요기관",
-            "입찰개시일_표시": "입찰개시일",
-            "입찰마감일_표시": "입찰마감일",
-            "배정예산금액":   "배정예산(원)",
-            "마감여부":       "상태",
-            "입찰공고상세URL": "공고 상세",
-        }
+        # ③ GONG_COL_LABELS (헤더명)
+            GONG_COL_LABELS = {
+                "입찰공고명":      "입찰공고명",
+                "공고기관명":      "공고기관",
+                "수요기관명":      "수요기관",
+                "입찰개시일_표시": "입찰개시일",
+                "입찰마감일_표시": "입찰마감일",
+                "배정예산금액":    "배정예산(원)",
+                "계약체결방법명":  "계약방법",       # ← 추가
+                "마감여부":        "상태",
+                "입찰공고상세URL": "공고 상세",
+            }
         TH_G = ("background:#4c1d95;color:#fff;padding:12px 14px;font-size:0.95rem;font-weight:700;"
                 "white-space:nowrap;border-bottom:2px solid #7c3aed;text-align:left;")
         TD_G = "padding:11px 14px;font-size:1rem;color:#1e293b;border-bottom:1px solid #e2e8f0;vertical-align:middle;"
@@ -984,6 +987,12 @@ with tab3:
                     try:   fmt = f"{int(val):,}"
                     except: fmt = str(val)
                     cell = f'<td style="{TD_G}text-align:right;font-variant-numeric:tabular-nums;">{fmt}</td>'
+                elif col == "계약체결방법명":
+                    display = str(val) if str(val) not in ("", "nan") else "-"
+                    cell = (f'<td style="{TD_G}text-align:center;">'
+                            f'<span style="background:#eff6ff;color:#1d4ed8;padding:3px 10px;'
+                            f'border-radius:999px;font-size:.85rem;font-weight:600;white-space:nowrap;">'
+                            f'{display}</span></td>')
                 elif col == "마감여부":
                     if val == "진행중":
                         badge = '<span style="background:#f0fdf4;color:#15803d;padding:3px 10px;border-radius:999px;font-size:.85rem;font-weight:600;">진행중</span>'
