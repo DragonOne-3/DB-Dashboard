@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 import re
 import uuid
 import threading
+from difflib import SequenceMatcher
 
 st.set_page_config(
     page_title="지자체 유지보수 계약 현황",
@@ -20,6 +21,17 @@ st.set_page_config(
 RE_NONDIGIT     = re.compile(r"[^0-9]")
 RE_MONTH_ONLY   = re.compile(r"^[0-3]개월")
 RE_CONTRACT_NUM = re.compile(r"\d+차분?|\d+")
+
+# 반복수주 정규화용 정규식
+RE_NORMALIZE = re.compile(
+    r"\d{4}[~\-～]\d{4}년?"   # 2023~2024년
+    r"|\d{4}년\s*\d{1,2}월"   # 2024년 1월
+    r"|\d{4}년"                # 2024년
+    r"|\d{1,2}차분?"           # 1차분, 2차
+    r"|장기계속\s*\d*차?"      # 장기계속2차
+    r"|\(.*?\)"                # 괄호 전체
+    r"|연장분|추가분|수정"
+)
 
 st.markdown("""
 <style>
@@ -47,7 +59,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 로그 기록 (session_state 초기화보다 반드시 먼저)
+# 로그 기록
 # ─────────────────────────────────────────────
 def _write_log(event_type: str, detail: str, session_id: str, ip: str):
     try:
@@ -79,7 +91,6 @@ def _get_client_ip() -> str:
     return "unknown"
 
 def log_event(event_type: str, detail: str = "-"):
-    # 메인 스레드에서 미리 캡처
     session_id = st.session_state.get("session_id", "unknown")
     ip         = _get_client_ip()
     threading.Thread(
@@ -208,6 +219,82 @@ def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
 
 def clean_contract_name(name: str) -> str:
     return RE_CONTRACT_NUM.sub("", str(name).replace(" ", ""))
+
+# ─────────────────────────────────────────────
+# 반복수주 탐지 함수
+# ─────────────────────────────────────────────
+def normalize_contract_name(name: str) -> str:
+    """연도·차수·괄호 등 변동 요소 제거 후 공백 정리"""
+    s = RE_NORMALIZE.sub("", str(name))
+    s = re.sub(r"\s+", "", s)
+    return s.strip()
+
+def name_similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, a, b).ratio()
+
+def detect_repeat_contracts(df: pd.DataFrame, threshold: float = 0.80) -> pd.DataFrame:
+    """
+    같은 수요기관 내에서 정규화된 사업명이 threshold 이상 유사하고
+    동일 업체가 서로 다른 연도에 2건 이상 등장하는 그룹 반환.
+    """
+    needed = ["★가공_수요기관", "★가공_계약명", "★가공_업체명", "★가공_계약금액", "계약일자"]
+    work = df[needed].copy()
+    work["정규화명"] = work["★가공_계약명"].apply(normalize_contract_name)
+    work["계약일자_dt"] = pd.to_datetime(
+        work["계약일자"].astype(str).str.replace(r"[^0-9]", "", regex=True).str[:8],
+        format="%Y%m%d", errors="coerce"
+    )
+    work["계약년도"] = work["계약일자_dt"].dt.year
+
+    results = []
+    for agency, ag_df in work.groupby("★가공_수요기관"):
+        names   = ag_df["정규화명"].tolist()
+        indices = ag_df.index.tolist()
+        visited = [False] * len(names)
+
+        for i in range(len(names)):
+            if visited[i] or not names[i]:
+                continue
+            cluster_idx = [i]
+            visited[i] = True
+            for j in range(i + 1, len(names)):
+                if not visited[j] and name_similarity(names[i], names[j]) >= threshold:
+                    cluster_idx.append(j)
+                    visited[j] = True
+
+            if len(cluster_idx) < 2:
+                continue
+
+            cluster_rows = ag_df.loc[[indices[k] for k in cluster_idx]]
+
+            for company, co_df in cluster_rows.groupby("★가공_업체명"):
+                if len(co_df) < 2:
+                    continue
+                # 서로 다른 연도에 2건 이상이어야 반복수주로 판정
+                if co_df["계약년도"].dropna().nunique() < 2:
+                    continue
+
+                amt   = pd.to_numeric(co_df["★가공_계약금액"], errors="coerce").fillna(0)
+                dates = co_df["계약일자_dt"].dropna()
+
+                results.append({
+                    "수요기관":      agency,
+                    "업체명":        company,
+                    "수주횟수":      len(co_df),
+                    "수주연도":      ", ".join(map(str, sorted(co_df["계약년도"].dropna().astype(int).unique().tolist()))),
+                    "대표사업명":    co_df["★가공_계약명"].iloc[0],
+                    "계약금액합계":  int(amt.sum()),
+                    "최초계약일":    dates.min().strftime("%Y-%m-%d") if not dates.empty else "-",
+                    "최근계약일":    dates.max().strftime("%Y-%m-%d") if not dates.empty else "-",
+                    "계약목록":      " / ".join(co_df["★가공_계약명"].tolist()),
+                })
+
+    if not results:
+        return pd.DataFrame()
+
+    out = pd.DataFrame(results)
+    out = out.sort_values(["수주횟수", "계약금액합계"], ascending=False).reset_index(drop=True)
+    return out
 
 # ─────────────────────────────────────────────
 # [탭1] 데이터 로드
@@ -448,6 +535,70 @@ def render_info_table(df: pd.DataFrame) -> str:
             f'</table></div>')
 
 # ─────────────────────────────────────────────
+# HTML 테이블 — 반복수주
+# ─────────────────────────────────────────────
+def render_repeat_table(df: pd.DataFrame) -> str:
+    COL_LABELS = {
+        "수요기관":    "수요기관",
+        "업체명":      "업체명",
+        "수주횟수":    "수주횟수",
+        "수주연도":    "수주연도",
+        "대표사업명":  "대표사업명",
+        "계약금액합계": "계약금액합계(원)",
+        "최초계약일":  "최초계약일",
+        "최근계약일":  "최근계약일",
+        "계약목록":    "계약목록",
+    }
+    TH_R = ("background:#7f1d1d;color:#fff;padding:11px 13px;"
+            "font-size:0.92rem;font-weight:700;white-space:nowrap;"
+            "border-bottom:2px solid #dc2626;text-align:left;")
+    TD_R = ("padding:10px 13px;font-size:.95rem;color:#1e293b;"
+            "border-bottom:1px solid #fee2e2;vertical-align:middle;")
+
+    disp_cols = [c for c in COL_LABELS if c in df.columns]
+    headers   = "".join(f'<th style="{TH_R}">{COL_LABELS[c]}</th>' for c in disp_cols)
+    rows = []
+    for i, (_, row) in enumerate(df.iterrows()):
+        bg = "#fff" if i % 2 == 0 else "#fff5f5"
+        cells = []
+        for col in disp_cols:
+            val = row[col]
+            if col == "수주횟수":
+                color = "#dc2626" if val >= 3 else "#c2410c"
+                cell = (f'<td style="{TD_R}text-align:center;">'
+                        f'<span style="background:#fef2f2;color:{color};padding:3px 12px;'
+                        f'border-radius:999px;font-size:.9rem;font-weight:700;">{val}회</span></td>')
+            elif col == "계약금액합계":
+                try:   fmt = f"{int(val):,}"
+                except: fmt = str(val)
+                cell = f'<td style="{TD_R}text-align:right;font-variant-numeric:tabular-nums;">{fmt}</td>'
+            elif col == "계약목록":
+                items  = str(val).split(" / ")
+                listed = "".join(
+                    f'<li style="margin-bottom:3px;font-size:.85rem;color:#475569;">{it}</li>'
+                    for it in items
+                )
+                cell = (f'<td style="{TD_R}max-width:320px;">'
+                        f'<ul style="margin:0;padding-left:1.2rem;">{listed}</ul></td>')
+            elif col in ("수요기관", "대표사업명", "업체명"):
+                cell = f'<td style="{TD_R}max-width:220px;word-break:keep-all;">{str(val)}</td>'
+            else:
+                cell = f'<td style="{TD_R}white-space:nowrap;">{str(val)}</td>'
+            cells.append(cell)
+        rows.append(
+            f'<tr style="background:{bg};" '
+            f'onmouseover="this.style.background=\'#fee2e2\'" '
+            f'onmouseout="this.style.background=\'{bg}\'">'
+            + "".join(cells) + "</tr>"
+        )
+    return (f'<div style="width:100%;overflow-x:auto;border-radius:12px;'
+            f'box-shadow:0 2px 12px rgba(220,38,38,.12);margin-top:.5rem;">'
+            f'<table style="width:100%;border-collapse:collapse;min-width:1100px;">'
+            f'<thead><tr>{headers}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody>'
+            f'</table></div>')
+
+# ─────────────────────────────────────────────
 # HTML 테이블 — 발주계획
 # ─────────────────────────────────────────────
 def render_plan_table(df: pd.DataFrame) -> str:
@@ -660,6 +811,53 @@ with tab1:
         paged_df = sorted_df[COLS].iloc[(page-1)*PAGE_SIZE : page*PAGE_SIZE].rename(columns=col_rename)
         st.markdown(render_info_table(paged_df), unsafe_allow_html=True)
         st.markdown(f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">{page} / {total_pages} 페이지 &nbsp;·&nbsp; {(page-1)*PAGE_SIZE+1}–{min(page*PAGE_SIZE, total_rows)}번째 항목</div>', unsafe_allow_html=True)
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 반복수주 의심 섹션
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.divider()
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:1rem;">
+          <span style="font-size:1.8rem;">🔁</span>
+          <div>
+            <div style="font-size:1.3rem;font-weight:700;color:#1e293b;">반복 수주 의심 현황</div>
+            <div style="font-size:.95rem;color:#64748b;margin-top:.15rem;">
+              동일 기관·유사 사업명(80% 이상)·동일 업체가 <b>2개 연도 이상</b> 반복 수주한 내역
+            </div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.spinner("🔍 반복수주 패턴 분석 중…"):
+            repeat_df = detect_repeat_contracts(display_df, threshold=0.80)
+
+        if repeat_df.empty:
+            st.info("✅ 현재 선택 지역에서 반복 수주 의심 건이 발견되지 않았습니다.")
+        else:
+            r1, r2, r3 = st.columns(3)
+            rep_total_amt = repeat_df["계약금액합계"].sum()
+            rep_amt_str   = f"{rep_total_amt/100_000_000:.1f}억" if rep_total_amt >= 100_000_000 else f"{rep_total_amt:,}원"
+            with r1: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#dc2626">{len(repeat_df):,}건</div><div class="stat-label">반복수주 의심 건수</div></div>', unsafe_allow_html=True)
+            with r2: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#dc2626">{repeat_df["업체명"].nunique():,}개사</div><div class="stat-label">해당 업체 수</div></div>', unsafe_allow_html=True)
+            with r3: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#dc2626">{rep_amt_str}</div><div class="stat-label">반복수주 계약금액 합계</div></div>', unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            _, rep_dl_col = st.columns([8, 2])
+            with rep_dl_col:
+                st.download_button(
+                    "📥 반복수주 CSV",
+                    data=repeat_df.drop(columns=["계약목록"]).to_csv(
+                        index=False, encoding="utf-8-sig"
+                    ).encode("utf-8-sig"),
+                    file_name=f"반복수주의심_{region_to_show}_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="repeat_download",
+                )
+
+            st.markdown(render_repeat_table(repeat_df), unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TAB 2 : 유지보수 발주 계획
