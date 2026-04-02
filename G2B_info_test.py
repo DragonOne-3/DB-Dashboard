@@ -326,7 +326,7 @@ def get_processed_df():
     df = df[
         cn.str.contains("유지", na=False) &
         cn.str.contains("통합관제|통합|CCTV", na=False) &
-        ~cn.str.contains("상수도|청사|악취|미세먼지|상담실|보건소", na=False)
+        ~cn.str.contains("상수도|청사|악취|미세먼지|상담실|보건소|민방위", na=False)
     ].copy()
 
     df[["★가공_계약만료일", "남은기간"]] = calculate_logic_vectorized(df).values
@@ -662,6 +662,33 @@ def render_plan_table(df: pd.DataFrame) -> str:
             f'<thead><tr>{headers}</tr></thead>'
             f'<tbody>{"".join(rows)}</tbody>'
             f'</table></div>')
+# ─────────────────────────────────────────────
+# 지역 선택
+# ─────────────────────────────────────────────
+def render_region_selector(key: str):
+    GROUPS = {
+        "전국":   ["전국"],
+        "수도권": ["서울특별시", "경기도", "인천광역시", "강원특별자치도"],
+        "지방":   ["부산광역시", "대구광역시", "광주광역시", "대전광역시", "울산광역시",
+                   "세종특별자치시", "충청북도", "충청남도", "전북특별자치도",
+                   "전라남도", "경상북도", "경상남도", "제주특별자치도"],
+    }
+    selected = st.session_state.get(key, "전국")
+
+    for group_name, regions in GROUPS.items():
+        cols = st.columns([1.2] + [1] * len(regions))
+        with cols[0]:
+            st.markdown(
+                f'<div style="padding-top:8px;font-weight:700;'
+                f'color:#475569;font-size:.95rem;">{group_name}</div>',
+                unsafe_allow_html=True
+            )
+        for i, region in enumerate(regions):
+            with cols[i + 1]:
+                label = f"**{region}**" if selected == region else region
+                if st.button(label, key=f"{key}_btn_{region}", use_container_width=True):
+                    st.session_state[key] = region
+                    st.rerun()
 
 # ─────────────────────────────────────────────
 # 페이지네이션
@@ -741,7 +768,7 @@ with tab1:
 
     st.markdown('<div class="search-panel">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
-    st.radio("", options=METRO_LIST, horizontal=True, key="radio_region", label_visibility="collapsed")
+    render_region_selector("radio_region")
 
     cb1, cb2 = st.columns([1, 8])
     with cb1:
@@ -914,7 +941,7 @@ with tab2:
 
     st.markdown('<div class="search-panel">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
-    st.radio("", options=METRO_LIST, horizontal=True, key="plan_radio_region", label_visibility="collapsed")
+    render_region_selector("plan_radio_region")
 
     pb1, pb2 = st.columns([1, 8])
     with pb1:
@@ -1046,7 +1073,7 @@ with tab3:
 
     st.markdown('<div class="search-panel">', unsafe_allow_html=True)
     st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
-    st.radio("", options=METRO_LIST, horizontal=True, key="gong_radio_region", label_visibility="collapsed")
+    render_region_selector("gong_radio_region")
 
     gb1, gb2 = st.columns([1, 8])
     with gb1:
