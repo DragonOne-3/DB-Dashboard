@@ -683,6 +683,16 @@ def render_region_selector(key: str):
 
     current = st.session_state.get(key, "전국")
 
+    # ★ 렌더링 전에 모든 그룹 상태를 강제로 먼저 설정
+    for group_name, regions in GROUPS.items():
+        widget_key = f"{key}_{group_name}"
+        if current in regions:
+            st.session_state[widget_key] = current
+        else:
+            if widget_key in st.session_state:
+                del st.session_state[widget_key]
+
+    # 렌더링
     for group_name, regions in GROUPS.items():
         col_label, col_radio = st.columns([1, 10])
         with col_label:
@@ -702,12 +712,6 @@ def render_region_selector(key: str):
                 label_visibility="collapsed",
             )
             if selected is not None and selected != current:
-                # 다른 그룹 widget 키 전부 삭제 → 선택 해제
-                for other_group in GROUPS:
-                    if other_group != group_name:
-                        wk = f"{key}_{other_group}"
-                        if wk in st.session_state:
-                            del st.session_state[wk]
                 st.session_state[key] = selected
                 st.rerun()
 # ─────────────────────────────────────────────
