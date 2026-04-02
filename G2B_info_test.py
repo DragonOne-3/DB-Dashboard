@@ -57,6 +57,13 @@ st.markdown("""
   div[data-testid="stDownloadButton"] > button { background: #fff !important; border: 1.5px solid #2563eb !important; color: #2563eb !important; font-weight: 600 !important; border-radius: 8px !important; }
   .copy-notice { background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px; padding: .6rem 1rem; font-size: .9rem; color: #065f46; margin-top: .5rem; }
   hr { border-color: #e2e8f0; }
+  .region-btn > div[data-testid="stButton"] > button {
+      opacity: 0 !important;
+      position: absolute !important;
+      height: 28px !important;
+      margin-top: -28px !important;
+      cursor: pointer !important;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -680,29 +687,37 @@ def render_region_selector(key: str):
         col_label, col_radio = st.columns([1, 10])
         with col_label:
             st.markdown(
-                f'<div style="padding-top:8px;font-weight:700;color:#475569;font-size:.95rem;">'
+                f'<div style="padding-top:6px;font-weight:700;color:#475569;font-size:.95rem;">'
                 f'{group_name}</div>',
                 unsafe_allow_html=True
             )
         with col_radio:
-            idx = regions.index(current) if current in regions else None
-            selected = st.radio(
-                "",
-                options=regions,
-                horizontal=True,
-                key=f"{key}_{group_name}",
-                index=idx,
-                label_visibility="collapsed",
-            )
-            if selected is not None and selected != current:
-                st.session_state[key] = selected
-                # 다른 그룹 선택 초기화 (중복 선택 방지)
-                for other_group in GROUPS:
-                    if other_group != group_name:
-                        other_key = f"{key}_{other_group}"
-                        if other_key in st.session_state:
-                            del st.session_state[other_key]
-                st.rerun()
+            # 라디오 버튼처럼 보이는 HTML
+            radio_html = '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding-top:4px;">'
+            for region in regions:
+                is_selected = (region == current)
+                border   = "2px solid #e03131" if is_selected else "2px solid #adb5bd"
+                dot      = '<div style="width:7px;height:7px;border-radius:50%;background:#e03131;"></div>' if is_selected else ""
+                dot_bg   = "#e03131" if is_selected else "transparent"
+                radio_html += (
+                    f'<div style="display:flex;align-items:center;gap:5px;">'
+                    f'<div style="width:16px;height:16px;border-radius:50%;{border};background:{dot_bg};'
+                    f'flex-shrink:0;display:flex;align-items:center;justify-content:center;">{dot}</div>'
+                    f'<span style="font-size:.95rem;color:#1e293b;white-space:nowrap;">{region}</span>'
+                    f'</div>'
+                )
+            radio_html += '</div>'
+            st.markdown(radio_html, unsafe_allow_html=True)
+
+            # 투명 버튼으로 클릭 처리
+            st.markdown('<div class="region-btn">', unsafe_allow_html=True)
+            btn_cols = st.columns(len(regions))
+            for i, region in enumerate(regions):
+                with btn_cols[i]:
+                    if st.button(region, key=f"{key}_btn_{region}", use_container_width=True):
+                        st.session_state[key] = region
+                        st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 # ─────────────────────────────────────────────
 # 페이지네이션
 # ─────────────────────────────────────────────
