@@ -675,7 +675,6 @@ def render_region_selector(key: str):
     }
 
     current = st.session_state.get(key, "전국")
-    new_val = current
 
     for group_name, regions in GROUPS.items():
         col_label, col_radio = st.columns([1, 10])
@@ -696,13 +695,14 @@ def render_region_selector(key: str):
                 label_visibility="collapsed",
             )
             if selected is not None and selected != current:
-                new_val = selected
-
-    # 루프 다 돌고 나서 한 번만 rerun
-    if new_val != current:
-        st.session_state[key] = new_val
-        st.rerun()
-
+                st.session_state[key] = selected
+                # 다른 그룹 선택 초기화 (중복 선택 방지)
+                for other_group in GROUPS:
+                    if other_group != group_name:
+                        other_key = f"{key}_{other_group}"
+                        if other_key in st.session_state:
+                            del st.session_state[other_key]
+                st.rerun()
 # ─────────────────────────────────────────────
 # 페이지네이션
 # ─────────────────────────────────────────────
