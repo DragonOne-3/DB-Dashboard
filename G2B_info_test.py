@@ -681,18 +681,19 @@ def render_region_selector(key: str):
                    "전라남도", "경상북도", "경상남도", "제주특별자치도"],
     }
 
-    current = st.session_state.get(key, "전국")
+    if key not in st.session_state:
+        st.session_state[key] = "전국"
 
-    # ★ 렌더링 전에 모든 그룹 상태를 강제로 먼저 설정
+    current = st.session_state[key]
+
+    # ★ 렌더링 전에 각 그룹 상태 강제 설정
     for group_name, regions in GROUPS.items():
-        widget_key = f"{key}_{group_name}"
+        wk = f"{key}_{group_name}"
         if current in regions:
-            st.session_state[widget_key] = current
+            st.session_state[wk] = current  # 현재 선택된 그룹만 값 설정
         else:
-            if widget_key in st.session_state:
-                del st.session_state[widget_key]
+            st.session_state.pop(wk, None)  # 나머지 그룹은 키 삭제 → 선택 없음
 
-    # 렌더링
     for group_name, regions in GROUPS.items():
         col_label, col_radio = st.columns([1, 10])
         with col_label:
