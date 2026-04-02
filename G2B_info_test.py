@@ -808,17 +808,19 @@ with tab1:
             rep_total_amt = repeat_df["계약금액합계"].sum()
             rep_amt_str   = f"{rep_total_amt/100_000_000:.1f}억" if rep_total_amt >= 100_000_000 else f"{rep_total_amt:,}원"
 
+            # ✅ 수정 - 삼중 따옴표로 감싸기
             st.markdown(
-                "<div style="background:linear-gradient(135deg,#fef2f2,#fff5f5);"
-                "border:1.5px solid #fca5a5;border-radius:14px;"
-                "padding:1rem 1.5rem;margin-bottom:1.5rem;"
-                "box-shadow:0 2px 10px rgba(220,38,38,.08);"
-                "display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">'
-                '<span style="font-size:1.5rem;">🔁</span>'
-                '<span style="font-weight:700;color:#dc2626;font-size:1.05rem;">반복 수주 의심 현황 (최근 3년)</span>',
+                """
+                <div style="background:linear-gradient(135deg,#fef2f2,#fff5f5);
+                border:1.5px solid #fca5a5;border-radius:14px;
+                padding:1rem 1.5rem;margin-bottom:1.5rem;
+                box-shadow:0 2px 10px rgba(220,38,38,.08);
+                display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
+                <span style="font-size:1.5rem;">🔁</span>
+                <span style="font-weight:700;color:#dc2626;font-size:1.05rem;">반복 수주 의심 현황 (최근 3년)</span>
+                """,
                 unsafe_allow_html=True
             )
-
             bk1, bk2, bk3, bk4 = st.columns([1, 1, 1, 1])
             with bk1:
                 st.markdown(f'<div class="stat-card" style="border-color:#fca5a5;padding:1rem;"><div class="stat-num-red" style="font-size:1.8rem;">{len(repeat_df):,}건</div><div class="stat-label" style="color:#dc2626;">의심 건수</div></div>', unsafe_allow_html=True)
