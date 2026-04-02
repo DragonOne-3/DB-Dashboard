@@ -809,7 +809,7 @@ with tab1:
             rep_amt_str   = f"{rep_total_amt/100_000_000:.1f}억" if rep_total_amt >= 100_000_000 else f"{rep_total_amt:,}원"
 
             st.markdown(
-                '<div style="background:linear-gradient(135deg,#fef2f2,#fff5f5);"
+                "<div style="background:linear-gradient(135deg,#fef2f2,#fff5f5);"
                 "border:1.5px solid #fca5a5;border-radius:14px;"
                 "padding:1rem 1.5rem;margin-bottom:1.5rem;"
                 "box-shadow:0 2px 10px rgba(220,38,38,.08);"
