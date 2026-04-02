@@ -22,14 +22,13 @@ RE_NONDIGIT     = re.compile(r"[^0-9]")
 RE_MONTH_ONLY   = re.compile(r"^[0-3]개월")
 RE_CONTRACT_NUM = re.compile(r"\d+차분?|\d+")
 
-# 반복수주 정규화용 정규식
 RE_NORMALIZE = re.compile(
-    r"\d{4}[~\-～]\d{4}년?"   # 2023~2024년
-    r"|\d{4}년\s*\d{1,2}월"   # 2024년 1월
-    r"|\d{4}년"                # 2024년
-    r"|\d{1,2}차분?"           # 1차분, 2차
-    r"|장기계속\s*\d*차?"      # 장기계속2차
-    r"|\(.*?\)"                # 괄호 전체
+    r"\d{4}[~\-～]\d{4}년?"
+    r"|\d{4}년\s*\d{1,2}월"
+    r"|\d{4}년"
+    r"|\d{1,2}차분?"
+    r"|장기계속\s*\d*차?"
+    r"|\(.*?\)"
     r"|연장분|추가분|수정"
 )
 
@@ -46,16 +45,17 @@ st.markdown("""
   .hero-blue p, .hero-green p { color: rgba(255,255,255,.85); font-size: 1.1rem; margin: 0; }
   .search-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 2rem 2.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
   .stat-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.5rem 1.8rem; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.05); }
+  .stat-card-red { background: linear-gradient(135deg,#fff5f5,#fff); border: 1.5px solid #fca5a5; border-radius: 12px; padding: 1.5rem 1.8rem; text-align: center; box-shadow: 0 2px 12px rgba(220,38,38,.10); }
   .stat-num-blue  { font-size: 2.3rem; font-weight: 800; color: #2563eb; line-height: 1.1; }
   .stat-num-green { font-size: 2.3rem; font-weight: 800; color: #059669; line-height: 1.1; }
+  .stat-num-red   { font-size: 2.3rem; font-weight: 800; color: #dc2626; line-height: 1.1; }
   .stat-label { font-size: 1rem; color: #64748b; margin-top: .5rem; font-weight: 500; letter-spacing: .3px; }
+  .stat-label-red { font-size: 1rem; color: #dc2626; margin-top: .5rem; font-weight: 600; letter-spacing: .3px; }
   .section-title { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin-bottom: 1rem; letter-spacing: -.2px; }
   div[data-testid="stButton"] > button { font-size: 1.1rem !important; height: auto !important; padding: 0.6rem 1rem !important; }
   div[data-testid="stButton"] > button[kind="primary"] { background: linear-gradient(135deg, #2563eb, #7c3aed) !important; border: none !important; color: #fff !important; font-weight: 700 !important; border-radius: 8px !important; box-shadow: 0 3px 10px rgba(37,99,235,.35) !important; }
   div[data-testid="stDownloadButton"] > button { background: #fff !important; border: 1.5px solid #2563eb !important; color: #2563eb !important; font-weight: 600 !important; border-radius: 8px !important; }
   .copy-notice { background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px; padding: .6rem 1rem; font-size: .9rem; color: #065f46; margin-top: .5rem; }
-  .repeat-shortcut-btn { display:inline-block; background:#fef2f2; color:#dc2626; border:1.5px solid #fca5a5; border-radius:8px; padding:0.5rem 1.2rem; font-size:1rem; font-weight:600; text-decoration:none; cursor:pointer; }
-  .repeat-shortcut-btn:hover { background:#fee2e2; }
   hr { border-color: #e2e8f0; }
 </style>
 """, unsafe_allow_html=True)
@@ -143,8 +143,6 @@ defaults = {
     "search_done": False, "search_region": "전국", "radio_region": "전국", "page": 1,
     "plan_search_done": False, "plan_search_region": "전국", "plan_radio_region": "전국", "plan_page": 1,
     "gong_search_done": False, "gong_search_region": "전국", "gong_radio_region": "전국", "gong_page": 1,
-    # ★ 반복수주 expander 자동 열기 플래그
-    "show_repeat": False,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -164,7 +162,7 @@ def parse_date_series(s: pd.Series) -> pd.Series:
     return pd.to_datetime(cleaned, format="%Y%m%d", errors="coerce")
 
 # ─────────────────────────────────────────────
-# [탭1] 계약 만료일 & 남은기간 계산
+# 계약 만료일 & 남은기간 계산
 # ─────────────────────────────────────────────
 def calculate_logic_vectorized(df: pd.DataFrame) -> pd.DataFrame:
     cntrct_date  = parse_date_series(df["계약일자"])
@@ -224,7 +222,7 @@ def clean_contract_name(name: str) -> str:
     return RE_CONTRACT_NUM.sub("", str(name).replace(" ", ""))
 
 # ─────────────────────────────────────────────
-# 반복수주 탐지 함수
+# 반복수주 탐지
 # ─────────────────────────────────────────────
 def normalize_contract_name(name: str) -> str:
     s = RE_NORMALIZE.sub("", str(name))
@@ -294,14 +292,17 @@ def detect_repeat_contracts(df: pd.DataFrame, threshold: float = 0.80) -> pd.Dat
     return out
 
 # ─────────────────────────────────────────────
-# [탭1] 데이터 로드
+# 데이터 로드 — 계약내역
+# ★ 변경 포인트 1: 반환값이 (화면표시용 df, 반복수주탐지용 df) 튜플
+# ★ 변경 포인트 2: 만료 계약 포함 기간 1년 → 3년
+# ★ 변경 포인트 3: 반복수주 탐지용은 만료 필터 없이 전체 보존
 # ─────────────────────────────────────────────
 @st.cache_resource
-def get_processed_df() -> pd.DataFrame:
+def get_processed_df():
     auth_json = os.environ.get("GOOGLE_AUTH_JSON")
     if not auth_json:
         st.error("❌ 'GOOGLE_AUTH_JSON' 환경 변수가 설정되지 않았습니다.")
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
     try:
         creds_dict = json.loads(auth_json)
         scope      = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -311,10 +312,10 @@ def get_processed_df() -> pd.DataFrame:
         records    = ws.get_all_records(value_render_option="UNFORMATTED_VALUE")
     except Exception as e:
         st.error(f"❌ 시트 로드 오류: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
     if not records:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
     df         = pd.DataFrame(records)
     agency_col = df["★가공_수요기관"].astype(str).str.strip()
@@ -339,32 +340,40 @@ def get_processed_df() -> pd.DataFrame:
         ascending=[True, True, True, False],
     )
 
-    today        = pd.Timestamp(datetime.now().date())
-    one_year_ago = today - pd.DateOffset(years=1)
+    today           = pd.Timestamp(datetime.now().date())
+    three_years_ago = today - pd.DateOffset(years=3)   # ★ 3년으로 확장
 
-    active_df         = df[df["남은기간"] != "만료됨"].drop_duplicates(
+    # ── 화면 표시용: 진행중 + 3년 이내 만료 ──
+    active_df = df[df["남은기간"] != "만료됨"].drop_duplicates(
         ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
     )
     recent_expired_df = df[df["남은기간"] == "만료됨"].copy()
     expire_dt         = pd.to_datetime(recent_expired_df["★가공_계약만료일"], errors="coerce")
-    recent_expired_df = recent_expired_df[expire_dt >= one_year_ago].drop_duplicates(
+    recent_expired_df = recent_expired_df[expire_dt >= three_years_ago].drop_duplicates(
         ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
     )
+    display_out = pd.concat([active_df, recent_expired_df], ignore_index=True)
+    display_out["광역단위"] = display_out["★가공_수요기관"].astype(str).apply(get_metro)
 
-    out = pd.concat([active_df, recent_expired_df], ignore_index=True)
-    out["광역단위"] = out["★가공_수요기관"].astype(str).apply(get_metro)
+    # ── 반복수주 탐지용: 만료 필터 없이 전체 (중복만 제거) ──
+    repeat_base = df.drop_duplicates(
+        ["★가공_수요기관", "contract_group_key", "★가공_업체명"], keep="first"
+    ).copy()
+    repeat_base["광역단위"] = repeat_base["★가공_수요기관"].astype(str).apply(get_metro)
 
-    total_amt = pd.to_numeric(out["★가공_계약금액"], errors="coerce").fillna(0)
-    if "금차계약금액" in out.columns:
-        sub_amt = pd.to_numeric(out["금차계약금액"], errors="coerce").fillna(0)
-        out["★가공_계약금액"] = sub_amt.where(sub_amt != 0, total_amt).astype(int)
-    else:
-        out["★가공_계약금액"] = total_amt.astype(int)
+    # 금액 보정 (두 df 모두)
+    for target in [display_out, repeat_base]:
+        total_amt = pd.to_numeric(target["★가공_계약금액"], errors="coerce").fillna(0)
+        if "금차계약금액" in target.columns:
+            sub_amt = pd.to_numeric(target["금차계약금액"], errors="coerce").fillna(0)
+            target["★가공_계약금액"] = sub_amt.where(sub_amt != 0, total_amt).astype(int)
+        else:
+            target["★가공_계약금액"] = total_amt.astype(int)
 
-    return out
+    return display_out, repeat_base
 
 # ─────────────────────────────────────────────
-# [탭2] 발주월 파싱 & 데이터 로드
+# 데이터 로드 — 발주계획
 # ─────────────────────────────────────────────
 def parse_baljoo_date(year_val, month_val) -> pd.Timestamp:
     try:
@@ -420,7 +429,7 @@ def get_baljoo_df() -> pd.DataFrame:
     return df
 
 # ─────────────────────────────────────────────
-# [탭3] 공고 데이터 로드
+# 데이터 로드 — 공고
 # ─────────────────────────────────────────────
 @st.cache_resource
 def get_gong_df() -> pd.DataFrame:
@@ -536,15 +545,10 @@ def render_info_table(df: pd.DataFrame) -> str:
 # ─────────────────────────────────────────────
 def render_repeat_table(df: pd.DataFrame) -> str:
     COL_LABELS = {
-        "수요기관":    "수요기관",
-        "업체명":      "업체명",
-        "수주횟수":    "수주횟수",
-        "수주연도":    "수주연도",
-        "대표사업명":  "대표사업명",
-        "계약금액합계": "계약금액합계(원)",
-        "최초계약일":  "최초계약일",
-        "최근계약일":  "최근계약일",
-        "계약목록":    "계약목록",
+        "수요기관": "수요기관", "업체명": "업체명", "수주횟수": "수주횟수",
+        "수주연도": "수주연도", "대표사업명": "대표사업명",
+        "계약금액합계": "계약금액합계(원)", "최초계약일": "최초계약일",
+        "최근계약일": "최근계약일", "계약목록": "계약목록",
     }
     TH_R = ("background:#7f1d1d;color:#fff;padding:11px 13px;"
             "font-size:0.92rem;font-weight:700;white-space:nowrap;"
@@ -660,7 +664,7 @@ def render_plan_table(df: pd.DataFrame) -> str:
             f'</table></div>')
 
 # ─────────────────────────────────────────────
-# 공통 — 페이지네이션 버튼
+# 페이지네이션
 # ─────────────────────────────────────────────
 def render_pagination(total_pages: int, page_key: str) -> int:
     MAX_BTN  = 20
@@ -674,18 +678,56 @@ def render_pagination(total_pages: int, page_key: str) -> int:
                 st.rerun()
     return st.session_state[page_key]
 
+# ─────────────────────────────────────────────
+# ★ 반복수주 모달 다이얼로그 (st.dialog 사용)
+# ─────────────────────────────────────────────
+@st.dialog("🔁 반복 수주 의심 상세 현황", width="large")
+def show_repeat_modal(repeat_df: pd.DataFrame, region: str):
+    rep_total_amt = repeat_df["계약금액합계"].sum()
+    rep_amt_str   = f"{rep_total_amt/100_000_000:.1f}억" if rep_total_amt >= 100_000_000 else f"{rep_total_amt:,}원"
+
+    r1, r2, r3 = st.columns(3)
+    with r1:
+        st.markdown(f'<div class="stat-card" style="border-color:#fca5a5;"><div class="stat-num-red">{len(repeat_df):,}건</div><div class="stat-label" style="color:#dc2626;">반복수주 의심 건수</div></div>', unsafe_allow_html=True)
+    with r2:
+        st.markdown(f'<div class="stat-card" style="border-color:#fca5a5;"><div class="stat-num-red">{repeat_df["업체명"].nunique():,}개사</div><div class="stat-label" style="color:#dc2626;">해당 업체 수</div></div>', unsafe_allow_html=True)
+    with r3:
+        st.markdown(f'<div class="stat-card" style="border-color:#fca5a5;"><div class="stat-num-red">{rep_amt_str}</div><div class="stat-label" style="color:#dc2626;">계약금액 합계</div></div>', unsafe_allow_html=True)
+
+    st.markdown(
+        '<div style="font-size:.92rem;color:#64748b;margin:1rem 0 .5rem;">'
+        '동일 기관·유사 사업명(80% 이상)·동일 업체 · <b>최근 3년치 계약 전체 기준</b>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    _, dl_col = st.columns([8, 2])
+    with dl_col:
+        st.download_button(
+            "📥 CSV",
+            data=repeat_df.drop(columns=["계약목록"]).to_csv(
+                index=False, encoding="utf-8-sig"
+            ).encode("utf-8-sig"),
+            file_name=f"반복수주의심_{region}_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="repeat_modal_download",
+        )
+
+    st.markdown(render_repeat_table(repeat_df), unsafe_allow_html=True)
+
 # ═══════════════════════════════════════════════════════════════
-# 메인 탭 UI
+# 메인 UI
 # ═══════════════════════════════════════════════════════════════
 with st.spinner("📡 데이터 준비 중…"):
-    processed_df = get_processed_df()
-    baljoo_df    = get_baljoo_df()
-    gong_df      = get_gong_df()
+    processed_df, repeat_base_df = get_processed_df()
+    baljoo_df                    = get_baljoo_df()
+    gong_df                      = get_gong_df()
 
 tab1, tab2, tab3 = st.tabs(["🏛️ 유지보수 계약 내역", "📋 유지보수 발주 계획", "📢 유지보수 공고"])
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# TAB 1 : 유지보수 계약 내역
+# TAB 1
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with tab1:
     st.markdown("""
@@ -699,22 +741,13 @@ with tab1:
     st.markdown('<div class="section-title">📍 지역 선택</div>', unsafe_allow_html=True)
     st.radio("", options=METRO_LIST, horizontal=True, key="radio_region", label_visibility="collapsed")
 
-    cb1, cb2, cb3 = st.columns([1, 1, 7])
+    cb1, cb2 = st.columns([1, 8])
     with cb1:
         info_search = st.button("🔍 검색", type="primary", use_container_width=True, key="info_search_btn")
     with cb2:
-        if st.button("🔄 새로고침", key="info_refresh_btn", use_container_width=True):
+        if st.button("🔄 데이터 새로고침", key="info_refresh_btn"):
             st.cache_resource.clear()
             st.rerun()
-
-    # ★ 반복수주 바로가기 버튼 — 검색이 완료된 상태에서만 표시
-    if st.session_state["search_done"]:
-        st.markdown("<div style='margin-top:0.8rem;'>", unsafe_allow_html=True)
-        if st.button("🔁 반복수주 의심 현황 바로보기 ↓", key="goto_repeat_btn"):
-            st.session_state["show_repeat"] = True
-            st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
-
     st.markdown("</div>", unsafe_allow_html=True)
 
     if info_search:
@@ -722,7 +755,6 @@ with tab1:
         st.session_state["search_done"]   = True
         st.session_state["search_region"] = st.session_state["radio_region"]
         st.session_state["page"]          = 1
-        st.session_state["show_repeat"]   = False  # 새 검색 시 초기화
         st.rerun()
 
     if not st.session_state["search_done"]:
@@ -737,11 +769,19 @@ with tab1:
         st.warning("⚠️ 데이터를 불러올 수 없습니다.")
     else:
         region_to_show = st.session_state["search_region"]
+
+        # 화면 표시용 df
         display_df = (
             processed_df if region_to_show == "전국"
             else processed_df[processed_df["광역단위"] == region_to_show]
         )
+        # 반복수주 탐지용 df (3년치 전체)
+        repeat_display_df = (
+            repeat_base_df if region_to_show == "전국"
+            else repeat_base_df[repeat_base_df["광역단위"] == region_to_show]
+        )
 
+        # ── 계약 요약 stat 카드 4개 ──
         total_count   = len(display_df)
         active_count  = len(display_df[
             ~display_df["남은기간"].str.contains("만료", na=False) &
@@ -760,6 +800,43 @@ with tab1:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # ── ★ 반복수주 요약 배너 + 모달 버튼 (상단 고정) ──
+        with st.spinner("🔍 반복수주 패턴 분석 중…"):
+            repeat_df = detect_repeat_contracts(repeat_display_df, threshold=0.80)
+
+        if not repeat_df.empty:
+            rep_total_amt = repeat_df["계약금액합계"].sum()
+            rep_amt_str   = f"{rep_total_amt/100_000_000:.1f}억" if rep_total_amt >= 100_000_000 else f"{rep_total_amt:,}원"
+
+            st.markdown(
+                '<div style="background:linear-gradient(135deg,#fef2f2,#fff5f5);"
+                "border:1.5px solid #fca5a5;border-radius:14px;"
+                "padding:1rem 1.5rem;margin-bottom:1.5rem;"
+                "box-shadow:0 2px 10px rgba(220,38,38,.08);"
+                "display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">'
+                '<span style="font-size:1.5rem;">🔁</span>'
+                '<span style="font-weight:700;color:#dc2626;font-size:1.05rem;">반복 수주 의심 현황 (최근 3년)</span>',
+                unsafe_allow_html=True
+            )
+
+            bk1, bk2, bk3, bk4 = st.columns([1, 1, 1, 1])
+            with bk1:
+                st.markdown(f'<div class="stat-card" style="border-color:#fca5a5;padding:1rem;"><div class="stat-num-red" style="font-size:1.8rem;">{len(repeat_df):,}건</div><div class="stat-label" style="color:#dc2626;">의심 건수</div></div>', unsafe_allow_html=True)
+            with bk2:
+                st.markdown(f'<div class="stat-card" style="border-color:#fca5a5;padding:1rem;"><div class="stat-num-red" style="font-size:1.8rem;">{repeat_df["업체명"].nunique():,}개사</div><div class="stat-label" style="color:#dc2626;">해당 업체</div></div>', unsafe_allow_html=True)
+            with bk3:
+                st.markdown(f'<div class="stat-card" style="border-color:#fca5a5;padding:1rem;"><div class="stat-num-red" style="font-size:1.8rem;">{rep_amt_str}</div><div class="stat-label" style="color:#dc2626;">계약금액 합계</div></div>', unsafe_allow_html=True)
+            with bk4:
+                st.markdown("<div style='padding-top:.5rem;'>", unsafe_allow_html=True)
+                if st.button("📋 상세 보기 →", key="open_repeat_modal", use_container_width=True):
+                    show_repeat_modal(repeat_df, region_to_show)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── 세부 필터 ──
         with st.expander("🎛️ 결과 내 세부 필터", expanded=False):
             fc1, fc2, fc3 = st.columns(3)
             with fc1: sel_agency  = st.multiselect("수요기관",  sorted(display_df["★가공_수요기관"].dropna().unique()), placeholder="전체", key="info_f_agency")
@@ -820,58 +897,8 @@ with tab1:
         st.markdown(render_info_table(paged_df), unsafe_allow_html=True)
         st.markdown(f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">{page} / {total_pages} 페이지 &nbsp;·&nbsp; {(page-1)*PAGE_SIZE+1}–{min(page*PAGE_SIZE, total_rows)}번째 항목</div>', unsafe_allow_html=True)
 
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        # 반복수주 의심 섹션 (expander로 감싸기)
-        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.divider()
-
-        # show_repeat 플래그가 True면 expander를 열린 상태로 렌더링
-        repeat_expanded = st.session_state.get("show_repeat", False)
-
-        with st.expander("🔁 반복 수주 의심 현황 — 클릭하여 펼치기", expanded=repeat_expanded):
-            st.markdown("""
-            <div style="font-size:.95rem;color:#64748b;margin-bottom:1rem;">
-              동일 기관·유사 사업명(80% 이상)·동일 업체가 <b>2개 연도 이상</b> 반복 수주한 내역
-            </div>
-            """, unsafe_allow_html=True)
-
-            with st.spinner("🔍 반복수주 패턴 분석 중…"):
-                repeat_df = detect_repeat_contracts(display_df, threshold=0.80)
-
-            if repeat_df.empty:
-                st.info("✅ 현재 선택 지역에서 반복 수주 의심 건이 발견되지 않았습니다.")
-            else:
-                r1, r2, r3 = st.columns(3)
-                rep_total_amt = repeat_df["계약금액합계"].sum()
-                rep_amt_str   = f"{rep_total_amt/100_000_000:.1f}억" if rep_total_amt >= 100_000_000 else f"{rep_total_amt:,}원"
-                with r1: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#dc2626">{len(repeat_df):,}건</div><div class="stat-label">반복수주 의심 건수</div></div>', unsafe_allow_html=True)
-                with r2: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#dc2626">{repeat_df["업체명"].nunique():,}개사</div><div class="stat-label">해당 업체 수</div></div>', unsafe_allow_html=True)
-                with r3: st.markdown(f'<div class="stat-card"><div class="stat-num-blue" style="color:#dc2626">{rep_amt_str}</div><div class="stat-label">반복수주 계약금액 합계</div></div>', unsafe_allow_html=True)
-
-                st.markdown("<br>", unsafe_allow_html=True)
-
-                _, rep_dl_col = st.columns([8, 2])
-                with rep_dl_col:
-                    st.download_button(
-                        "📥 반복수주 CSV",
-                        data=repeat_df.drop(columns=["계약목록"]).to_csv(
-                            index=False, encoding="utf-8-sig"
-                        ).encode("utf-8-sig"),
-                        file_name=f"반복수주의심_{region_to_show}_{datetime.now().strftime('%Y%m%d')}.csv",
-                        mime="text/csv",
-                        use_container_width=True,
-                        key="repeat_download",
-                    )
-
-                st.markdown(render_repeat_table(repeat_df), unsafe_allow_html=True)
-
-        # show_repeat 플래그 초기화 (한 번 열렸으면 다음 rerun부터는 자동 유지 안 함)
-        if st.session_state.get("show_repeat"):
-            st.session_state["show_repeat"] = False
-
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# TAB 2 : 유지보수 발주 계획
+# TAB 2
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with tab2:
     st.markdown("""
@@ -997,7 +1024,7 @@ with tab2:
         st.markdown(f'<div style="text-align:center;color:#94a3b8;font-size:0.95rem;margin-top:1rem;">{page2} / {total_pages2} 페이지 &nbsp;·&nbsp; {(page2-1)*PAGE_SIZE+1}–{min(page2*PAGE_SIZE, total_rows2)}번째 항목</div>', unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# TAB 3 : 유지보수 공고
+# TAB 3
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 with tab3:
     st.markdown("""
@@ -1042,10 +1069,8 @@ with tab3:
           <div style="font-size:1.1rem;color:#64748b;">최근 6개월 내 입찰 공고가 표시됩니다</div>
         </div>
         """, unsafe_allow_html=True)
-
     elif gong_df.empty:
         st.warning("⚠️ 조건에 맞는 공고 데이터가 없습니다.")
-
     else:
         gong_region  = st.session_state["gong_search_region"]
         gong_display = (
