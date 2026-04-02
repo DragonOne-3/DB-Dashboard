@@ -673,22 +673,26 @@ def render_region_selector(key: str):
                    "세종특별자치시", "충청북도", "충청남도", "전북특별자치도",
                    "전라남도", "경상북도", "경상남도", "제주특별자치도"],
     }
-    selected = st.session_state.get(key, "전국")
 
     for group_name, regions in GROUPS.items():
-        cols = st.columns([1.2] + [1] * len(regions))
-        with cols[0]:
+        col_label, col_radio = st.columns([1, 10])
+        with col_label:
             st.markdown(
-                f'<div style="padding-top:8px;font-weight:700;'
-                f'color:#475569;font-size:.95rem;">{group_name}</div>',
+                f'<div style="padding-top:8px;font-weight:700;color:#475569;font-size:.95rem;">'
+                f'{group_name}</div>',
                 unsafe_allow_html=True
             )
-        for i, region in enumerate(regions):
-            with cols[i + 1]:
-                label = f"**{region}**" if selected == region else region
-                if st.button(label, key=f"{key}_btn_{region}", use_container_width=True):
-                    st.session_state[key] = region
-                    st.rerun()
+        with col_radio:
+            selected = st.radio(
+                "",
+                options=regions,
+                horizontal=True,
+                key=f"{key}_{group_name}",
+                label_visibility="collapsed",
+            )
+            if selected != st.session_state.get(key):
+                st.session_state[key] = selected
+                st.rerun()
 
 # ─────────────────────────────────────────────
 # 페이지네이션
