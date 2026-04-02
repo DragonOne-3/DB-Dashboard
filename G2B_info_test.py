@@ -687,37 +687,29 @@ def render_region_selector(key: str):
         col_label, col_radio = st.columns([1, 10])
         with col_label:
             st.markdown(
-                f'<div style="padding-top:6px;font-weight:700;color:#475569;font-size:.95rem;">'
+                f'<div style="padding-top:8px;font-weight:700;color:#475569;font-size:.95rem;">'
                 f'{group_name}</div>',
                 unsafe_allow_html=True
             )
         with col_radio:
-            # 라디오 버튼처럼 보이는 HTML
-            radio_html = '<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding-top:4px;">'
-            for region in regions:
-                is_selected = (region == current)
-                border   = "2px solid #e03131" if is_selected else "2px solid #adb5bd"
-                dot      = '<div style="width:7px;height:7px;border-radius:50%;background:#e03131;"></div>' if is_selected else ""
-                dot_bg   = "#e03131" if is_selected else "transparent"
-                radio_html += (
-                    f'<div style="display:flex;align-items:center;gap:5px;">'
-                    f'<div style="width:16px;height:16px;border-radius:50%;{border};background:{dot_bg};'
-                    f'flex-shrink:0;display:flex;align-items:center;justify-content:center;">{dot}</div>'
-                    f'<span style="font-size:.95rem;color:#1e293b;white-space:nowrap;">{region}</span>'
-                    f'</div>'
-                )
-            radio_html += '</div>'
-            st.markdown(radio_html, unsafe_allow_html=True)
-
-            # 투명 버튼으로 클릭 처리
-            st.markdown('<div class="region-btn">', unsafe_allow_html=True)
-            btn_cols = st.columns(len(regions))
-            for i, region in enumerate(regions):
-                with btn_cols[i]:
-                    if st.button(region, key=f"{key}_btn_{region}", use_container_width=True):
-                        st.session_state[key] = region
-                        st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
+            idx = regions.index(current) if current in regions else None
+            selected = st.radio(
+                "",
+                options=regions,
+                horizontal=True,
+                key=f"{key}_{group_name}",
+                index=idx,
+                label_visibility="collapsed",
+            )
+            if selected is not None and selected != current:
+                # 다른 그룹 widget 키 전부 삭제 → 선택 해제
+                for other_group in GROUPS:
+                    if other_group != group_name:
+                        wk = f"{key}_{other_group}"
+                        if wk in st.session_state:
+                            del st.session_state[wk]
+                st.session_state[key] = selected
+                st.rerun()
 # ─────────────────────────────────────────────
 # 페이지네이션
 # ─────────────────────────────────────────────
