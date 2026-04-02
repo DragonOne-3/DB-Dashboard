@@ -674,6 +674,9 @@ def render_region_selector(key: str):
                    "전라남도", "경상북도", "경상남도", "제주특별자치도"],
     }
 
+    current = st.session_state.get(key, "전국")
+    new_val = current
+
     for group_name, regions in GROUPS.items():
         col_label, col_radio = st.columns([1, 10])
         with col_label:
@@ -683,16 +686,22 @@ def render_region_selector(key: str):
                 unsafe_allow_html=True
             )
         with col_radio:
+            idx = regions.index(current) if current in regions else None
             selected = st.radio(
                 "",
                 options=regions,
                 horizontal=True,
                 key=f"{key}_{group_name}",
+                index=idx,
                 label_visibility="collapsed",
             )
-            if selected != st.session_state.get(key):
-                st.session_state[key] = selected
-                st.rerun()
+            if selected is not None and selected != current:
+                new_val = selected
+
+    # 루프 다 돌고 나서 한 번만 rerun
+    if new_val != current:
+        st.session_state[key] = new_val
+        st.rerun()
 
 # ─────────────────────────────────────────────
 # 페이지네이션
