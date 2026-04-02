@@ -703,9 +703,11 @@ def show_repeat_modal(repeat_df: pd.DataFrame, region: str):
 
     _, dl_col = st.columns([8, 2])
     with dl_col:
+        export_df = repeat_df.copy()
+        export_df["계약목록"] = export_df["계약목록"].str.replace(" / ", "\n")
         st.download_button(
             "📥 CSV",
-            data=repeat_df.drop(columns=["계약목록"]).to_csv(
+            data=export_df.to_csv(
                 index=False, encoding="utf-8-sig"
             ).encode("utf-8-sig"),
             file_name=f"반복수주의심_{region}_{datetime.now().strftime('%Y%m%d')}.csv",
