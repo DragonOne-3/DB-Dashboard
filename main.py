@@ -7,7 +7,6 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseUpload
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from collections import defaultdict
 
 # =================================================================================
 # 1. 설정 및 환경 변수
@@ -15,7 +14,10 @@ from collections import defaultdict
 MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
 AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
 
-NOTICE_FOLDER_ID   = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
+# ★ 나라장터 공고 연도별 파일 저장 폴더 ID
+NOTICE_FOLDER_ID = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
+
+# ★ 종합쇼핑몰 연도별 CSV 저장 폴더 ID
 SHOPPING_FOLDER_ID = "1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr"
 
 HEADER_KOR = [
@@ -35,12 +37,6 @@ CAT_KEYWORDS = {
     '솔루션': ['데이터', '플랫폼', '솔루션', '주차', '출입', 'GIS'],
     '스마트도시': ['ITS', '스마트시티', '스마트도시']
 }
-
-# ★ 경쟁사 키워드 목록 (업체명 기준)
-COMPETITOR_KEYWORDS = [
-    '이노뎁', '한화비전', '아이디스', '다화테크놀로지', '하이크비전',
-    '씨게이트', '씨앤비텍', 'SKT', 'KT', '유니뷰'
-]
 
 keywords = sorted(list(set([
     '네트워크시스템장비용랙', '영상감시장치', 'PA용스피커', '안내판', '카메라브래킷', '액정모니터',
@@ -103,653 +99,28 @@ def classify_text(text):
     return '기타'
 
 
-def format_amt(val):
-    """금액 포맷팅 헬퍼"""
-    try:
-        v = int(str(val).replace(',', '').split('.')[0])
-        if v >= 100_000_000:
-            return f"{v / 100_000_000:.1f}억원"
-        elif v >= 10_000:
-            return f"{v / 10_000:.0f}만원"
-        return f"{v:,}원"
-    except:
-        return str(val)
-
-
-# =================================================================================
-# 3. HTML 리포트 빌더 (전면 개편)
-# =================================================================================
-
-def build_html_report(
-    display_date, weekday_str, d_str,
-    final_data,
-    school_stats, innodep_today_dict, innodep_total_amt,
-    competitor_stats,       # ★ NEW: {업체명: 총금액}
-    org_stats_top20,        # ★ NEW: [(수요기관, 총금액), ...]
-    notice_mail_buckets,
-    contract_mail_buckets,
-    all_notice_count,
-    unique_servc_list
-):
-    # ── 색상 팔레트 ──────────────────────────────────────────────────────────────
-    COLORS = [
-        '#4361ee', '#7209b7', '#f72585', '#4cc9f0', '#4ade80',
-        '#fb923c', '#a78bfa', '#34d399', '#f59e0b', '#60a5fa'
-    ]
-
-    # ── Chart.js 데이터 준비 ─────────────────────────────────────────────────────
-    # 경쟁사 차트
-    comp_labels = json.dumps([k for k in competitor_stats], ensure_ascii=False)
-    comp_values = json.dumps([v // 10000 for v in competitor_stats.values()])  # 만원 단위
-    comp_colors = json.dumps(COLORS[:len(competitor_stats)])
-
-    # 수요기관 상위 20개 차트
-    org_labels = json.dumps([o[0] for o in org_stats_top20], ensure_ascii=False)
-    org_values = json.dumps([o[1] // 10000 for o in org_stats_top20])  # 만원 단위
-
-    # ── 이노뎁 카드 섹션 ─────────────────────────────────────────────────────────
-    innodep_card_rows = ""
-    for org, amt in sorted(innodep_today_dict.items(), key=lambda x: -x[1]):
-        innodep_card_rows += f"""
-        <tr>
-          <td style="padding:10px 14px; border-bottom:1px solid #f0f0f0;">{org}</td>
-          <td style="padding:10px 14px; border-bottom:1px solid #f0f0f0; text-align:right;
-                     font-weight:600; color:#4361ee;">{format_amt(amt)}</td>
-        </tr>"""
-    if not innodep_card_rows:
-        innodep_card_rows = '<tr><td colspan="2" style="padding:16px; color:#999; text-align:center;">납품 내역 없음</td></tr>'
-
-    # ── 학교 CCTV 카드 섹션 ──────────────────────────────────────────────────────
-    school_card_rows = ""
-    for sch, info in sorted(school_stats.items(), key=lambda x: -x[1]['total_amt']):
-        school_card_rows += f"""
-        <tr>
-          <td style="padding:10px 14px; border-bottom:1px solid #f0f0f0;">{sch}</td>
-          <td style="padding:10px 14px; border-bottom:1px solid #f0f0f0; text-align:right;
-                     font-weight:600; color:#7209b7;">{format_amt(info['total_amt'])}</td>
-          <td style="padding:10px 14px; border-bottom:1px solid #f0f0f0; color:#555;">{info['main_vendor']}</td>
-        </tr>"""
-    if not school_card_rows:
-        school_card_rows = '<tr><td colspan="3" style="padding:16px; color:#999; text-align:center;">해당 내역 없음</td></tr>'
-
-    # ── 공고/계약 섹션 빌더 ───────────────────────────────────────────────────────
-    def build_notice_section(buckets, section_title, icon, accent):
-        html = f"""
-        <div class="section-card">
-          <div class="section-header" style="background:{accent};">
-            <span>{icon} {section_title}</span>
-            <span class="badge">{sum(len(v) for v in buckets.values())}건</span>
-          </div>
-          <div style="padding:0 20px 20px;">"""
-
-        cat_icons = {'영상감시장치': '📷', '국방': '🛡️', '솔루션': '💡', '스마트도시': '🏙️'}
-
-        for cat, items in buckets.items():
-            cat_icon = cat_icons.get(cat, '📌')
-            html += f"""
-            <div class="cat-block">
-              <div class="cat-title">{cat_icon} {cat}
-                <span class="cat-count">{len(items)}건</span>
-              </div>"""
-
-            if not items:
-                html += '<p class="empty-msg">해당 내역이 없습니다.</p>'
-            else:
-                html += """
-              <table class="data-table">
-                <colgroup>
-                  <col style="width:22%"><col style="width:38%">
-                  <col style="width:22%"><col style="width:18%">
-                </colgroup>
-                <thead>
-                  <tr><th>수요기관</th><th>공고명</th><th>업체명</th><th>금액</th></tr>
-                </thead><tbody>"""
-                for item in items:
-                    corp = item.get('corp', '-')
-                    is_innodep = '이노뎁' in corp
-                    row_style = 'background:#fff8e1;' if is_innodep else ''
-                    badge = '<span class="innodep-badge">★이노뎁</span>' if is_innodep else ''
-                    amt_val = item.get('amt', '0')
-                    try:
-                        amt_str = format_amt(int(str(amt_val).replace(',', '').split('.')[0]))
-                    except:
-                        amt_str = str(amt_val) if amt_val else '별도공고'
-
-                    html += f"""
-                  <tr style="{row_style}">
-                    <td style="padding:9px 12px; white-space:nowrap;">{item.get('org','-')}</td>
-                    <td style="padding:9px 12px;">
-                      <a href="{item.get('url','#')}" target="_blank" class="table-link">
-                        {item.get('nm','-')}
-                      </a>
-                    </td>
-                    <td style="padding:9px 12px; text-align:center;">{corp}{badge}</td>
-                    <td style="padding:9px 12px; text-align:right; font-weight:600;">{amt_str}</td>
-                  </tr>"""
-                html += "</tbody></table>"
-            html += "</div>"
-        html += "</div></div>"
+def format_html_table(data_list, title):
+    html = f"<div style='margin-top:25px;'><h4 style='color:#2c3e50; border-bottom:2px solid #34495e; padding-bottom:8px;'>{title}</h4>"
+    if not data_list:
+        html += "<p style='color:#888; padding:10px;'>- 해당 내역이 없습니다.</p></div>"
         return html
 
-    notice_section   = build_notice_section(notice_mail_buckets,   '나라장터 입찰 공고', '📢', '#d32f2f')
-    contract_section = build_notice_section(contract_mail_buckets, '나라장터 계약 내역', '📝', '#1565c0')
+    html += "<table border='1' style='border-collapse:collapse; width:100%; font-size:13px; line-height:1.8;'>"
+    html += "<tr style='background-color:#f8f9fa;'><th>수요기관</th><th>명칭(링크)</th><th>업체명</th><th>금액</th></tr>"
 
-    # ── 최종 HTML 조립 ────────────────────────────────────────────────────────────
-    html = f"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<style>
-  /* ── 기본 리셋 ── */
-  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-  body {{
-    font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', -apple-system, sans-serif;
-    background: #f4f6fb;
-    color: #1e293b;
-    line-height: 1.6;
-  }}
-
-  /* ── 전체 래퍼 ── */
-  .wrapper {{
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 20px 16px 40px;
-  }}
-
-  /* ── 헤더 배너 ── */
-  .report-header {{
-    background: linear-gradient(135deg, #1e3a8a 0%, #4361ee 60%, #7209b7 100%);
-    border-radius: 16px;
-    padding: 30px 32px;
-    color: #fff;
-    margin-bottom: 24px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }}
-  .report-header h1 {{
-    font-size: 22px;
-    font-weight: 700;
-    letter-spacing: -0.3px;
-  }}
-  .report-header .sub {{
-    font-size: 13px;
-    opacity: 0.85;
-  }}
-  .kpi-row {{
-    display: flex;
-    gap: 12px;
-    margin-top: 14px;
-    flex-wrap: wrap;
-  }}
-  .kpi-chip {{
-    background: rgba(255,255,255,0.18);
-    border-radius: 20px;
-    padding: 5px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    backdrop-filter: blur(4px);
-  }}
-
-  /* ── 섹션 카드 ── */
-  .section-card {{
-    background: #fff;
-    border-radius: 14px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
-    margin-bottom: 24px;
-    overflow: hidden;
-  }}
-  .section-header {{
-    padding: 14px 20px;
-    color: #fff;
-    font-size: 15px;
-    font-weight: 700;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-radius: 14px 14px 0 0;
-  }}
-  .badge {{
-    background: rgba(255,255,255,0.25);
-    border-radius: 10px;
-    padding: 2px 10px;
-    font-size: 12px;
-    font-weight: 600;
-  }}
-
-  /* ── 2-컬럼 그리드 ── */
-  .grid-2 {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 24px;
-    margin-bottom: 24px;
-  }}
-
-  /* ── 내부 테이블 ── */
-  .inner-table {{
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }}
-  .inner-table th {{
-    background: #f8fafc;
-    padding: 10px 14px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 2px solid #e2e8f0;
-    text-align: left;
-  }}
-  .inner-table tr:hover td {{ background: #f8fafc; }}
-
-  /* ── 데이터 테이블 (공고/계약) ── */
-  .data-table {{
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12.5px;
-    margin-top: 4px;
-  }}
-  .data-table th {{
-    background: #f1f5f9;
-    padding: 8px 12px;
-    font-size: 11px;
-    font-weight: 700;
-    color: #475569;
-    border-bottom: 2px solid #e2e8f0;
-    text-align: left;
-    position: sticky;
-    top: 0;
-  }}
-  .data-table td {{
-    border-bottom: 1px solid #f1f5f9;
-    font-size: 12px;
-    color: #334155;
-    vertical-align: middle;
-  }}
-  .data-table tr:last-child td {{ border-bottom: none; }}
-  .data-table tr:hover td {{ background: #f8fafc; }}
-
-  .table-link {{
-    color: #4361ee;
-    text-decoration: none;
-    font-weight: 500;
-  }}
-  .table-link:hover {{ text-decoration: underline; }}
-
-  .innodep-badge {{
-    display: inline-block;
-    background: #fbbf24;
-    color: #78350f;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 1px 6px;
-    border-radius: 4px;
-    margin-left: 4px;
-    white-space: nowrap;
-  }}
-
-  /* ── 카테고리 블록 ── */
-  .cat-block {{
-    margin: 16px 0;
-    border-radius: 10px;
-    border: 1px solid #e8ecf3;
-    overflow: hidden;
-  }}
-  .cat-title {{
-    background: #f8fafc;
-    padding: 10px 16px;
-    font-size: 13px;
-    font-weight: 700;
-    color: #334155;
-    border-bottom: 1px solid #e8ecf3;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }}
-  .cat-count {{
-    margin-left: auto;
-    background: #e0e7ff;
-    color: #3730a3;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 8px;
-  }}
-  .empty-msg {{
-    padding: 14px 16px;
-    color: #94a3b8;
-    font-size: 13px;
-    text-align: center;
-  }}
-
-  /* ── 차트 컨테이너 ── */
-  .chart-wrap {{
-    padding: 20px;
-    position: relative;
-    height: 300px;
-  }}
-  .chart-wrap-bar {{
-    padding: 20px;
-    position: relative;
-    height: 400px;
-  }}
-
-  /* ── 통계 카드 (이노뎁 KPI) ── */
-  .stat-grid {{
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0;
-  }}
-  .stat-box {{
-    padding: 20px;
-    text-align: center;
-    border-right: 1px solid #f0f0f0;
-  }}
-  .stat-box:last-child {{ border-right: none; }}
-  .stat-label {{
-    font-size: 11px;
-    color: #94a3b8;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-  }}
-  .stat-value {{
-    font-size: 22px;
-    font-weight: 800;
-    color: #1e293b;
-  }}
-  .stat-sub {{
-    font-size: 11px;
-    color: #64748b;
-    margin-top: 2px;
-  }}
-</style>
-</head>
-<body>
-<div class="wrapper">
-
-  <!-- ── 헤더 ── -->
-  <div class="report-header">
-    <div class="sub">📋 조달청 데이터 자동 수집 리포트 · 자동생성</div>
-    <h1>🗓️ {display_date} ({weekday_str}요일) 일일 리포트</h1>
-    <div class="kpi-row">
-      <span class="kpi-chip">🛒 3자단가 {len(final_data):,}건</span>
-      <span class="kpi-chip">📢 나라장터 공고 {all_notice_count:,}건</span>
-      <span class="kpi-chip">📝 계약 {len(unique_servc_list):,}건</span>
-      <span class="kpi-chip" style="background:rgba(251,191,36,0.35);">✅ 수집 완료</span>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════
-       SECTION 1 : 이노뎁 납품 실적 요약
-  ════════════════════════════════════════════════════════════════ -->
-  <div class="section-card">
-    <div class="section-header" style="background:linear-gradient(90deg,#4361ee,#7209b7);">
-      <span>🏆 이노뎁 납품 실적 요약</span>
-      <span class="badge">{len(innodep_today_dict)}개 기관</span>
-    </div>
-
-    <!-- KPI 3종 -->
-    <div class="stat-grid" style="border-bottom:1px solid #f0f0f0;">
-      <div class="stat-box">
-        <div class="stat-label">오늘 총 납품액</div>
-        <div class="stat-value" style="color:#4361ee;">{format_amt(innodep_total_amt)}</div>
-        <div class="stat-sub">당일 집계 기준</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">납품 기관 수</div>
-        <div class="stat-value">{len(innodep_today_dict)}</div>
-        <div class="stat-sub">개 수요기관</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">학교 CCTV</div>
-        <div class="stat-value" style="color:#7209b7;">{len(school_stats)}</div>
-        <div class="stat-sub">건 납품</div>
-      </div>
-    </div>
-
-    <!-- 납품 기관 상세 -->
-    <div style="padding:0 20px 20px;">
-      <div style="font-size:12px; font-weight:700; color:#64748b; padding:14px 0 8px; letter-spacing:0.5px;">
-        📍 기관별 납품 내역
-      </div>
-      <table class="inner-table">
-        <thead>
-          <tr><th>수요기관명</th><th style="text-align:right;">납품금액</th></tr>
-        </thead>
-        <tbody>
-          {innodep_card_rows}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- 학교 CCTV 납품 -->
-    <div style="padding:0 20px 20px;">
-      <div style="font-size:12px; font-weight:700; color:#64748b; padding:0 0 8px; letter-spacing:0.5px;">
-        🏫 학교 지능형 CCTV 납품 현황
-      </div>
-      <table class="inner-table">
-        <thead>
-          <tr><th>학교명</th><th style="text-align:right;">금액</th><th>납품 업체</th></tr>
-        </thead>
-        <tbody>
-          {school_card_rows}
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════
-       SECTION 2 : 경쟁사 현황 + 수요기관 TOP20 (2컬럼 그리드)
-  ════════════════════════════════════════════════════════════════ -->
-  <div class="grid-2">
-
-    <!-- 경쟁사별 현황 도넛 차트 -->
-    <div class="section-card" style="margin-bottom:0;">
-      <div class="section-header" style="background:#0f172a;">
-        <span>📊 경쟁사별 납품 현황</span>
-        <span class="badge">금액 기준</span>
-      </div>
-      <div class="chart-wrap">
-        <canvas id="compChart"></canvas>
-      </div>
-      <div style="padding:0 16px 16px;">
-        <table class="inner-table">
-          <thead>
-            <tr><th>업체명</th><th style="text-align:right;">납품금액</th></tr>
-          </thead>
-          <tbody>
-            {"".join(f'<tr><td style="padding:8px 14px; border-bottom:1px solid #f0f0f0;"><span style=\"display:inline-block;width:10px;height:10px;border-radius:50%;background:{COLORS[i % len(COLORS)]};margin-right:6px;\"></span>{k}</td><td style="padding:8px 14px; text-align:right; font-weight:600; border-bottom:1px solid #f0f0f0;">{format_amt(v)}</td></tr>' for i,(k,v) in enumerate(competitor_stats.items())) if competitor_stats else '<tr><td colspan="2" style="padding:14px; text-align:center; color:#999;">데이터 없음</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- 수요기관 TOP 20 -->
-    <div class="section-card" style="margin-bottom:0;">
-      <div class="section-header" style="background:#0f172a;">
-        <span>🏛️ 수요기관 TOP 20</span>
-        <span class="badge">3자단가 기준</span>
-      </div>
-      <div style="padding:16px;">
-        <table class="inner-table">
-          <thead>
-            <tr><th>#</th><th>수요기관</th><th style="text-align:right;">총 금액</th></tr>
-          </thead>
-          <tbody>
-            {"".join(f'<tr><td style="padding:8px 14px; border-bottom:1px solid #f0f0f0; color:#94a3b8; font-size:11px; font-weight:700;">{i+1:02d}</td><td style="padding:8px 14px; border-bottom:1px solid #f0f0f0;">{org}</td><td style="padding:8px 14px; border-bottom:1px solid #f0f0f0; text-align:right; font-weight:700; color:#4361ee;">{format_amt(amt)}</td></tr>' for i,(org,amt) in enumerate(org_stats_top20)) if org_stats_top20 else '<tr><td colspan="3" style="padding:14px; text-align:center; color:#999;">데이터 없음</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-  </div><!-- /grid-2 -->
-
-  <!-- 수요기관 TOP20 바 차트 (전체폭) -->
-  <div class="section-card">
-    <div class="section-header" style="background:#1e3a8a;">
-      <span>📈 수요기관 TOP 20 납품 현황 (3자단가)</span>
-      <span class="badge">단위: 만원</span>
-    </div>
-    <div class="chart-wrap-bar">
-      <canvas id="orgChart"></canvas>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════
-       SECTION 3 : 나라장터 입찰 공고
-  ════════════════════════════════════════════════════════════════ -->
-  {notice_section}
-
-  <!-- ═══════════════════════════════════════════════════════════
-       SECTION 4 : 나라장터 계약 내역
-  ════════════════════════════════════════════════════════════════ -->
-  {contract_section}
-
-  <!-- 푸터 -->
-  <div style="text-align:center; font-size:11px; color:#94a3b8; padding-top:10px;">
-    자동 생성 리포트 · {display_date} · 조달청 공공데이터 API 기반
-  </div>
-</div>
-
-<!-- ── Chart.js CDN ── -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script>
-(function() {{
-  // 공통 폰트 설정
-  Chart.defaults.font.family = "'Apple SD Gothic Neo','Malgun Gothic',sans-serif";
-  Chart.defaults.font.size = 12;
-
-  // ─── 경쟁사 도넛 차트 ────────────────────────────────────────────
-  var compLabels = {comp_labels};
-  var compValues = {comp_values};
-  var compColors = {comp_colors};
-
-  if (compValues.length > 0 && compValues.some(v => v > 0)) {{
-    var compCtx = document.getElementById('compChart').getContext('2d');
-    new Chart(compCtx, {{
-      type: 'doughnut',
-      data: {{
-        labels: compLabels,
-        datasets: [{{
-          data: compValues,
-          backgroundColor: compColors,
-          borderWidth: 2,
-          borderColor: '#ffffff',
-          hoverBorderWidth: 0,
-          hoverOffset: 8
-        }}]
-      }},
-      options: {{
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '62%',
-        plugins: {{
-          legend: {{
-            position: 'bottom',
-            labels: {{
-              padding: 12,
-              boxWidth: 12,
-              font: {{ size: 11 }},
-              color: '#334155'
-            }}
-          }},
-          tooltip: {{
-            callbacks: {{
-              label: function(ctx) {{
-                var val = ctx.parsed;
-                return ' ' + ctx.label + ': ' + val.toLocaleString() + '만원';
-              }}
-            }}
-          }}
-        }}
-      }}
-    }});
-  }} else {{
-    document.getElementById('compChart').parentElement.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:13px;">경쟁사 데이터 없음</div>';
-  }}
-
-  // ─── 수요기관 TOP20 수평 바 차트 ────────────────────────────────
-  var orgLabels = {org_labels};
-  var orgValues = {org_values};
-
-  if (orgValues.length > 0) {{
-    var orgCtx = document.getElementById('orgChart').getContext('2d');
-
-    // 그라디언트
-    var grad = orgCtx.createLinearGradient(0, 0, orgCtx.canvas.width, 0);
-    grad.addColorStop(0, '#4361ee');
-    grad.addColorStop(1, '#7209b7');
-
-    new Chart(orgCtx, {{
-      type: 'bar',
-      data: {{
-        labels: orgLabels,
-        datasets: [{{
-          label: '납품금액(만원)',
-          data: orgValues,
-          backgroundColor: grad,
-          borderRadius: 6,
-          borderSkipped: false,
-          barThickness: 14
-        }}]
-      }},
-      options: {{
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {{
-          legend: {{ display: false }},
-          tooltip: {{
-            callbacks: {{
-              label: function(ctx) {{
-                return ' ' + ctx.parsed.x.toLocaleString() + '만원';
-              }}
-            }}
-          }}
-        }},
-        scales: {{
-          x: {{
-            grid: {{ color: '#f1f5f9' }},
-            ticks: {{
-              color: '#64748b',
-              font: {{ size: 11 }},
-              callback: function(v) {{
-                if (v >= 10000) return (v/10000).toFixed(0) + '억';
-                return v.toLocaleString();
-              }}
-            }}
-          }},
-          y: {{
-            grid: {{ display: false }},
-            ticks: {{
-              color: '#334155',
-              font: {{ size: 11 }},
-              maxRotation: 0
-            }}
-          }}
-        }}
-      }}
-    }});
-  }} else {{
-    document.getElementById('orgChart').parentElement.innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:13px;">수요기관 데이터 없음</div>';
-  }}
-}})();
-</script>
-</body>
-</html>"""
-
+    for item in data_list:
+        corp_name = item.get('corp', '-')
+        bg = "background-color:#FFF9C4;" if "이노뎁" in corp_name else ""
+        amt_val = item.get('amt', '0')
+        amt_str = f"{int(amt_val):,}원" if str(amt_val).isdigit() else amt_val
+        link_name = f"<a href='{item['url']}' target='_blank' style='color:#1a73e8; text-decoration:none;'>{item['nm']}</a>"
+        html += f"<tr style='{bg}'><td style='padding:8px; text-align:center;'>{item['org']}</td>"
+        html += f"<td style='padding:8px;'>{link_name}</td>"
+        html += f"<td style='padding:8px; text-align:center;'>{corp_name}</td>"
+        html += f"<td style='padding:8px; text-align:right;'>{amt_str}</td></tr>"
+    html += "</table></div>"
     return html
 
-
-# =================================================================================
-# 4. 기존 API 호출 함수 (원본 유지)
-# =================================================================================
 
 def fetch_api_data_from_g2b(kw, d_str, retries=3):
     url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
@@ -760,14 +131,14 @@ def fetch_api_data_from_g2b(kw, d_str, retries=3):
     }
     for attempt in range(retries):
         try:
-            res = requests.get(url, params=params, timeout=60)
+            res = requests.get(url, params=params, timeout=60)  # 15 → 60초
             if res.status_code == 200 and "<item>" in res.text:
                 root = ET.fromstring(res.content)
                 return [[elem.text if elem.text else '' for elem in item]
                         for item in root.findall('.//item')]
             return []
         except requests.exceptions.Timeout:
-            wait = (attempt + 1) * 5
+            wait = (attempt + 1) * 5  # 5초, 10초, 15초 간격으로 재시도
             print(f"[{kw}] 타임아웃 ({attempt+1}/{retries}), {wait}초 후 재시도...")
             time.sleep(wait)
         except Exception as e:
@@ -795,8 +166,7 @@ def fetch_notice_data(category, url, d_str):
 
 
 def fetch_single_contract(kw_s, d_str):
-    # ★ http → https 수정
-    api_url_servc = 'https://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
+    api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
     results = []
     p = {
         'serviceKey': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml',
@@ -863,7 +233,7 @@ def save_notice_by_year(drive_service, creds, cat_name, new_df, year):
 
 
 # =================================================================================
-# 5. 메인 로직
+# 3. 메인 로직
 # =================================================================================
 def main():
     if not MY_DIRECT_KEY or not AUTH_JSON_STR:
@@ -878,9 +248,10 @@ def main():
     drive_service, drive_creds = get_drive_service_for_script()
     keywords_notice_all = [kw for sublist in CAT_KEYWORDS.values() for kw in sublist]
 
-    # ─────────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # PART 1: 종합쇼핑몰 3자단가 수집
-    # ─────────────────────────────────────────────────────────────────────────────
+    # ★ 변경: 폴더 ID 지정하여 파일 검색
+    # -------------------------------------------------------------------------
     final_data = []
     with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(fetch_api_data_from_g2b, kw, d_str): kw for kw in keywords}
@@ -889,16 +260,12 @@ def main():
             if data:
                 final_data.extend(data)
 
-    school_stats        = {}
-    innodep_today_dict  = {}
-    innodep_total_amt   = 0
-    competitor_stats    = defaultdict(int)   # ★ 경쟁사별 총금액
-    org_stats           = defaultdict(int)   # ★ 수요기관별 총금액
+    school_stats, innodep_today_dict, innodep_total_amt = {}, {}, 0
 
     if final_data:
         new_df = pd.DataFrame(final_data, columns=HEADER_KOR)
 
-        # Drive CSV 저장 (기존 로직 유지)
+        # ★ 폴더 ID 지정하여 검색
         query = f"name='{target_dt.year}.csv' and '{SHOPPING_FOLDER_ID}' in parents and trashed=false"
         res = drive_service.files().list(q=query, fields='files(id)').execute()
         items = res.get('files', [])
@@ -919,6 +286,7 @@ def main():
             )
             drive_service.files().update(fileId=f_id, media_body=media).execute()
         else:
+            # 파일이 없으면 새로 생성
             media = MediaIoBaseUpload(
                 io.BytesIO(new_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')),
                 mimetype='text/csv'
@@ -929,55 +297,28 @@ def main():
             ).execute()
             print(f"✅ 종합쇼핑몰 {target_dt.year}.csv 신규 생성 완료")
 
-        # ★ 집계 로직 (이노뎁 / 경쟁사 / 수요기관 / 학교)
         for row in final_data:
-            org      = str(row[7])
-            comp     = str(row[21])
-            amt_val  = str(row[20])
-            item_nm  = str(row[14])
-            cntrct   = str(row[23])
-            try:
-                amt = int(amt_val.replace(',', '').split('.')[0])
-            except:
-                amt = 0
+            org = str(row[7])
+            comp = str(row[21])
+            amt_val = str(row[20])
+            item_nm = str(row[14])
+            cntrct = str(row[23])
+            amt = int(amt_val.replace(',', '').split('.')[0])
 
-            # 수요기관별 집계 (전체)
-            if org:
-                org_stats[org] += amt
-
-            # 경쟁사별 집계
-            for comp_kw in COMPETITOR_KEYWORDS:
-                if comp_kw in comp:
-                    competitor_stats[comp_kw] += amt
-                    break  # 한 업체에 한 키워드만 매칭
-
-            # 학교 지능형 CCTV
             if '학교' in org and '지능형' in cntrct and 'CCTV' in cntrct:
                 if org not in school_stats:
                     school_stats[org] = {'total_amt': 0, 'main_vendor': comp}
                 school_stats[org]['total_amt'] += amt
 
-            # 이노뎁
             if '이노뎁' in comp:
                 innodep_today_dict[org] = innodep_today_dict.get(org, 0) + amt
                 innodep_total_amt += amt
 
-    # ★ 수요기관 TOP 20 정렬
-    org_stats_top20 = sorted(org_stats.items(), key=lambda x: -x[1])[:20]
-
-    # ★ 경쟁사 통계 정렬 (금액 내림차순, 0 제외)
-    competitor_stats = dict(
-        sorted(
-            ((k, v) for k, v in competitor_stats.items() if v > 0),
-            key=lambda x: -x[1]
-        )
-    )
-
-    # ─────────────────────────────────────────────────────────────────────────────
-    # PART 2: 나라장터 입찰 공고 수집
-    # ─────────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
+    # PART 2: 나라장터 입찰 공고 수집 → 연도별 파일로 저장 (변경 없음)
+    # -------------------------------------------------------------------------
     notice_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
-    all_notice_count    = 0
+    all_notice_count = 0
 
     for cat_api, api_url in NOTICE_API_MAP.items():
         n_df = fetch_notice_data(cat_api, api_url, d_str)
@@ -985,7 +326,7 @@ def main():
             all_notice_count += len(n_df)
             save_notice_by_year(drive_service, drive_creds, cat_api, n_df, year)
 
-            pattern  = '|'.join(keywords_notice_all)
+            pattern = '|'.join(keywords_notice_all)
             filtered = n_df[n_df['bidNtceNm'].str.contains(pattern, na=False, case=False)]
             for _, row in filtered.iterrows():
                 cat_found = classify_text(row['bidNtceNm'])
@@ -993,16 +334,15 @@ def main():
                     notice_mail_buckets[cat_found].append({
                         'org': row.get('dminsttNm', '-'),
                         'nm':  row.get('bidNtceNm', '-'),
-                        'corp': '-',
                         'amt': row.get('presmptPrce', '별도공고'),
                         'url': row.get('bidNtceDtlUrl', '#')
                     })
 
-    # ─────────────────────────────────────────────────────────────────────────────
-    # PART 3: 나라장터 용역 계약 수집
-    # ─────────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
+    # PART 3: 나라장터 용역 계약 내역 수집 (변경 없음)
+    # -------------------------------------------------------------------------
     contract_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
-    collected_servc       = []
+    collected_servc = []
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {
@@ -1021,29 +361,59 @@ def main():
     exclude_keywords = ['학교', '민방위', '교육청']
 
     def is_valid_org(org_name):
-        return not any(word in org_name for word in exclude_keywords)
+        for word in exclude_keywords:
+            if word in org_name:
+                return False
+        return True
 
     notice_mail_buckets['국방']   = [i for i in notice_mail_buckets['국방']   if is_valid_org(i['org'])]
     contract_mail_buckets['국방'] = [i for i in contract_mail_buckets['국방'] if is_valid_org(i['org'])]
 
-    # ─────────────────────────────────────────────────────────────────────────────
-    # PART 4: HTML 리포트 조립 → GitHub Actions output
-    # ─────────────────────────────────────────────────────────────────────────────
-    report_html = build_html_report(
-        display_date        = display_date,
-        weekday_str         = weekday_str,
-        d_str               = d_str,
-        final_data          = final_data,
-        school_stats        = school_stats,
-        innodep_today_dict  = innodep_today_dict,
-        innodep_total_amt   = innodep_total_amt,
-        competitor_stats    = competitor_stats,
-        org_stats_top20     = org_stats_top20,
-        notice_mail_buckets = notice_mail_buckets,
-        contract_mail_buckets = contract_mail_buckets,
-        all_notice_count    = all_notice_count,
-        unique_servc_list   = unique_servc_list,
-    )
+    # -------------------------------------------------------------------------
+    # PART 4: 최종 HTML 리포트 조립 (변경 없음)
+    # -------------------------------------------------------------------------
+    report_html = f"""
+    <div style="font-family:'Malgun Gothic'; line-height:2.0; border:1px solid #ddd; padding:20px; border-radius:10px;">
+        <h1 style="color:#1a73e8; margin-top:0;">📋 조달청 데이터 자동 수집 리포트</h1>
+        <b>🔹 수집날짜 :</b> {display_date}({weekday_str}요일)<br>
+        <b>🔹 종합쇼핑몰 3자단가 데이터 :</b> {len(final_data):,}건<br>
+        <b>🔹 나라장터 공고 데이터 :</b> {all_notice_count:,}건 (필터링 전 전체)<br>
+        <b>🔹 나라장터 계약 데이터 :</b> {len(unique_servc_list):,}건<br>
+        <b>🔹 상태 :</b> 성공
+        <hr style="border:0.5px solid #eee; margin:20px 0;">
+
+        <h1 style='color:#e67e22;'>🛒 종합쇼핑몰 3자단가 요약</h1>
+        <b>★ 학교 지능형 CCTV 납품 현황</b>
+        <div style='padding-left:10px; border-left:3px solid #e67e22;'>
+    """
+
+    if school_stats:
+        for sch, info in school_stats.items():
+            report_html += f"<p style='margin:5px 0;'>- {sch} / {info['total_amt']:,}원 / {info['main_vendor']}</p>"
+        report_html += f"<b>👉 학교 내역 총 {len(school_stats)}건 / 총액 {sum(s['total_amt'] for s in school_stats.values()):,}원</b>"
+    else:
+        report_html += "<p> - 학교 내역 0건</p>"
+
+    report_html += "</div><br><b>★ 이노뎁 나라장터 납품 실적</b><div style='padding-left:10px; border-left:3px solid #e67e22;'>"
+
+    if innodep_today_dict:
+        for org, amt in innodep_today_dict.items():
+            report_html += f"<p style='margin:5px 0;'>- {org} / 총액 {amt:,}원</p>"
+        report_html += f"<b>👉 이노뎁 납품내역 총 {len(innodep_today_dict)}건 / 총액 {innodep_total_amt:,}원</b>"
+    else:
+        report_html += "<p> - 이노뎁 납품내역 0건</p>"
+
+    report_html += "</div>"
+
+    report_html += "<h1 style='margin-top:35px; color:#d32f2f;'>📢 나라장터 입찰 공고 요약</h1>"
+    for i, cat in enumerate(CAT_KEYWORDS.keys(), 1):
+        report_html += format_html_table(notice_mail_buckets[cat], f"{i}) {cat} 요약")
+
+    report_html += "<h1 style='margin-top:35px; color:#1a73e8;'>📝 나라장터 계약 내역 요약</h1>"
+    for i, cat in enumerate(CAT_KEYWORDS.keys(), 1):
+        report_html += format_html_table(contract_mail_buckets[cat], f"{i}) {cat} 요약")
+
+    report_html += "</div>"
 
     if "GITHUB_OUTPUT" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
