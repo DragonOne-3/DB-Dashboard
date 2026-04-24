@@ -1,39 +1,32 @@
 name: Daily Main
-
 on:
   schedule:
     # 한국 시간 기준 매일 06:13 (UTC 21:13)
     - cron: '13 21 * * *'
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install pandas requests google-api-python-client \
                       google-auth-httplib2 google-auth-oauthlib pytimekr
-
       - name: Run script
         id: run_script
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           GOOGLE_AUTH_JSON:   ${{ secrets.GOOGLE_AUTH_JSON }}
         run: python main.py
-
-      # 수신자 주소는 모두 BCC 처리 → 각 수신자에게 자신의 주소만 표시됨
+      # HTML 리포트를 /tmp 파일에서 읽어 메일 본문으로 전달
       - name: Send Email Notification
         if: always()
         uses: dawidd6/action-send-mail@v3
@@ -43,10 +36,8 @@ jobs:
           username:       ${{ secrets.EMAIL_USER }}
           password:       ${{ secrets.EMAIL_PASS }}
           subject:        "[조달 리포트] ${{ steps.run_script.outputs.collect_date }} 수집 결과"
-          # TO는 발신자 자신으로만 설정 (수신자 목록 노출 방지)
           to:             조달데이터봇
-          # 실제 수신자는 전원 BCC 처리
           bcc: >-
             mhy9680@innodep.com
           from:      조달데이터봇 <jetti4856@gmail.com>
-          html_body: ${{ steps.run_script.outputs.full_report }}
+          html_body:  file://${{ steps.run_script.outputs.report_path }}
