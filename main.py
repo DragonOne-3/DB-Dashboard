@@ -165,7 +165,7 @@ def fmt_amount_full(val):
 def format_html_table(data_list, title):
     html = f"<div style='margin-top:25px;'><h4 style='color:#2c3e50; border-bottom:2px solid #34495e; padding-bottom:8px;'>{title}</h4>"
     if not data_list:
-        html += "<p style='color:#888; padding:10px;'>- 해당 내역이 없습니다.</p></div>"
+        html += "<p style='color:#888; padding:12px;'>- 해당 내역이 없습니다.</p></div>"
         return html
 
     html += "<table border='1' style='border-collapse:collapse; width:100%; font-size:13px; line-height:1.8;'>"
@@ -312,13 +312,13 @@ def _bar_row(rank, label, pct, amount_str, bar_color, bar_bg, label_color="#3741
     bold = "font-weight:700;" if label_bold else ""
     return (
         f"<tr>"
-        f"<td width='14' style='font-size:10px;color:#9ca3af;text-align:right;padding:3px 4px;white-space:nowrap;'>{rank}</td>"
+        f"<td width='14' style='font-size:12px;color:#9ca3af;text-align:right;padding:3px 4px;white-space:nowrap;'>{rank}</td>"
         f"<td width='98' style='font-size:13px;color:{label_color};{bold}padding:3px 6px;white-space:nowrap;overflow:hidden;max-width:98px;'>{label}</td>"
         f"<td style='padding:3px 4px;'>"
         f"<table width='100%' cellpadding='0' cellspacing='0' border='0' style='background-color:{bar_bg};border-radius:3px;height:8px;'><tr>"
         f"<td width='{pct}%' height='8' style='background-color:{bar_color};border-radius:3px;font-size:0;line-height:0;'>&nbsp;</td><td></td></tr></table>"
         f"</td>"
-        f"<td width='52' style='font-size:10px;color:#6b7280;text-align:right;padding:3px 4px;white-space:nowrap;'>{amount_str}</td>"
+        f"<td width='52' style='font-size:12px;color:#6b7280;text-align:right;padding:3px 4px;white-space:nowrap;'>{amount_str}</td>"
         f"</tr>"
     )
 
@@ -334,10 +334,10 @@ def build_vendor_chart(vendor_stats):
         "<table cellpadding='0' cellspacing='0' border='0' style='margin-bottom:8px;'><tr>"
         "<td style='padding-right:12px;'><table cellpadding='0' cellspacing='0' border='0'><tr>"
         "<td width='8' height='8' style='background-color:#2d7dd2;border-radius:2px;font-size:0;'>&nbsp;</td>"
-        "<td style='padding-left:4px;font-size:10px;color:#6b7280;'>이노뎁</td></tr></table></td>"
+        "<td style='padding-left:4px;font-size:12px;color:#6b7280;'>이노뎁</td></tr></table></td>"
         "<td><table cellpadding='0' cellspacing='0' border='0'><tr>"
         "<td width='8' height='8' style='background-color:#e03444;border-radius:2px;font-size:0;'>&nbsp;</td>"
-        "<td style='padding-left:4px;font-size:10px;color:#6b7280;'>경쟁사</td></tr></table></td>"
+        "<td style='padding-left:4px;font-size:12px;color:#6b7280;'>경쟁사</td></tr></table></td>"
         "</tr></table>"
     )
 
@@ -377,7 +377,7 @@ def build_category_section(cat, items):
         f"<tr><td style='padding:9px 12px;'>"
         f"<table width='100%' cellpadding='0' cellspacing='0' border='0'><tr>"
         f"<td style='font-size:12px;font-weight:700;color:{meta['text']};'>{meta['icon']} {cat}</td>"
-        f"<td style='text-align:right;'><span style='font-size:10px;font-weight:700;color:#ffffff;background-color:{meta['badge_bg']};padding:2px 10px;border-radius:10px;'>{len(items)}건</span></td>"
+        f"<td style='text-align:right;'><span style='font-size:12px;font-weight:700;color:#ffffff;background-color:{meta['badge_bg']};padding:2px 12px;border-radius:12px;'>{len(items)}건</span></td>"
         f"</tr></table></td></tr></table>"
     )
 
@@ -390,10 +390,10 @@ def build_category_section(cat, items):
 
     thead = (
         f"<tr style='background-color:{meta['bg']};'>"
-        f"<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;width:20%;border-bottom:1px solid {meta['border']};'>수요기관</th>"
-        f"<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;border-bottom:1px solid {meta['border']};'>사업명</th>"
-        f"<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:center;width:16%;border-bottom:1px solid {meta['border']};'>업체명</th>"
-        f"<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:right;width:12%;border-bottom:1px solid {meta['border']};'>금액</th>"
+        f"<th style='padding:7px 8px;font-size:12px;font-weight:700;color:#6b7280;text-align:left;width:20%;border-bottom:1px solid {meta['border']};'>수요기관</th>"
+        f"<th style='padding:7px 8px;font-size:12px;font-weight:700;color:#6b7280;text-align:left;border-bottom:1px solid {meta['border']};'>사업명</th>"
+        f"<th style='padding:7px 8px;font-size:12px;font-weight:700;color:#6b7280;text-align:center;width:16%;border-bottom:1px solid {meta['border']};'>업체명</th>"
+        f"<th style='padding:7px 8px;font-size:12px;font-weight:700;color:#6b7280;text-align:right;width:12%;border-bottom:1px solid {meta['border']};'>금액</th>"
         f"</tr>"
     )
 
@@ -442,12 +442,12 @@ def build_report_html(
     innodep_org_count = len(innodep_org_summary) if innodep_org_summary else 0
 
     def card(color, label, value, sub=""):
-        sub_html = f"<p style='margin:4px 0 0;font-size:10px;color:#9ca3af;'>{sub}</p>" if sub else ""
+        sub_html = f"<p style='margin:4px 0 0;font-size:12px;color:#9ca3af;'>{sub}</p>" if sub else ""
         return (
             f"<table width='100%' cellpadding='0' cellspacing='0' border='0' style='background-color:#ffffff;border-radius:8px;border-top:3px solid {color};overflow:hidden;'>"
             f"<tr><td style='padding:16px 14px;'>"
             f"<p style='margin:0 0 8px 0;font-size:9px;color:#9ca3af;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;'>{label}</p>"
-            f"<p style='margin:0;font-size:22px;font-weight:700;color:{color};'>{value}</p>"
+            f"<p style='margin:0;font-size:26px;font-weight:700;color:{color};'>{value}</p>"
             f"{sub_html}</td></tr></table>"
         )
 
@@ -468,22 +468,22 @@ def build_report_html(
             vendor_weight = "font-weight:700;" if "이노뎁" in info["main_vendor"] else ""
             school_rows_html += (
                 f"<tr style='background-color:{row_bg};'>"
-                f"<td style='padding:7px 10px;font-size:13px;color:#374151;border-bottom:1px solid #fef9e7;'>{school_name}</td>"
-                f"<td style='padding:7px 10px;font-size:13px;color:{vendor_color};{vendor_weight}border-bottom:1px solid #fef9e7;'>{info['main_vendor']}</td>"
-                f"<td style='padding:7px 10px;font-size:13px;color:#374151;text-align:right;border-bottom:1px solid #fef9e7;'>{fmt_amount_full(info['total_amt'])}</td>"
+                f"<td style='padding:7px 12px;font-size:13px;color:#374151;border-bottom:1px solid #fef9e7;'>{school_name}</td>"
+                f"<td style='padding:7px 12px;font-size:13px;color:{vendor_color};{vendor_weight}border-bottom:1px solid #fef9e7;'>{info['main_vendor']}</td>"
+                f"<td style='padding:7px 12px;font-size:13px;color:#374151;text-align:right;border-bottom:1px solid #fef9e7;'>{fmt_amount_full(info['total_amt'])}</td>"
                 f"</tr>"
             )
         school_table = (
             "<table width='100%' cellpadding='0' cellspacing='0' border='0'>"
             "<tr style='background-color:#fffbeb;'>"
-            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#92400e;text-align:left;border-bottom:1px solid #fde68a;'>학교명</th>"
-            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#92400e;text-align:left;border-bottom:1px solid #fde68a;'>납품업체</th>"
-            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#92400e;text-align:right;border-bottom:1px solid #fde68a;'>금액</th>"
+            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#92400e;text-align:left;border-bottom:1px solid #fde68a;'>학교명</th>"
+            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#92400e;text-align:left;border-bottom:1px solid #fde68a;'>납품업체</th>"
+            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#92400e;text-align:right;border-bottom:1px solid #fde68a;'>금액</th>"
             "</tr>"
             f"{school_rows_html}"
             f"<tr style='background-color:#fef9ec;'>"
-            f"<td colspan='2' style='padding:8px 10px;font-size:13px;font-weight:700;color:#92400e;'>합계 ({len(school_stats)}개교)</td>"
-            f"<td style='padding:8px 10px;font-size:13px;font-weight:700;color:#92400e;text-align:right;'>{fmt_amount_full(school_total_amt)}</td>"
+            f"<td colspan='2' style='padding:8px 12px;font-size:13px;font-weight:700;color:#92400e;'>합계 ({len(school_stats)}개교)</td>"
+            f"<td style='padding:8px 12px;font-size:13px;font-weight:700;color:#92400e;text-align:right;'>{fmt_amount_full(school_total_amt)}</td>"
             f"</tr></table>"
         )
     else:
@@ -496,21 +496,21 @@ def build_report_html(
             row_bg = "#ffffff" if i % 2 == 0 else "#f8faff"
             innodep_rows_html += (
                 f"<tr style='background-color:{row_bg};'>"
-                f"<td style='padding:7px 10px;font-size:13px;color:#374151;border-bottom:1px solid #f0f4ff;'>{org}</td>"
-                f"<td style='padding:7px 10px;font-size:13px;color:#374151;text-align:right;border-bottom:1px solid #f0f4ff;'>{fmt_amount_full(amt)}</td>"
+                f"<td style='padding:7px 12px;font-size:13px;color:#374151;border-bottom:1px solid #f0f4ff;'>{org}</td>"
+                f"<td style='padding:7px 12px;font-size:13px;color:#374151;text-align:right;border-bottom:1px solid #f0f4ff;'>{fmt_amount_full(amt)}</td>"
                 f"</tr>"
             )
 
         innodep_table = (
             "<table width='100%' cellpadding='0' cellspacing='0' border='0'>"
             "<tr style='background-color:#eff6ff;'>"
-            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#1e3a5f;text-align:left;border-bottom:1px solid #bfdbfe;'>수요기관</th>"
-            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#1e3a5f;text-align:right;border-bottom:1px solid #bfdbfe;'>금액</th>"
+            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#1e3a5f;text-align:left;border-bottom:1px solid #bfdbfe;'>수요기관</th>"
+            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#1e3a5f;text-align:right;border-bottom:1px solid #bfdbfe;'>금액</th>"
             "</tr>"
             f"{innodep_rows_html}"
             f"<tr style='background-color:#dbeafe;'>"
-            f"<td style='padding:8px 10px;font-size:13px;font-weight:700;color:#1e3a5f;'>합계 ({len(innodep_org_summary)}개 기관)</td>"
-            f"<td style='padding:8px 10px;font-size:13px;font-weight:700;color:#1e3a5f;text-align:right;'>{fmt_amount_full(innodep_total_amt)}</td>"
+            f"<td style='padding:8px 12px;font-size:13px;font-weight:700;color:#1e3a5f;'>합계 ({len(innodep_org_summary)}개 기관)</td>"
+            f"<td style='padding:8px 12px;font-size:13px;font-weight:700;color:#1e3a5f;text-align:right;'>{fmt_amount_full(innodep_total_amt)}</td>"
             f"</tr></table>"
         )
     else:
@@ -537,17 +537,17 @@ def build_report_html(
 
 <tr>
   <td style="padding-bottom:12px;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1e3a5f;border-radius:10px;overflow:hidden;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#1e3a5f;border-radius:12px;overflow:hidden;">
       <tr><td colspan="2" height="3" style="background-color:#2d7dd2;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr>
-        <td style="padding:20px 24px 18px;">
-          <p style="margin:0 0 4px 0;font-size:10px;letter-spacing:3px;color:#7eb8f7;font-weight:700;text-transform:uppercase;">Innodep &middot; Procurement Intelligence</p>
-          <p style="margin:0;font-size:20px;font-weight:700;color:#f0f7ff;letter-spacing:-0.5px;">조달청 데이터 수집 리포트</p>
+        <td style="padding:24px 24px 18px;">
+          <p style="margin:0 0 4px 0;font-size:12px;letter-spacing:3px;color:#7eb8f7;font-weight:700;text-transform:uppercase;">Innodep &middot; Procurement Intelligence</p>
+          <p style="margin:0;font-size:24px;font-weight:700;color:#f0f7ff;letter-spacing:-0.5px;">조달청 데이터 수집 리포트</p>
         </td>
-        <td style="padding:20px 24px 18px;text-align:right;vertical-align:middle;">
-          <p style="margin:0 0 2px 0;font-size:10px;color:#5a87b8;letter-spacing:1px;">기준일 (어제)</p>
+        <td style="padding:24px 24px 18px;text-align:right;vertical-align:middle;">
+          <p style="margin:0 0 2px 0;font-size:12px;color:#5a87b8;letter-spacing:1px;">기준일 (어제)</p>
           <p style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#7eb8f7;">{display_date} ({weekday_str})</p>
-          <p style="margin:0;font-size:10px;color:#4a9d6e;font-weight:700;letter-spacing:1px;">&#9679; AUTO COLLECTED</p>
+          <p style="margin:0;font-size:12px;color:#4a9d6e;font-weight:700;letter-spacing:1px;">&#9679; AUTO COLLECTED</p>
         </td>
       </tr>
     </table>
@@ -576,24 +576,24 @@ def build_report_html(
         <td width="50%" style="padding-right:6px;">
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
             <tr>
-              <td style="padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;">
+              <td style="padding:14px 16px 12px;border-bottom:1px solid #f3f4f6;">
                 <p style="margin:0;font-size:13px;font-weight:700;color:#374151;">&#128202; 경쟁사 납품금액 TOP 10</p>
-                <p style="margin:4px 0 0 0;font-size:10px;color:#9ca3af;">어제 기준 · 경쟁사 중 상위 10개</p>
+                <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">어제 기준 · 경쟁사 중 상위 10개</p>
               </td>
             </tr>
-            <tr><td style="padding:10px 16px 14px;">{build_vendor_chart(vendor_stats)}</td></tr>
+            <tr><td style="padding:12px 16px 14px;">{build_vendor_chart(vendor_stats)}</td></tr>
           </table>
         </td>
 
         <td width="50%" style="padding-left:6px;">
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
             <tr>
-              <td style="padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;">
+              <td style="padding:14px 16px 12px;border-bottom:1px solid #f3f4f6;">
                 <p style="margin:0;font-size:13px;font-weight:700;color:#374151;">&#127963; 수요기관 납품금액 TOP 10</p>
-                <p style="margin:4px 0 0 0;font-size:10px;color:#9ca3af;">어제 기준 · 기관별 합산 상위 10개</p>
+                <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">어제 기준 · 기관별 합산 상위 10개</p>
               </td>
             </tr>
-            <tr><td style="padding:10px 16px 14px;">{build_org_chart(org_stats)}</td></tr>
+            <tr><td style="padding:12px 16px 14px;">{build_org_chart(org_stats)}</td></tr>
           </table>
         </td>
       </tr>
@@ -671,7 +671,7 @@ def build_report_html(
 
 <tr>
   <td style="padding-top:8px;padding-bottom:8px;text-align:center;">
-    <p style="margin:0;font-size:10px;color:#9ca3af;letter-spacing:0.5px;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;letter-spacing:0.5px;">
       본 메일은 GitHub Actions 자동화 스크립트로 발송됩니다 &nbsp;&middot;&nbsp; Innodep Procurement Bot
     </p>
   </td>
