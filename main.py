@@ -456,7 +456,8 @@ def build_report_html(
         f"<td width='25%' style='padding-right:6px;'>{card('#f59e0b', '쇼핑몰 수집', f'{shopping_cnt:,}건')}</td>"
         f"<td width='25%' style='padding-right:6px;padding-left:6px;'>{card('#2d7dd2', '공고 수집', f'{notice_cnt:,}건')}</td>"
         f"<td width='25%' style='padding-right:6px;padding-left:6px;'>{card('#8b5cf6', '계약 수집', f'{contract_cnt:,}건')}</td>"
-        f"<td width='25%' style='padding-left:6px;'>{card('#10b981', '이노뎁 납품', fmt_amount_full(innodep_total_amt)}</td>"
+        f"<td width='25%' style='padding-left:6px;'>{card('#10b981', '이노뎁 납품', fmt_amount_full(innodep_total_amt))}</td>"
+
         "</tr></table>"
     )
 
