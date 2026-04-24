@@ -46,7 +46,6 @@ ALL_NOTICE_KEYWORDS = [kw for kws in CAT_KEYWORDS.values() for kw in kws]
 ALL_NOTICE_PATTERN  = re.compile('|'.join(map(re.escape, ALL_NOTICE_KEYWORDS)))
 EXCLUDE_ORG_PATTERN = re.compile(r'학교|민방위|교육청')
 
-# 이노뎁 핵심 사업 키워드 (우선순위 정렬용)
 INNODEP_PRIORITY_KEYWORDS = [
     'CCTV', '영상감시', '통합관제', '영상정보처리', '지능형영상',
     '과학화경계', '무인경계', '스마트도시', 'ITS', '교통관제',
@@ -54,7 +53,6 @@ INNODEP_PRIORITY_KEYWORDS = [
 ]
 INNODEP_PRIORITY_PATTERN = re.compile('|'.join(map(re.escape, INNODEP_PRIORITY_KEYWORDS)))
 
-# 이노뎁 주요 경쟁사
 COMPETITOR_KEYWORDS = [
     '한화비전', '한화테크윈', '아이디스', '씨앤비텍', '에이치디씨',
     '다후아', '하이크비전', '유니뷰', '보쉬', 'AXIS', 'Axis',
@@ -63,12 +61,24 @@ COMPETITOR_KEYWORDS = [
 ]
 COMPETITOR_PATTERN = re.compile('|'.join(map(re.escape, COMPETITOR_KEYWORDS)))
 
-# 카테고리 메타 - 다크계열 배경 없이 라이트 파스텔 톤으로 통일
+# 카테고리별 색상·아이콘 메타
 CAT_META = {
-    '영상감시장치': {'icon': '📷', 'accent': '#1e5fa8', 'bg': '#eef4fb', 'border': '#b8d0ee', 'text': '#1e3a5f'},
-    '국방':        {'icon': '🛡', 'accent': '#b91c1c', 'bg': '#fdf2f2', 'border': '#f5c0c0', 'text': '#7f1d1d'},
-    '솔루션':      {'icon': '💡', 'accent': '#6d28d9', 'bg': '#f5f3ff', 'border': '#d4c9f7', 'text': '#3b1a8e'},
-    '스마트도시':   {'icon': '🏙', 'accent': '#047857', 'bg': '#f0fdf6', 'border': '#a7d9c0', 'text': '#064e3b'},
+    '영상감시장치': {
+        'icon': '&#128247;', 'accent': '#2d7dd2', 'bg': '#eff6ff',
+        'border': '#bfdbfe', 'text': '#1e3a5f', 'badge_bg': '#2d7dd2',
+    },
+    '국방': {
+        'icon': '&#128737;', 'accent': '#e03444', 'bg': '#fef2f2',
+        'border': '#fecaca', 'text': '#7f1d1d', 'badge_bg': '#e03444',
+    },
+    '솔루션': {
+        'icon': '&#128161;', 'accent': '#8b5cf6', 'bg': '#f5f3ff',
+        'border': '#d4c9f7', 'text': '#4c1d95', 'badge_bg': '#8b5cf6',
+    },
+    '스마트도시': {
+        'icon': '&#127751;', 'accent': '#10b981', 'bg': '#f0fdf4',
+        'border': '#a7d9c0', 'text': '#064e3b', 'badge_bg': '#10b981',
+    },
 }
 
 KEYWORDS = sorted(set([
@@ -133,13 +143,11 @@ def classify_text(text: str) -> str:
 
 
 def innodep_priority_score(item: dict) -> int:
-    """이노뎁 핵심 사업 관련도 점수 (높을수록 우선 표출)"""
     text = str(item.get('nm', '')) + str(item.get('org', ''))
     return 1 if INNODEP_PRIORITY_PATTERN.search(text) else 0
 
 
 def sort_items_by_priority(items: list[dict]) -> list[dict]:
-    """이노뎁 핵심 키워드 포함 항목을 상위로 정렬, 그 다음 금액순"""
     def sort_key(item):
         priority = innodep_priority_score(item)
         try:
@@ -328,279 +336,198 @@ def save_notice_to_drive(drive_service, drive_creds,
 
 
 # =================================================================================
-# 5. HTML 리포트 생성
+# 5. HTML 리포트 생성 (이메일 클라이언트 호환 — JS/CSS 없음, 순수 테이블 레이아웃)
 # =================================================================================
 
-def _stat_card(label: str, value: str, sub: str = '', accent: str = '#1e5fa8', bg: str = '#eef4fb') -> str:
+def _bar_row(rank: str, label: str, pct: int, amount_str: str,
+             bar_color: str, bar_bg: str,
+             label_color: str = '#374151', label_bold: bool = False) -> str:
+    """JS 없이 table width(%)로 구현한 수평 바 차트 한 행"""
+    pct = max(3, min(pct, 100))
+    bold_style = 'font-weight:700;' if label_bold else ''
     return (
-        f"<div style='background:{bg};border-radius:10px;padding:18px 14px;"
-        f"text-align:center;border-left:4px solid {accent};'>"
-        f"<div style='font-size:11px;color:#6b7280;font-weight:600;letter-spacing:0.5px;"
-        f"text-transform:uppercase;margin-bottom:6px;'>{label}</div>"
-        f"<div style='font-size:22px;font-weight:700;color:{accent};'>{value}</div>"
-        + (f"<div style='font-size:10px;color:#9ca3af;margin-top:4px;'>{sub}</div>" if sub else "")
-        + "</div>"
+        f"<tr>"
+        f"<td width='14' style='font-size:10px;color:#9ca3af;text-align:right;"
+        f"padding:3px 4px;white-space:nowrap;'>{rank}</td>"
+        f"<td width='88' style='font-size:11px;color:{label_color};{bold_style}"
+        f"padding:3px 6px;white-space:nowrap;overflow:hidden;max-width:88px;'>{label}</td>"
+        f"<td style='padding:3px 4px;'>"
+        f"<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        f"style='background-color:{bar_bg};border-radius:3px;height:8px;'><tr>"
+        f"<td width='{pct}%' height='8' "
+        f"style='background-color:{bar_color};border-radius:3px;font-size:0;line-height:0;'>"
+        f"&nbsp;</td><td></td></tr></table>"
+        f"</td>"
+        f"<td width='46' style='font-size:10px;color:#6b7280;text-align:right;"
+        f"padding:3px 4px;white-space:nowrap;'>{amount_str}</td>"
+        f"</tr>"
     )
 
 
-def _section_header(title: str, count: int, meta: dict) -> str:
-    accent, bg, border, text, icon = meta['accent'], meta['bg'], meta['border'], meta['text'], meta['icon']
+def _bar_chart_panel(title: str, subtitle: str,
+                     items: list[tuple[str, int]],
+                     color_fn,
+                     bar_bg: str = '#e8f0fd',
+                     legend_html: str = '') -> str:
+    """items = [(label, raw_int), ...] 상위 10개 표시"""
+    if not items:
+        return (
+            f"<p style='margin:0 0 6px;font-size:11px;font-weight:700;color:#374151;'>{title}</p>"
+            f"<p style='margin:0 0 10px;font-size:10px;color:#9ca3af;'>{subtitle}</p>"
+            "<p style='font-size:12px;color:#9ca3af;'>데이터 없음</p>"
+        )
+    top = items[:10]
+    max_val = max(v for _, v in top) or 1
+    rows = ""
+    for i, (label, val) in enumerate(top):
+        pct = int(val / max_val * 100)
+        is_innodep = '이노뎁' in label
+        is_comp    = COMPETITOR_PATTERN.search(label) is not None
+        bar_color, lbl_color, lbl_bold, rank_str = color_fn(label, is_innodep, is_comp)
+        rows += _bar_row(
+            rank_str or str(i + 1), label, pct,
+            fmt_amount(val), bar_color, bar_bg, lbl_color, lbl_bold
+        )
     return (
-        f"<div style='display:flex;align-items:center;gap:10px;padding:12px 16px;"
-        f"background:{bg};border:1px solid {border};border-radius:8px;margin-bottom:12px;'>"
-        f"<span style='font-size:18px;'>{icon}</span>"
-        f"<span style='font-size:15px;font-weight:700;color:{text};'>{title}</span>"
-        f"<span style='margin-left:auto;background:{accent};color:#fff;"
-        f"border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;'>{count}건</span>"
-        f"</div>"
+        f"<p style='margin:0 0 4px;font-size:11px;font-weight:700;color:#374151;'>{title}</p>"
+        f"<p style='margin:0 0 8px;font-size:10px;color:#9ca3af;'>{subtitle}</p>"
+        f"{legend_html}"
+        f"<table width='100%' cellpadding='0' cellspacing='2' border='0'>{rows}</table>"
     )
 
 
-def _section_table(items: list[dict], title: str, cat: str) -> str:
-    meta = CAT_META.get(cat, {'icon': '📋', 'accent': '#374151', 'bg': '#f9fafb', 'border': '#e5e7eb', 'text': '#374151'})
-    accent, bg = meta['accent'], meta['bg']
+def _legend(colors: list[tuple[str, str]]) -> str:
+    cells = "".join(
+        f"<td style='padding-right:10px;'>"
+        f"<table cellpadding='0' cellspacing='0' border='0'><tr>"
+        f"<td width='8' height='8' style='background-color:{c};border-radius:2px;font-size:0;line-height:0;'>&nbsp;</td>"
+        f"<td style='padding-left:4px;font-size:10px;color:#6b7280;'>{lbl}</td>"
+        f"</tr></table></td>"
+        for c, lbl in colors
+    )
+    return (
+        f"<table cellpadding='0' cellspacing='0' border='0' style='margin-bottom:8px;'>"
+        f"<tr>{cells}</tr></table>"
+    )
 
-    # 이노뎁 핵심 사업 우선 정렬
+
+def _cat_section_header(cat: str, count: int) -> str:
+    meta = CAT_META.get(cat, {
+        'icon': '&#128203;', 'accent': '#374151', 'bg': '#f9fafb',
+        'border': '#e5e7eb', 'text': '#374151', 'badge_bg': '#374151',
+    })
+    m_bg     = meta['bg']
+    m_accent = meta['accent']
+    m_text   = meta['text']
+    m_badge  = meta['badge_bg']
+    m_icon   = meta['icon']
+    return (
+        f"<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        f"style='background-color:{m_bg};border-radius:6px;"
+        f"border-left:3px solid {m_accent};margin-bottom:10px;'>"
+        f"<tr><td style='padding:9px 12px;'>"
+        f"<table width='100%' cellpadding='0' cellspacing='0' border='0'><tr>"
+        f"<td style='font-size:12px;font-weight:700;color:{m_text};'>"
+        f"{m_icon} {cat}</td>"
+        f"<td style='text-align:right;'>"
+        f"<span style='font-size:10px;font-weight:700;color:#ffffff;"
+        f"background-color:{m_badge};padding:2px 10px;border-radius:10px;'>"
+        f"{count}건</span></td>"
+        f"</tr></table></td></tr></table>"
+    )
+
+
+def _items_table(items: list[dict], cat: str) -> str:
+    meta = CAT_META.get(cat, {
+        'icon': '&#128203;', 'accent': '#374151', 'bg': '#f9fafb',
+        'border': '#e5e7eb', 'text': '#374151', 'badge_bg': '#374151',
+    })
+    accent = meta['accent']
+    bg     = meta['bg']
+    border = meta['border']
+
+    if not items:
+        return (
+            "<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+            "style='margin-bottom:16px;'><tr>"
+            "<td style='padding:14px;text-align:center;font-size:12px;color:#9ca3af;"
+            "background-color:#fafafa;border-radius:6px;border:1px dashed #e5e7eb;'>"
+            "해당 내역이 없습니다.</td></tr></table>"
+        )
+
     sorted_items = sort_items_by_priority(items)
 
-    html = _section_header(title, len(sorted_items), meta)
+    thead = (
+        f"<tr style='background-color:{bg};'>"
+        f"<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;"
+        f"text-align:left;width:20%;border-bottom:1px solid {border};'>수요기관</th>"
+        f"<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;"
+        f"text-align:left;border-bottom:1px solid {border};'>사업명</th>"
+        f"<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;"
+        f"text-align:center;width:16%;border-bottom:1px solid {border};'>업체명</th>"
+        f"<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;"
+        f"text-align:right;width:12%;border-bottom:1px solid {border};'>금액</th>"
+        f"</tr>"
+    )
 
-    if not sorted_items:
-        return (html +
-                f"<div style='background:#f9fafb;border:1px dashed #d1d5db;border-radius:8px;"
-                f"padding:14px;color:#9ca3af;font-size:13px;text-align:center;margin-bottom:20px;'>"
-                f"해당 내역이 없습니다.</div>")
-
-    rows = ""
+    tbody = ""
     for i, item in enumerate(sorted_items):
-        is_innodep   = '이노뎁' in str(item.get('corp', ''))
-        is_priority  = innodep_priority_score(item) == 1
+        is_innodep    = '이노뎁' in str(item.get('corp', ''))
+        is_priority   = innodep_priority_score(item) == 1
         is_competitor = COMPETITOR_PATTERN.search(str(item.get('corp', ''))) is not None
 
+        row_bg = '#fffbeb' if is_innodep else ('#ffffff' if i % 2 == 0 else '#fafafa')
+
         if is_innodep:
-            row_bg = '#fffbeb'
-            corp_style = f"color:{accent};font-weight:600;"
+            corp_color, corp_bold = '#2d7dd2', 'font-weight:700;'
         elif is_competitor:
-            row_bg = '#fdf2f2'
-            corp_style = "color:#b91c1c;font-weight:500;"
+            corp_color, corp_bold = '#e03444', ''
         else:
-            row_bg = '#ffffff' if i % 2 == 0 else '#f9fafb'
-            corp_style = "color:#374151;"
+            corp_color, corp_bold = '#374151', ''
 
-        badge = ""
+        badge = ''
         if is_innodep:
-            badge = f"<span style='font-size:9px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:1px 5px;margin-left:4px;'>★이노뎁</span>"
-        elif is_priority and not is_innodep:
-            badge = f"<span style='font-size:9px;background:{bg};color:{accent};border:1px solid {meta['border']};border-radius:4px;padding:1px 5px;margin-left:4px;'>핵심</span>"
+            badge = (" <span style='font-size:9px;color:#92400e;background-color:#fef3c7;"
+                     "border:1px solid #fde68a;padding:1px 4px;border-radius:3px;'>"
+                     "&#9733;이노뎁</span>")
+        elif is_priority:
+            badge = (f" <span style='font-size:9px;color:{accent};background-color:{bg};"
+                     f"border:1px solid {border};padding:1px 4px;border-radius:3px;'>"
+                     f"핵심</span>")
 
-        nm   = item.get('nm', '-')
-        url  = item.get('url', '#')
-        link_nm = (f"<a href='{url}' target='_blank' "
-                   f"style='color:{accent};text-decoration:none;font-weight:500;'>{nm}</a>"
-                   if url and url != '#' else f"<span style='color:#374151;'>{nm}</span>")
+        nm  = item.get('nm', '-')
+        url = item.get('url', '#')
+        nm_html = (
+            f"<a href='{url}' target='_blank' "
+            f"style='color:{accent};text-decoration:none;'>{nm}</a>{badge}"
+            if url and url != '#'
+            else f"<span style='color:#374151;'>{nm}</span>{badge}"
+        )
 
-        rows += (
-            f"<tr style='background:{row_bg};border-bottom:1px solid #e5e7eb;'>"
-            f"<td style='padding:7px 10px;color:#374151;font-size:12px;'>{item.get('org','-')}</td>"
-            f"<td style='padding:7px 10px;font-size:12px;'>{link_nm}</td>"
-            f"<td style='padding:7px 10px;text-align:center;font-size:12px;{corp_style}'>"
-            f"{item.get('corp','-')}{badge}</td>"
-            f"<td style='padding:7px 10px;text-align:right;color:#374151;"
-            f"font-size:12px;font-variant-numeric:tabular-nums;'>{fmt_amount(item.get('amt','0'))}</td>"
+        tbody += (
+            f"<tr style='background-color:{row_bg};'>"
+            f"<td style='padding:7px 8px;font-size:11px;color:#374151;"
+            f"border-bottom:1px solid #f3f4f6;'>{item.get('org', '-')}</td>"
+            f"<td style='padding:7px 8px;font-size:11px;border-bottom:1px solid #f3f4f6;'>"
+            f"{nm_html}</td>"
+            f"<td style='padding:7px 8px;font-size:11px;color:{corp_color};{corp_bold}"
+            f"text-align:center;border-bottom:1px solid #f3f4f6;'>"
+            f"{item.get('corp', '-')}</td>"
+            f"<td style='padding:7px 8px;font-size:11px;color:#374151;"
+            f"text-align:right;border-bottom:1px solid #f3f4f6;'>"
+            f"{fmt_amount(item.get('amt', '0'))}</td>"
             f"</tr>"
         )
 
-    html += (
-        f"<div style='overflow-x:auto;margin-bottom:20px;'>"
-        f"<table style='width:100%;border-collapse:collapse;font-size:12.5px;"
-        f"border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;'>"
-        f"<thead><tr style='background:{bg};'>"
-        f"<th style='padding:9px 10px;text-align:left;width:22%;font-size:12px;font-weight:700;color:{meta['text']};border-bottom:2px solid {meta['border']};'>수요기관</th>"
-        f"<th style='padding:9px 10px;text-align:left;font-size:12px;font-weight:700;color:{meta['text']};border-bottom:2px solid {meta['border']};'>사업명</th>"
-        f"<th style='padding:9px 10px;text-align:center;width:16%;font-size:12px;font-weight:700;color:{meta['text']};border-bottom:2px solid {meta['border']};'>업체명</th>"
-        f"<th style='padding:9px 10px;text-align:right;width:13%;font-size:12px;font-weight:700;color:{meta['text']};border-bottom:2px solid {meta['border']};'>금액</th>"
-        f"</tr></thead><tbody>{rows}</tbody></table></div>"
+    return (
+        f"<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        f"style='margin-bottom:16px;'>"
+        f"<thead>{thead}</thead><tbody>{tbody}</tbody></table>"
     )
-    return html
 
 
-def _vendor_chart_js(vendor_data: dict, chart_id: str, title: str,
-                     innodep_color: str = '#1e5fa8',
-                     competitor_color: str = '#b91c1c',
-                     other_color: str = '#94a3b8') -> str:
-    """업체별 납품금액 수평 막대 차트 (경쟁사 빨강, 이노뎁 파랑, 기타 회색)"""
-    if not vendor_data:
-        return ""
-
-    top20 = sorted(vendor_data.items(), key=lambda x: x[1], reverse=True)[:20]
-    labels = [v[0] for v in top20]
-    values = [v[1] for v in top20]
-    colors = []
-    for lbl in labels:
-        if '이노뎁' in lbl:
-            colors.append(innodep_color)
-        elif COMPETITOR_PATTERN.search(lbl):
-            colors.append(competitor_color)
-        else:
-            colors.append(other_color)
-
-    labels_js = json.dumps(labels, ensure_ascii=False)
-    values_js = json.dumps(values)
-    colors_js = json.dumps(colors)
-    bar_height = max(len(top20) * 32 + 80, 200)
-
-    return f"""
-<div style='margin-bottom:8px;'>
-  <div style='font-size:13px;font-weight:700;color:#374151;margin-bottom:6px;'>{title}</div>
-  <div style='display:flex;gap:12px;margin-bottom:8px;font-size:11px;'>
-    <span style='display:flex;align-items:center;gap:4px;'>
-      <span style='width:10px;height:10px;border-radius:2px;background:{innodep_color};display:inline-block;'></span>
-      <span style='color:#374151;'>이노뎁</span>
-    </span>
-    <span style='display:flex;align-items:center;gap:4px;'>
-      <span style='width:10px;height:10px;border-radius:2px;background:{competitor_color};display:inline-block;'></span>
-      <span style='color:#374151;'>주요 경쟁사</span>
-    </span>
-    <span style='display:flex;align-items:center;gap:4px;'>
-      <span style='width:10px;height:10px;border-radius:2px;background:{other_color};display:inline-block;'></span>
-      <span style='color:#374151;'>기타</span>
-    </span>
-  </div>
-  <div style='position:relative;width:100%;height:{bar_height}px;'>
-    <canvas id='{chart_id}' role='img' aria-label='{title} 업체별 납품금액 차트'></canvas>
-  </div>
-</div>
-<script>
-(function(){{
-  var ctx = document.getElementById('{chart_id}');
-  if(!ctx) return;
-  new Chart(ctx, {{
-    type: 'bar',
-    data: {{
-      labels: {labels_js},
-      datasets: [{{
-        label: '납품금액(원)',
-        data: {values_js},
-        backgroundColor: {colors_js},
-        borderWidth: 0,
-        borderRadius: 3,
-      }}]
-    }},
-    options: {{
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {{
-        legend: {{ display: false }},
-        tooltip: {{
-          callbacks: {{
-            label: function(ctx) {{
-              var v = ctx.raw;
-              if(v >= 100000000) return (v/100000000).toFixed(1) + '억원';
-              if(v >= 10000) return Math.round(v/10000) + '만원';
-              return v.toLocaleString() + '원';
-            }}
-          }}
-        }}
-      }},
-      scales: {{
-        x: {{
-          grid: {{ color: '#f1f5f9' }},
-          ticks: {{
-            font: {{ size: 10 }},
-            color: '#6b7280',
-            callback: function(v) {{
-              if(v >= 100000000) return (v/100000000).toFixed(0) + '억';
-              if(v >= 10000) return Math.round(v/10000) + '만';
-              return v;
-            }}
-          }}
-        }},
-        y: {{
-          grid: {{ display: false }},
-          ticks: {{ font: {{ size: 11 }}, color: '#374151' }}
-        }}
-      }}
-    }}
-  }});
-}})();
-</script>"""
-
-
-def _org_chart_js(org_data: dict, chart_id: str, title: str, accent: str = '#1e5fa8', bg_light: str = '#eef4fb') -> str:
-    """수요기관 상위 20 수평 막대 차트"""
-    if not org_data:
-        return ""
-
-    top20 = sorted(org_data.items(), key=lambda x: x[1], reverse=True)[:20]
-    labels = [v[0] for v in top20]
-    values = [v[1] for v in top20]
-    labels_js = json.dumps(labels, ensure_ascii=False)
-    values_js = json.dumps(values)
-    bar_height = max(len(top20) * 32 + 80, 200)
-
-    return f"""
-<div style='margin-bottom:8px;'>
-  <div style='font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;'>{title}</div>
-  <div style='position:relative;width:100%;height:{bar_height}px;'>
-    <canvas id='{chart_id}' role='img' aria-label='{title} 수요기관별 납품금액 차트'></canvas>
-  </div>
-</div>
-<script>
-(function(){{
-  var ctx = document.getElementById('{chart_id}');
-  if(!ctx) return;
-  new Chart(ctx, {{
-    type: 'bar',
-    data: {{
-      labels: {labels_js},
-      datasets: [{{
-        label: '납품금액(원)',
-        data: {values_js},
-        backgroundColor: '{accent}',
-        borderWidth: 0,
-        borderRadius: 3,
-      }}]
-    }},
-    options: {{
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {{
-        legend: {{ display: false }},
-        tooltip: {{
-          callbacks: {{
-            label: function(ctx) {{
-              var v = ctx.raw;
-              if(v >= 100000000) return (v/100000000).toFixed(1) + '억원';
-              if(v >= 10000) return Math.round(v/10000) + '만원';
-              return v.toLocaleString() + '원';
-            }}
-          }}
-        }}
-      }},
-      scales: {{
-        x: {{
-          grid: {{ color: '#f1f5f9' }},
-          ticks: {{
-            font: {{ size: 10 }},
-            color: '#6b7280',
-            callback: function(v) {{
-              if(v >= 100000000) return (v/100000000).toFixed(0) + '억';
-              if(v >= 10000) return Math.round(v/10000) + '만';
-              return v;
-            }}
-          }}
-        }},
-        y: {{
-          grid: {{ display: false }},
-          ticks: {{ font: {{ size: 11 }}, color: '#374151' }}
-        }}
-      }}
-    }}
-  }});
-}})();
-</script>"""
+def _cat_block(cat: str, items: list[dict]) -> str:
+    return _cat_section_header(cat, len(items)) + _items_table(items, cat)
 
 
 def build_report_html(
@@ -609,224 +536,347 @@ def build_report_html(
     shopping_dedup: int, notice_dedup_total: int,
     school_stats: dict, innodep_dict: dict, innodep_total: int,
     notice_buckets: dict, contract_buckets: dict,
-    vendor_stats: dict,   # 업체별 납품금액 집계 (전체)
-    org_stats: dict,      # 수요기관별 납품금액 집계 (전체)
+    vendor_stats: dict,
+    org_stats: dict,
 ) -> str:
 
-    # ── 학교 CCTV 테이블 ──────────────────────────────────────────────
-    if school_stats:
-        total_school_amt = sum(s['total_amt'] for s in school_stats.values())
-        school_rows = "".join(
-            f"<tr style='background:{'#ffffff' if i%2==0 else '#fffbeb'};border-bottom:1px solid #fde68a;'>"
-            f"<td style='padding:7px 10px;color:#374151;font-size:12px;'>{sch}</td>"
-            f"<td style='padding:7px 10px;color:#374151;font-size:12px;'>{info['main_vendor']}</td>"
-            f"<td style='padding:7px 10px;text-align:right;color:#374151;font-size:12px;'>{info['total_amt']:,}원</td></tr>"
-            for i, (sch, info) in enumerate(school_stats.items())
+    # ── 요약 카드 4개 ────────────────────────────────────────────────────
+    def _card(color: str, label: str, value: str, sub: str = '') -> str:
+        sub_html = f"<p style='margin:4px 0 0;font-size:10px;color:#9ca3af;'>{sub}</p>" if sub else ''
+        return (
+            f"<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+            f"style='background-color:#ffffff;border-radius:8px;border-top:3px solid {color};'>"
+            f"<tr><td style='padding:16px 14px;'>"
+            f"<p style='margin:0 0 8px 0;font-size:9px;color:#9ca3af;font-weight:700;"
+            f"letter-spacing:1.5px;text-transform:uppercase;'>{label}</p>"
+            f"<p style='margin:0;font-size:20px;font-weight:700;color:{color};'>{value}</p>"
+            f"{sub_html}"
+            f"</td></tr></table>"
         )
-        school_section = (
-            f"<div style='overflow-x:auto;'>"
-            f"<table style='width:100%;border-collapse:collapse;font-size:12.5px;"
-            f"border:1px solid #fde68a;border-radius:8px;overflow:hidden;'>"
-            f"<thead><tr style='background:#fef9ec;'>"
-            f"<th style='padding:9px 10px;text-align:left;font-size:12px;font-weight:700;color:#92400e;border-bottom:2px solid #fde68a;'>학교명</th>"
-            f"<th style='padding:9px 10px;text-align:left;font-size:12px;font-weight:700;color:#92400e;border-bottom:2px solid #fde68a;'>납품업체</th>"
-            f"<th style='padding:9px 10px;text-align:right;font-size:12px;font-weight:700;color:#92400e;border-bottom:2px solid #fde68a;width:20%;'>납품금액</th>"
-            f"</tr></thead><tbody>{school_rows}</tbody>"
-            f"<tfoot><tr style='background:#fef3c7;'>"
-            f"<td colspan='2' style='padding:9px 10px;font-size:12px;font-weight:700;color:#92400e;'>합계 ({len(school_stats)}개교)</td>"
-            f"<td style='padding:9px 10px;text-align:right;font-size:12px;font-weight:700;color:#92400e;'>{total_school_amt:,}원</td>"
-            f"</tr></tfoot></table></div>"
-        )
-    else:
-        school_section = "<div style='color:#9ca3af;font-size:13px;padding:10px 0;'>해당 내역 없음</div>"
 
-    # ── 이노뎁 납품 테이블 (사업명 포함) ─────────────────────────────
-    if innodep_dict:
-        innodep_rows = "".join(
-            f"<tr style='background:{'#ffffff' if i%2==0 else '#f0f7ff'};border-bottom:1px solid #b8d0ee;'>"
-            f"<td style='padding:7px 10px;color:#374151;font-size:12px;'>{org}</td>"
-            f"<td style='padding:7px 10px;color:#1e3a5f;font-size:12px;'>{info.get('nm','-')}</td>"
-            f"<td style='padding:7px 10px;text-align:right;color:#374151;font-size:12px;'>{info['amt']:,}원</td></tr>"
-            for i, (org, info) in enumerate(innodep_dict.items())
-        )
-        innodep_section = (
-            f"<div style='overflow-x:auto;'>"
-            f"<table style='width:100%;border-collapse:collapse;font-size:12.5px;"
-            f"border:1px solid #b8d0ee;border-radius:8px;overflow:hidden;'>"
-            f"<thead><tr style='background:#eef4fb;'>"
-            f"<th style='padding:9px 10px;text-align:left;font-size:12px;font-weight:700;color:#1e3a5f;border-bottom:2px solid #b8d0ee;'>수요기관</th>"
-            f"<th style='padding:9px 10px;text-align:left;font-size:12px;font-weight:700;color:#1e3a5f;border-bottom:2px solid #b8d0ee;'>사업명</th>"
-            f"<th style='padding:9px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e3a5f;border-bottom:2px solid #b8d0ee;width:22%;'>납품금액</th>"
-            f"</tr></thead><tbody>{innodep_rows}</tbody>"
-            f"<tfoot><tr style='background:#dbeafe;'>"
-            f"<td colspan='2' style='padding:9px 10px;font-size:12px;font-weight:700;color:#1e3a5f;'>합계 ({len(innodep_dict)}건)</td>"
-            f"<td style='padding:9px 10px;text-align:right;font-size:12px;font-weight:700;color:#1e3a5f;'>{innodep_total:,}원</td>"
-            f"</tr></tfoot></table></div>"
-        )
-    else:
-        innodep_section = "<div style='color:#9ca3af;font-size:13px;padding:10px 0;'>해당 내역 없음</div>"
-
-    notice_sections   = "".join(_section_table(notice_buckets[c],   f"{c} 입찰공고",   c) for c in CAT_KEYWORDS)
-    contract_sections = "".join(_section_table(contract_buckets[c], f"{c} 계약내역", c) for c in CAT_KEYWORDS)
-
-    # 요약 카드 4개
     stat_cards = (
-        f"<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;'>"
-        + _stat_card('쇼핑몰 수집', f'{shopping_cnt:,}건',  f'중복 {shopping_dedup:,}건 제거', '#b45309', '#fef9ec')
-        + _stat_card('공고 수집',   f'{notice_cnt:,}건',    f'중복 {notice_dedup_total:,}건 제거', '#1e5fa8', '#eef4fb')
-        + _stat_card('계약 수집',   f'{contract_cnt:,}건',  '', '#6d28d9', '#f5f3ff')
-        + _stat_card('이노뎁 납품', fmt_amount(innodep_total), f'{len(innodep_dict)}개 기관', '#047857', '#f0fdf6')
-        + "</div>"
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0'><tr>"
+        f"<td width='25%' style='padding-right:6px;'>"
+        f"{_card('#f59e0b', '쇼핑몰 수집', f'{shopping_cnt:,}건', f'중복 {shopping_dedup:,}건 제거')}"
+        f"</td>"
+        f"<td width='25%' style='padding-right:6px;padding-left:6px;'>"
+        f"{_card('#2d7dd2', '공고 수집', f'{notice_cnt:,}건', f'중복 {notice_dedup_total:,}건 제거')}"
+        f"</td>"
+        f"<td width='25%' style='padding-right:6px;padding-left:6px;'>"
+        f"{_card('#8b5cf6', '계약 수집', f'{contract_cnt:,}건')}"
+        f"</td>"
+        f"<td width='25%' style='padding-left:6px;'>"
+        f"{_card('#10b981', '이노뎁 납품', fmt_amount(innodep_total), f'{len(innodep_dict)}개 기관')}"
+        f"</td>"
+        "</tr></table>"
     )
 
-    # 차트 JS
-    vendor_chart = _vendor_chart_js(vendor_stats, 'vendorChart', '업체별 납품금액 순위 (상위 20개)')
-    org_chart    = _org_chart_js(org_stats, 'orgChart', '수요기관별 납품금액 순위 (상위 20개)', '#1e5fa8', '#eef4fb')
+    # ── 업체별 바 차트 ────────────────────────────────────────────────────
+    vendor_sorted = sorted(vendor_stats.items(), key=lambda x: x[1], reverse=True)
 
+    def vendor_color_fn(lbl, is_innodep, is_comp):
+        if is_innodep:
+            return '#2d7dd2', '#2d7dd2', True, '★'
+        if is_comp:
+            return '#e03444', '#e03444', False, None
+        return '#94a3b8', '#374151', False, None
+
+    vendor_legend = _legend([('#2d7dd2', '이노뎁'), ('#e03444', '경쟁사'), ('#94a3b8', '기타')])
+    vendor_chart  = _bar_chart_panel(
+        '경쟁사 납품금액 TOP 10', '어제 기준 · 이노뎁 포함 비교',
+        vendor_sorted, vendor_color_fn, bar_bg='#e8edf5', legend_html=vendor_legend
+    )
+
+    # ── 수요기관별 바 차트 ─────────────────────────────────────────────────
+    org_sorted = sorted(org_stats.items(), key=lambda x: x[1], reverse=True)
+
+    def org_color_fn(lbl, is_innodep, is_comp):
+        return '#2d7dd2', '#374151', False, None
+
+    org_chart = _bar_chart_panel(
+        '수요기관 납품금액 TOP 10', '어제 기준 · 기관명별 합산',
+        org_sorted, org_color_fn, bar_bg='#dce8f5'
+    )
+
+    charts_2col = (
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        "style='margin-bottom:12px;'><tr valign='top'>"
+        # 왼쪽: 업체별
+        "<td width='50%' style='padding-right:6px;'>"
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        "style='background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;'>"
+        "<tr><td style='padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;'>"
+        "<p style='margin:0;font-size:11px;font-weight:700;color:#374151;'>"
+        "&#128202; 경쟁사 납품금액 TOP 10</p>"
+        "<p style='margin:4px 0 0;font-size:10px;color:#9ca3af;'>어제 기준 · 이노뎁 포함 비교</p>"
+        "</td></tr>"
+        f"<tr><td style='padding:12px 16px 14px;'>{vendor_chart}</td></tr>"
+        "</table></td>"
+        # 오른쪽: 수요기관별
+        "<td width='50%' style='padding-left:6px;'>"
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        "style='background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;'>"
+        "<tr><td style='padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;'>"
+        "<p style='margin:0;font-size:11px;font-weight:700;color:#374151;'>"
+        "&#127963; 수요기관 납품금액 TOP 10</p>"
+        "<p style='margin:4px 0 0;font-size:10px;color:#9ca3af;'>어제 기준 · 기관명별 합산</p>"
+        "</td></tr>"
+        f"<tr><td style='padding:12px 16px 14px;'>{org_chart}</td></tr>"
+        "</table></td>"
+        "</tr></table>"
+    )
+
+    # ── 학교 CCTV 테이블 ───────────────────────────────────────────────────
+    if school_stats:
+        total_school_amt = sum(s['total_amt'] for s in school_stats.values())
+        school_rows = ""
+        for i, (sch, info) in enumerate(school_stats.items()):
+            row_bg = '#ffffff' if i % 2 == 0 else '#fffdf5'
+            school_rows += (
+                f"<tr style='background-color:{row_bg};'>"
+                f"<td style='padding:7px 10px;font-size:11px;color:#374151;"
+                f"border-bottom:1px solid #fef9e7;'>{sch}</td>"
+                f"<td style='padding:7px 10px;font-size:11px;color:#374151;"
+                f"border-bottom:1px solid #fef9e7;'>{info['main_vendor']}</td>"
+                f"<td style='padding:7px 10px;font-size:11px;color:#374151;text-align:right;"
+                f"border-bottom:1px solid #fef9e7;'>{info['total_amt']:,}원</td></tr>"
+            )
+        school_body = (
+            "<table width='100%' cellpadding='0' cellspacing='0' border='0'>"
+            "<thead><tr style='background-color:#fffbeb;'>"
+            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#92400e;"
+            "text-align:left;border-bottom:1px solid #fde68a;'>학교명</th>"
+            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#92400e;"
+            "text-align:left;border-bottom:1px solid #fde68a;'>납품업체</th>"
+            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#92400e;"
+            "text-align:right;border-bottom:1px solid #fde68a;width:20%;'>납품금액</th>"
+            f"</tr></thead><tbody>{school_rows}</tbody>"
+            f"<tfoot><tr style='background-color:#fef3c7;'>"
+            f"<td colspan='2' style='padding:9px 10px;font-size:12px;font-weight:700;"
+            f"color:#92400e;'>합계 ({len(school_stats)}개교)</td>"
+            f"<td style='padding:9px 10px;font-size:12px;font-weight:700;color:#92400e;"
+            f"text-align:right;'>{total_school_amt:,}원</td>"
+            f"</tr></tfoot></table>"
+        )
+    else:
+        school_body = ("<p style='color:#9ca3af;font-size:13px;"
+                       "padding:14px 16px;'>해당 내역 없음</p>")
+
+    # ── 이노뎁 실적 테이블 ─────────────────────────────────────────────────
+    if innodep_dict:
+        innodep_rows = ""
+        for i, (org, info) in enumerate(innodep_dict.items()):
+            row_bg = '#ffffff' if i % 2 == 0 else '#f8faff'
+            innodep_rows += (
+                f"<tr style='background-color:{row_bg};'>"
+                f"<td style='padding:7px 10px;font-size:11px;color:#374151;"
+                f"border-bottom:1px solid #f0f4ff;'>{org}</td>"
+                f"<td style='padding:7px 10px;font-size:11px;color:#2d7dd2;"
+                f"border-bottom:1px solid #f0f4ff;'>{info.get('nm', '-')}</td>"
+                f"<td style='padding:7px 10px;font-size:11px;color:#374151;text-align:right;"
+                f"border-bottom:1px solid #f0f4ff;'>{info['amt']:,}원</td></tr>"
+            )
+        innodep_body = (
+            "<table width='100%' cellpadding='0' cellspacing='0' border='0'>"
+            "<thead><tr style='background-color:#eff6ff;'>"
+            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#1e3a5f;"
+            "text-align:left;border-bottom:1px solid #bfdbfe;'>수요기관</th>"
+            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#1e3a5f;"
+            "text-align:left;border-bottom:1px solid #bfdbfe;'>사업명</th>"
+            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#1e3a5f;"
+            "text-align:right;border-bottom:1px solid #bfdbfe;width:22%;'>납품금액</th>"
+            f"</tr></thead><tbody>{innodep_rows}</tbody>"
+            f"<tfoot><tr style='background-color:#dbeafe;'>"
+            f"<td colspan='2' style='padding:9px 10px;font-size:12px;font-weight:700;"
+            f"color:#1e3a5f;'>합계 ({len(innodep_dict)}건)</td>"
+            f"<td style='padding:9px 10px;font-size:12px;font-weight:700;color:#1e3a5f;"
+            f"text-align:right;'>{innodep_total:,}원</td>"
+            f"</tr></tfoot></table>"
+        )
+    else:
+        innodep_body = ("<p style='color:#9ca3af;font-size:13px;"
+                        "padding:14px 16px;'>해당 내역 없음</p>")
+
+    school_innodep_2col = (
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        "style='margin-bottom:12px;'><tr valign='top'>"
+        # 학교
+        "<td width='50%' style='padding-right:6px;'>"
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        "style='background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;'>"
+        "<tr><td style='padding:12px 16px;background-color:#fffbeb;border-bottom:2px solid #fde68a;'>"
+        "<p style='margin:0;font-size:11px;font-weight:700;color:#92400e;'>"
+        "&#127979; 학교 지능형 CCTV 납품현황</p></td></tr>"
+        f"<tr><td style='padding:0;'>{school_body}</td></tr>"
+        "</table></td>"
+        # 이노뎁
+        "<td width='50%' style='padding-left:6px;'>"
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0' "
+        "style='background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;'>"
+        "<tr><td style='padding:12px 16px;background-color:#eff6ff;border-bottom:2px solid #bfdbfe;'>"
+        "<p style='margin:0;font-size:11px;font-weight:700;color:#1e3a5f;'>"
+        "&#11088; 이노뎁 납품 실적</p></td></tr>"
+        f"<tr><td style='padding:0;'>{innodep_body}</td></tr>"
+        "</table></td>"
+        "</tr></table>"
+    )
+
+    # ── 카테고리별 공고·계약 블록 ─────────────────────────────────────────
+    notice_blocks   = "".join(_cat_block(cat, notice_buckets[cat])   for cat in CAT_KEYWORDS)
+    contract_blocks = "".join(_cat_block(cat, contract_buckets[cat]) for cat in CAT_KEYWORDS)
+
+    # ── 최종 HTML ─────────────────────────────────────────────────────────
     return f"""<!DOCTYPE html>
-<html lang="ko"><head>
+<html lang="ko">
+<head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<style>
-  * {{ box-sizing: border-box; }}
-  body {{
-    margin: 0; padding: 0;
-    background: #f1f5f9;
-    font-family: 'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;
-    color: #1e293b;
-  }}
-  .wrap {{ max-width: 760px; margin: 0 auto; padding: 20px 12px; }}
-
-  /* ── 섹션 래퍼 ── */
-  .section {{
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 22px 24px;
-    margin-bottom: 16px;
-  }}
-
-  /* ── 섹션 제목 ── */
-  .section-title {{
-    font-size: 17px;
-    font-weight: 700;
-    margin: 0 0 16px 0;
-    padding-bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }}
-
-  /* ── 서브 제목 ── */
-  .sub-title {{
-    font-size: 13px;
-    font-weight: 700;
-    color: #374151;
-    margin: 18px 0 8px 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }}
-  .sub-title::before {{
-    content: '';
-    display: inline-block;
-    width: 3px;
-    height: 14px;
-    border-radius: 2px;
-  }}
-</style>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>Innodep 조달청 데이터 수집 리포트</title>
 </head>
-<body>
-<div class="wrap">
+<body style="margin:0;padding:0;background-color:#f0f4f8;
+  font-family:'맑은 고딕','Apple SD Gothic Neo',Arial,sans-serif;
+  -webkit-text-size-adjust:100%;mso-line-height-rule:exactly;">
 
-  <!-- ── 헤더 ── -->
-  <div style="background:#1e3a5f;border-radius:12px;padding:24px 28px;
-    color:#f0f7ff;margin-bottom:16px;">
-    <div style="font-size:10px;letter-spacing:3px;color:#93c5fd;margin-bottom:6px;
-      text-transform:uppercase;font-weight:600;">
-      Innodep · Procurement Intelligence
-    </div>
-    <div style="font-size:22px;font-weight:700;letter-spacing:-0.5px;color:#f0f7ff;">
-      조달청 데이터 수집 리포트
-    </div>
-    <div style="margin-top:8px;font-size:13px;color:#93c5fd;">
-      {display_date}({weekday_str}요일) &nbsp;·&nbsp; 자동 수집 완료
-    </div>
-  </div>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"
+  style="background-color:#f0f4f8;">
+<tr><td align="center" style="padding:24px 12px;">
 
-  <!-- ── 요약 카드 ── -->
-  <div class="section">
-    <div class="section-title" style="color:#1e3a5f;border-bottom:2px solid #dbeafe;">
-      <span style="font-size:16px;">📊</span> 오늘의 수집 요약
-    </div>
-    {stat_cards}
-  </div>
+  <table width="680" cellpadding="0" cellspacing="0" border="0"
+    style="max-width:680px;width:100%;">
 
-  <!-- ── 종합쇼핑몰 섹션 ── -->
-  <div class="section">
-    <div class="section-title" style="color:#92400e;border-bottom:2px solid #fde68a;">
-      <span style="font-size:16px;">🛒</span> 종합쇼핑몰 3자단가
-    </div>
+    <!-- ══ HEADER ══ -->
+    <tr><td style="padding-bottom:12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background-color:#1e3a5f;border-radius:10px;overflow:hidden;">
+        <tr>
+          <td colspan="2" height="3"
+            style="background-color:#2d7dd2;font-size:0;line-height:0;">&nbsp;</td>
+        </tr>
+        <tr>
+          <td style="padding:20px 24px 18px;">
+            <p style="margin:0 0 4px 0;font-size:10px;letter-spacing:3px;color:#7eb8f7;
+              font-weight:700;text-transform:uppercase;">
+              Innodep &middot; Procurement Intelligence
+            </p>
+            <p style="margin:0;font-size:20px;font-weight:700;color:#f0f7ff;
+              letter-spacing:-0.5px;">
+              조달청 데이터 수집 리포트
+            </p>
+          </td>
+          <td style="padding:20px 24px 18px;text-align:right;vertical-align:middle;">
+            <p style="margin:0 0 2px 0;font-size:10px;color:#5a87b8;letter-spacing:1px;">
+              기준일 (어제)
+            </p>
+            <p style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#7eb8f7;">
+              {display_date} ({weekday_str})
+            </p>
+            <p style="margin:0;font-size:10px;color:#4a9d6e;font-weight:700;
+              letter-spacing:1px;">&#9679; AUTO COLLECTED</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
 
-    <!-- 업체별 차트 -->
-    <div class="sub-title" style="color:#92400e;">
-      <span style="background:#b45309;"></span>
-      업체별 납품금액 순위
-    </div>
-    {vendor_chart}
+    <!-- ══ 요약 카드 ══ -->
+    <tr><td style="padding-bottom:12px;">
+      {stat_cards}
+    </td></tr>
 
-    <!-- 수요기관별 차트 -->
-    <div class="sub-title" style="color:#1e3a5f;margin-top:24px;">
-      <span style="background:#1e5fa8;"></span>
-      수요기관별 납품금액 순위
-    </div>
-    {org_chart}
+    <!-- ══ 쇼핑몰 섹션 헤더 ══ -->
+    <tr><td style="padding-bottom:8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background-color:#fffbeb;border-radius:8px;
+               border-left:4px solid #f59e0b;">
+        <tr><td style="padding:12px 16px;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#92400e;">
+            &#128722; 종합쇼핑몰 3자단가
+            <span style="font-size:11px;font-weight:400;color:#b45309;">
+              &nbsp;— 어제 기준 일매출 집계
+            </span>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
 
-    <!-- 학교 CCTV -->
-    <div class="sub-title" style="color:#92400e;margin-top:24px;">
-      <span style="background:#b45309;"></span>
-      학교 지능형 CCTV 납품 현황
-    </div>
-    {school_section}
+    <!-- ══ 업체·수요기관 차트 (2열) ══ -->
+    <tr><td style="padding-bottom:0;">
+      {charts_2col}
+    </td></tr>
 
-    <!-- 이노뎁 실적 -->
-    <div class="sub-title" style="color:#1e3a5f;margin-top:24px;">
-      <span style="background:#1e5fa8;"></span>
-      이노뎁 납품 실적 (사업명 포함)
-    </div>
-    {innodep_section}
-  </div>
+    <!-- ══ 학교 CCTV + 이노뎁 실적 (2열) ══ -->
+    <tr><td style="padding-bottom:12px;">
+      {school_innodep_2col}
+    </td></tr>
 
-  <!-- ── 나라장터 입찰공고 ── -->
-  <div class="section">
-    <div class="section-title" style="color:#b91c1c;border-bottom:2px solid #fecaca;">
-      <span style="font-size:16px;">📢</span> 나라장터 입찰공고
-      <span style="font-size:11px;font-weight:500;color:#6b7280;margin-left:4px;">
-        (★이노뎁 관련·핵심 사업 우선 표출)
-      </span>
-    </div>
-    {notice_sections}
-  </div>
+    <!-- ══ 입찰공고 헤더 ══ -->
+    <tr><td style="padding-bottom:8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background-color:#fef2f2;border-radius:8px;
+               border-left:4px solid #e03444;">
+        <tr><td style="padding:12px 16px;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#991b1b;">
+            &#128226; 나라장터 입찰공고
+            <span style="font-size:11px;font-weight:400;color:#b91c1c;">
+              &nbsp;— &#9733;이노뎁 관련 &middot; 핵심 사업 우선 표출
+            </span>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
 
-  <!-- ── 나라장터 계약내역 ── -->
-  <div class="section">
-    <div class="section-title" style="color:#1e5fa8;border-bottom:2px solid #bfdbfe;">
-      <span style="font-size:16px;">📝</span> 나라장터 계약내역
-      <span style="font-size:11px;font-weight:500;color:#6b7280;margin-left:4px;">
-        (★이노뎁 관련·핵심 사업 우선 표출)
-      </span>
-    </div>
-    {contract_sections}
-  </div>
+    <!-- ══ 입찰공고 카드 ══ -->
+    <tr><td style="padding-bottom:12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background-color:#ffffff;border-radius:8px;
+               border:1px solid #e5e7eb;">
+        <tr><td style="padding:16px 16px 8px;">
+          {notice_blocks}
+        </td></tr>
+      </table>
+    </td></tr>
 
-  <!-- ── 푸터 ── -->
-  <div style="text-align:center;padding:14px;color:#94a3b8;font-size:11px;">
-    본 메일은 GitHub Actions 자동화 스크립트로 발송됩니다.&nbsp;·&nbsp;Innodep Procurement Bot
-  </div>
+    <!-- ══ 계약내역 헤더 ══ -->
+    <tr><td style="padding-bottom:8px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background-color:#eff6ff;border-radius:8px;
+               border-left:4px solid #2d7dd2;">
+        <tr><td style="padding:12px 16px;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#1e3a5f;">
+            &#128221; 나라장터 계약내역
+            <span style="font-size:11px;font-weight:400;color:#2d7dd2;">
+              &nbsp;— &#9733;이노뎁 관련 &middot; 핵심 사업 우선 표출
+            </span>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
 
-</div>
-</body></html>"""
+    <!-- ══ 계약내역 카드 ══ -->
+    <tr><td style="padding-bottom:12px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background-color:#ffffff;border-radius:8px;
+               border:1px solid #e5e7eb;">
+        <tr><td style="padding:16px 16px 8px;">
+          {contract_blocks}
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <!-- ══ FOOTER ══ -->
+    <tr><td style="padding-top:8px;padding-bottom:8px;text-align:center;">
+      <p style="margin:0;font-size:10px;color:#9ca3af;letter-spacing:0.5px;">
+        본 메일은 GitHub Actions 자동화 스크립트로 발송됩니다
+        &nbsp;&middot;&nbsp; Innodep Procurement Bot
+      </p>
+    </td></tr>
+
+  </table>
+
+</td></tr>
+</table>
+</body>
+</html>"""
 
 
 # =================================================================================
@@ -857,13 +907,12 @@ def main():
             if data:
                 raw_shopping.extend(data)
 
-    school_stats:      dict = {}
-    # 이노뎁 실적: org -> {amt, nm} 구조로 변경 (사업명 포함)
-    innodep_today:     dict = {}
-    innodep_total_amt: int  = 0
-    shopping_dedup_cnt: int = 0
-    vendor_stats:      dict = {}  # 업체별 집계
-    org_stats:         dict = {}  # 수요기관별 집계
+    school_stats:       dict = {}
+    innodep_today:      dict = {}
+    innodep_total_amt:  int  = 0
+    shopping_dedup_cnt: int  = 0
+    vendor_stats:       dict = {}
+    org_stats:          dict = {}
 
     if raw_shopping:
         new_df = pd.DataFrame(raw_shopping, columns=HEADER_KOR)
@@ -873,23 +922,19 @@ def main():
         for row in raw_shopping:
             org    = str(row[7])
             comp   = str(row[21])
-            cntrct = str(row[23])  # 계약명 (사업명)
+            cntrct = str(row[23])
             try:
                 amt = int(str(row[20]).replace(',', '').split('.')[0])
             except ValueError:
                 amt = 0
 
-            # 업체별 집계
             vendor_stats[comp] = vendor_stats.get(comp, 0) + amt
-            # 수요기관별 집계
-            org_stats[org] = org_stats.get(org, 0) + amt
+            org_stats[org]     = org_stats.get(org, 0) + amt
 
-            # 학교 CCTV
             if '학교' in org and '지능형' in cntrct and 'CCTV' in cntrct:
                 school_stats.setdefault(org, {'total_amt': 0, 'main_vendor': comp})
                 school_stats[org]['total_amt'] += amt
 
-            # 이노뎁 실적 (사업명 포함)
             if '이노뎁' in comp:
                 if org not in innodep_today:
                     innodep_today[org] = {'amt': 0, 'nm': cntrct}
@@ -948,7 +993,6 @@ def main():
         if cat in contract_buckets:
             contract_buckets[cat].append(c)
 
-    # 국방 카테고리: 학교·민방위·교육청 제외
     for bucket in (notice_buckets, contract_buckets):
         bucket['국방'] = [i for i in bucket['국방'] if not EXCLUDE_ORG_PATTERN.search(i['org'])]
 
