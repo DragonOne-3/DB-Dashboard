@@ -521,6 +521,23 @@ def build_report_html(
     notice_blocks = "".join(build_category_section(cat, notice_mail_buckets[cat]) for cat in CAT_KEYWORDS)
     contract_blocks = "".join(build_category_section(cat, contract_mail_buckets[cat]) for cat in CAT_KEYWORDS)
 
+    dashboard_links = """
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;">
+      <tr>
+        <td align="center" style="padding:8px 0 4px 0;">
+          <a href="http://211.171.190.220:3001" target="_blank"
+             style="display:inline-block;padding:10px 18px;background-color:#2d7dd2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:12px;font-weight:700;margin-right:8px;">
+             외부접속
+          </a>
+          <a href="http://dashboard.innodep.com:3001/" target="_blank"
+             style="display:inline-block;padding:10px 18px;background-color:#10b981;color:#ffffff;text-decoration:none;border-radius:6px;font-size:12px;font-weight:700;">
+             내부접속
+          </a>
+        </td>
+      </tr>
+    </table>
+    """
+
     return f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -575,7 +592,7 @@ def build_report_html(
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr valign="top">
         <td width="50%" style="padding-right:6px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;height:320px;">
             <tr>
               <td style="padding:14px 16px 12px;border-bottom:1px solid #f3f4f6;">
                 <p style="margin:0;font-size:13px;font-weight:700;color:#374151;">&#128202; 경쟁사 납품금액 TOP 10</p>
@@ -587,7 +604,7 @@ def build_report_html(
         </td>
 
         <td width="50%" style="padding-left:6px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;height:320px;">
             <tr>
               <td style="padding:14px 16px 12px;border-bottom:1px solid #f3f4f6;">
                 <p style="margin:0;font-size:13px;font-weight:700;color:#374151;">&#127963; 수요기관 납품금액 TOP 10</p>
@@ -607,7 +624,7 @@ def build_report_html(
     <table width="100%" cellpadding="0" cellspacing="0" border="0">
       <tr valign="top">
         <td width="50%" style="padding-right:6px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;height:360px;">
             <tr><td style="padding:12px 16px;background-color:#fffbeb;border-bottom:2px solid #fde68a;">
               <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;">&#127979; 학교 지능형 CCTV 납품현황</p>
             </td></tr>
@@ -616,7 +633,7 @@ def build_report_html(
         </td>
 
         <td width="50%" style="padding-left:6px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;height:360px;">
             <tr><td style="padding:12px 16px;background-color:#eff6ff;border-bottom:2px solid #bfdbfe;">
               <p style="margin:0;font-size:13px;font-weight:700;color:#1e3a5f;">&#11088; 이노뎁 납품 실적</p>
             </td></tr>
@@ -627,6 +644,8 @@ def build_report_html(
     </table>
   </td>
 </tr>
+
+<tr><td style="padding-bottom:12px;">{dashboard_links}</td></tr>
 
 <tr>
   <td style="padding-bottom:8px;">
