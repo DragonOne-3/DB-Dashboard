@@ -313,7 +313,7 @@ def _bar_row(rank, label, pct, amount_str, bar_color, bar_bg, label_color="#3741
     return (
         f"<tr>"
         f"<td width='14' style='font-size:10px;color:#9ca3af;text-align:right;padding:3px 4px;white-space:nowrap;'>{rank}</td>"
-        f"<td width='98' style='font-size:11px;color:{label_color};{bold}padding:3px 6px;white-space:nowrap;overflow:hidden;max-width:98px;'>{label}</td>"
+        f"<td width='98' style='font-size:13px;color:{label_color};{bold}padding:3px 6px;white-space:nowrap;overflow:hidden;max-width:98px;'>{label}</td>"
         f"<td style='padding:3px 4px;'>"
         f"<table width='100%' cellpadding='0' cellspacing='0' border='0' style='background-color:{bar_bg};border-radius:3px;height:8px;'><tr>"
         f"<td width='{pct}%' height='8' style='background-color:{bar_color};border-radius:3px;font-size:0;line-height:0;'>&nbsp;</td><td></td></tr></table>"
@@ -413,10 +413,10 @@ def build_category_section(cat, items):
 
         tbody += (
             f"<tr style='background-color:{row_bg};'>"
-            f"<td style='padding:7px 8px;font-size:11px;color:#374151;border-bottom:1px solid #f3f4f6;'>{item.get('org', '-')}</td>"
-            f"<td style='padding:7px 8px;font-size:11px;border-bottom:1px solid #f3f4f6;'>{nm_html}</td>"
-            f"<td style='padding:7px 8px;font-size:11px;color:{corp_color};{corp_bold}text-align:center;border-bottom:1px solid #f3f4f6;'>{corp_name}</td>"
-            f"<td style='padding:7px 8px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #f3f4f6;'>{fmt_amount_full(item.get('amt', '0'))}</td>"
+            f"<td style='padding:7px 8px;font-size:13px;color:#374151;border-bottom:1px solid #f3f4f6;'>{item.get('org', '-')}</td>"
+            f"<td style='padding:7px 8px;font-size:13px;border-bottom:1px solid #f3f4f6;'>{nm_html}</td>"
+            f"<td style='padding:7px 8px;font-size:13px;color:{corp_color};{corp_bold}text-align:center;border-bottom:1px solid #f3f4f6;'>{corp_name}</td>"
+            f"<td style='padding:7px 8px;font-size:13px;color:#374151;text-align:right;border-bottom:1px solid #f3f4f6;'>{fmt_amount_full(item.get('amt', '0'))}</td>"
             f"</tr>"
         )
 
@@ -468,9 +468,9 @@ def build_report_html(
             vendor_weight = "font-weight:700;" if "이노뎁" in info["main_vendor"] else ""
             school_rows_html += (
                 f"<tr style='background-color:{row_bg};'>"
-                f"<td style='padding:7px 10px;font-size:11px;color:#374151;border-bottom:1px solid #fef9e7;'>{school_name}</td>"
-                f"<td style='padding:7px 10px;font-size:11px;color:{vendor_color};{vendor_weight}border-bottom:1px solid #fef9e7;'>{info['main_vendor']}</td>"
-                f"<td style='padding:7px 10px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #fef9e7;'>{fmt_amount_full(info['total_amt'])}</td>"
+                f"<td style='padding:7px 10px;font-size:13px;color:#374151;border-bottom:1px solid #fef9e7;'>{school_name}</td>"
+                f"<td style='padding:7px 10px;font-size:13px;color:{vendor_color};{vendor_weight}border-bottom:1px solid #fef9e7;'>{info['main_vendor']}</td>"
+                f"<td style='padding:7px 10px;font-size:13px;color:#374151;text-align:right;border-bottom:1px solid #fef9e7;'>{fmt_amount_full(info['total_amt'])}</td>"
                 f"</tr>"
             )
         school_table = (
@@ -482,8 +482,8 @@ def build_report_html(
             "</tr>"
             f"{school_rows_html}"
             f"<tr style='background-color:#fef9ec;'>"
-            f"<td colspan='2' style='padding:8px 10px;font-size:11px;font-weight:700;color:#92400e;'>합계 ({len(school_stats)}개교)</td>"
-            f"<td style='padding:8px 10px;font-size:11px;font-weight:700;color:#92400e;text-align:right;'>{fmt_amount_full(school_total_amt)}</td>"
+            f"<td colspan='2' style='padding:8px 10px;font-size:13px;font-weight:700;color:#92400e;'>합계 ({len(school_stats)}개교)</td>"
+            f"<td style='padding:8px 10px;font-size:13px;font-weight:700;color:#92400e;text-align:right;'>{fmt_amount_full(school_total_amt)}</td>"
             f"</tr></table>"
         )
     else:
@@ -496,8 +496,8 @@ def build_report_html(
             row_bg = "#ffffff" if i % 2 == 0 else "#f8faff"
             innodep_rows_html += (
                 f"<tr style='background-color:{row_bg};'>"
-                f"<td style='padding:7px 10px;font-size:11px;color:#374151;border-bottom:1px solid #f0f4ff;'>{org}</td>"
-                f"<td style='padding:7px 10px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #f0f4ff;'>{fmt_amount_full(amt)}</td>"
+                f"<td style='padding:7px 10px;font-size:13px;color:#374151;border-bottom:1px solid #f0f4ff;'>{org}</td>"
+                f"<td style='padding:7px 10px;font-size:13px;color:#374151;text-align:right;border-bottom:1px solid #f0f4ff;'>{fmt_amount_full(amt)}</td>"
                 f"</tr>"
             )
 
@@ -509,8 +509,8 @@ def build_report_html(
             "</tr>"
             f"{innodep_rows_html}"
             f"<tr style='background-color:#dbeafe;'>"
-            f"<td style='padding:8px 10px;font-size:11px;font-weight:700;color:#1e3a5f;'>합계 ({len(innodep_org_summary)}개 기관)</td>"
-            f"<td style='padding:8px 10px;font-size:11px;font-weight:700;color:#1e3a5f;text-align:right;'>{fmt_amount_full(innodep_total_amt)}</td>"
+            f"<td style='padding:8px 10px;font-size:13px;font-weight:700;color:#1e3a5f;'>합계 ({len(innodep_org_summary)}개 기관)</td>"
+            f"<td style='padding:8px 10px;font-size:13px;font-weight:700;color:#1e3a5f;text-align:right;'>{fmt_amount_full(innodep_total_amt)}</td>"
             f"</tr></table>"
         )
     else:
@@ -562,7 +562,7 @@ def build_report_html(
       <tr><td style="padding:12px 16px;">
         <p style="margin:0;font-size:14px;font-weight:700;color:#92400e;">
           &#128722; 종합쇼핑몰 3자단가
-          <span style="font-size:11px;font-weight:400;color:#b45309;">&nbsp;— 어제 기준 일매출 집계</span>
+          <span style="font-size:13px;font-weight:400;color:#b45309;">&nbsp;— 어제 기준 일매출 집계</span>
         </p>
       </td></tr>
     </table>
@@ -577,8 +577,8 @@ def build_report_html(
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
             <tr>
               <td style="padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;">
-                <p style="margin:0;font-size:11px;font-weight:700;color:#374151;">&#128202; 경쟁사 납품금액 TOP 10</p>
-                <p style="margin:4px 0 0 0;font-size:10px;color:#9ca3af;">어제 기준 · companies.txt 등록업체 중 상위 10개</p>
+                <p style="margin:0;font-size:13px;font-weight:700;color:#374151;">&#128202; 경쟁사 납품금액 TOP 10</p>
+                <p style="margin:4px 0 0 0;font-size:10px;color:#9ca3af;">어제 기준 · 경쟁사 중 상위 10개</p>
               </td>
             </tr>
             <tr><td style="padding:10px 16px 14px;">{build_vendor_chart(vendor_stats)}</td></tr>
@@ -589,7 +589,7 @@ def build_report_html(
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
             <tr>
               <td style="padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;">
-                <p style="margin:0;font-size:11px;font-weight:700;color:#374151;">&#127963; 수요기관 납품금액 TOP 10</p>
+                <p style="margin:0;font-size:13px;font-weight:700;color:#374151;">&#127963; 수요기관 납품금액 TOP 10</p>
                 <p style="margin:4px 0 0 0;font-size:10px;color:#9ca3af;">어제 기준 · 기관별 합산 상위 10개</p>
               </td>
             </tr>
@@ -608,7 +608,7 @@ def build_report_html(
         <td width="50%" style="padding-right:6px;">
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
             <tr><td style="padding:12px 16px;background-color:#fffbeb;border-bottom:2px solid #fde68a;">
-              <p style="margin:0;font-size:11px;font-weight:700;color:#92400e;">&#127979; 학교 지능형 CCTV 납품현황</p>
+              <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;">&#127979; 학교 지능형 CCTV 납품현황</p>
             </td></tr>
             <tr><td>{school_table}</td></tr>
           </table>
@@ -617,7 +617,7 @@ def build_report_html(
         <td width="50%" style="padding-left:6px;">
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
             <tr><td style="padding:12px 16px;background-color:#eff6ff;border-bottom:2px solid #bfdbfe;">
-              <p style="margin:0;font-size:11px;font-weight:700;color:#1e3a5f;">&#11088; 이노뎁 납품 실적</p>
+              <p style="margin:0;font-size:13px;font-weight:700;color:#1e3a5f;">&#11088; 이노뎁 납품 실적</p>
             </td></tr>
             <tr><td>{innodep_table}</td></tr>
           </table>
@@ -633,7 +633,7 @@ def build_report_html(
       <tr><td style="padding:12px 16px;">
         <p style="margin:0;font-size:14px;font-weight:700;color:#991b1b;">
           &#128226; 나라장터 입찰공고
-          <span style="font-size:11px;font-weight:400;color:#b91c1c;">&nbsp;— 핵심 사업 중심 요약</span>
+          <span style="font-size:13px;font-weight:400;color:#b91c1c;">&nbsp;— 핵심 사업 중심 요약</span>
         </p>
       </td></tr>
     </table>
@@ -654,7 +654,7 @@ def build_report_html(
       <tr><td style="padding:12px 16px;">
         <p style="margin:0;font-size:14px;font-weight:700;color:#1e3a5f;">
           &#128221; 나라장터 계약내역
-          <span style="font-size:11px;font-weight:400;color:#2d7dd2;">&nbsp;— 핵심 사업 중심 요약</span>
+          <span style="font-size:13px;font-weight:400;color:#2d7dd2;">&nbsp;— 핵심 사업 중심 요약</span>
         </p>
       </td></tr>
     </table>
