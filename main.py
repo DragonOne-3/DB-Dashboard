@@ -430,7 +430,8 @@ def build_report_html(
     notice_cnt,
     contract_cnt,
     school_stats,
-    innodep_rows,
+    innodep_org_summary,
+    innodep_detail_map,
     innodep_total_amt,
     vendor_stats,
     org_stats,
@@ -488,33 +489,33 @@ def build_report_html(
     else:
         school_table = "<p style='color:#9ca3af;font-size:13px;padding:14px 16px;'>해당 내역 없음</p>"
 
-    innodep_rows_html = ""
-    if innodep_rows:
-        sorted_rows = sorted(innodep_rows, key=lambda x: x["amt"], reverse=True)
-        for i, item in enumerate(sorted_rows):
+        innodep_rows_html = ""
+    if innodep_org_summary:
+        sorted_rows = sorted(innodep_org_summary.items(), key=lambda x: x[1], reverse=True)
+        for i, (org, amt) in enumerate(sorted_rows):
             row_bg = "#ffffff" if i % 2 == 0 else "#f8faff"
             innodep_rows_html += (
                 f"<tr style='background-color:{row_bg};'>"
-                f"<td style='padding:7px 10px;font-size:11px;color:#374151;border-bottom:1px solid #f0f4ff;'>{item['org']}</td>"
-                f"<td style='padding:7px 10px;font-size:11px;color:#2d7dd2;border-bottom:1px solid #f0f4ff;'>{item['nm']}</td>"
-                f"<td style='padding:7px 10px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #f0f4ff;'>{fmt_amount_full(item['amt'])}</td>"
+                f"<td style='padding:7px 10px;font-size:11px;color:#374151;border-bottom:1px solid #f0f4ff;'>{org}</td>"
+                f"<td style='padding:7px 10px;font-size:11px;color:#374151;text-align:right;border-bottom:1px solid #f0f4ff;'>{fmt_amount_full(amt)}</td>"
                 f"</tr>"
             )
+
         innodep_table = (
             "<table width='100%' cellpadding='0' cellspacing='0' border='0'>"
             "<tr style='background-color:#eff6ff;'>"
             "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#1e3a5f;text-align:left;border-bottom:1px solid #bfdbfe;'>수요기관</th>"
-            "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#1e3a5f;text-align:left;border-bottom:1px solid #bfdbfe;'>사업명</th>"
             "<th style='padding:7px 10px;font-size:10px;font-weight:700;color:#1e3a5f;text-align:right;border-bottom:1px solid #bfdbfe;'>금액</th>"
             "</tr>"
             f"{innodep_rows_html}"
             f"<tr style='background-color:#dbeafe;'>"
-            f"<td colspan='2' style='padding:8px 10px;font-size:11px;font-weight:700;color:#1e3a5f;'>합계 ({len(innodep_rows)}건)</td>"
+            f"<td style='padding:8px 10px;font-size:11px;font-weight:700;color:#1e3a5f;'>합계 ({len(innodep_org_summary)}개 기관)</td>"
             f"<td style='padding:8px 10px;font-size:11px;font-weight:700;color:#1e3a5f;text-align:right;'>{fmt_amount_full(innodep_total_amt)}</td>"
             f"</tr></table>"
         )
     else:
         innodep_table = "<p style='color:#9ca3af;font-size:13px;padding:14px 16px;'>해당 내역 없음</p>"
+
 
     notice_blocks = "".join(build_category_section(cat, notice_mail_buckets[cat]) for cat in CAT_KEYWORDS)
     contract_blocks = "".join(build_category_section(cat, contract_mail_buckets[cat]) for cat in CAT_KEYWORDS)
@@ -714,7 +715,8 @@ def main():
                 final_data.extend(data)
 
     school_stats = {}
-    innodep_rows = []
+    innodep_org_summary = {}
+    innodep_detail_map = {}
     innodep_total_amt = 0
     vendor_stats = {}
     org_stats = {}
@@ -777,12 +779,18 @@ def main():
                 school_stats[org]["total_amt"] += amt
 
             if "이노뎁" in comp:
-                innodep_rows.append({
-                    "org": org,
+                innodep_org_summary[org] = innodep_org_summary.get(org, 0) + amt
+            
+                if org not in innodep_detail_map:
+                    innodep_detail_map[org] = []
+            
+                innodep_detail_map[org].append({
                     "nm": cntrct if cntrct and cntrct != "nan" else item_nm,
                     "amt": amt,
                 })
+            
                 innodep_total_amt += amt
+
 
     # -------------------------------------------------------------------------
     # PART 2: 나라장터 입찰 공고 수집
@@ -850,7 +858,8 @@ def main():
         notice_cnt=all_notice_count,
         contract_cnt=len(unique_servc_list),
         school_stats=school_stats,
-        innodep_rows=innodep_rows,
+        innodep_org_summary=innodep_org_summary,
+        innodep_detail_map=innodep_detail_map,
         innodep_total_amt=innodep_total_amt,
         vendor_stats=vendor_stats,
         org_stats=org_stats,
