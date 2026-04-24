@@ -328,28 +328,33 @@ def build_vendor_chart(vendor_stats):
     if not top:
         return "<p style='font-size:12px;color:#9ca3af;padding:12px 0;'>데이터 없음</p>"
 
-    max_val = max(v for _, v in top) or 1
     rows = ""
-    legend = (
-        "<table cellpadding='0' cellspacing='0' border='0' style='margin-bottom:8px;'><tr>"
-        "<td style='padding-right:12px;'><table cellpadding='0' cellspacing='0' border='0'><tr>"
-        "<td width='8' height='8' style='background-color:#2d7dd2;border-radius:2px;font-size:0;'>&nbsp;</td>"
-        "<td style='padding-left:4px;font-size:12px;color:#6b7280;'>이노뎁</td></tr></table></td>"
-        "<td><table cellpadding='0' cellspacing='0' border='0'><tr>"
-        "<td width='8' height='8' style='background-color:#e03444;border-radius:2px;font-size:0;'>&nbsp;</td>"
-        "<td style='padding-left:4px;font-size:12px;color:#6b7280;'>경쟁사</td></tr></table></td>"
-        "</tr></table>"
-    )
-
     for i, (label, val) in enumerate(top):
-        pct = int(val / max_val * 100)
         is_innodep = "이노뎁" in label
-        if is_innodep:
-            rows += _bar_row("★", label, pct, fmt_amount_short(val), "#2d7dd2", "#e8f0fd", "#2d7dd2", True)
-        else:
-            rows += _bar_row(str(i + 1), label, pct, fmt_amount_short(val), "#e03444", "#fef2f2")
 
-    return legend + f"<table width='100%' cellpadding='0' cellspacing='2' border='0'>{rows}</table>"
+        rank = "★" if is_innodep else str(i + 1)
+        name_color = "#2d7dd2" if is_innodep else "#374151"
+        name_weight = "font-weight:700;" if is_innodep else ""
+        row_bg = "#eff6ff" if is_innodep else ("#ffffff" if i % 2 == 0 else "#fafafa")
+
+        rows += (
+            f"<tr style='background-color:{row_bg};'>"
+            f"<td style='padding:7px 8px;font-size:11px;color:#9ca3af;text-align:center;border-bottom:1px solid #f3f4f6;width:12%;'>{rank}</td>"
+            f"<td style='padding:7px 8px;font-size:12px;color:{name_color};{name_weight}border-bottom:1px solid #f3f4f6;width:53%;'>{label}</td>"
+            f"<td style='padding:7px 8px;font-size:12px;color:#374151;text-align:right;border-bottom:1px solid #f3f4f6;width:35%;'>{fmt_amount_full(val)}</td>"
+            f"</tr>"
+        )
+
+    return (
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0'>"
+        "<tr style='background-color:#f8fafc;'>"
+        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:center;border-bottom:1px solid #e5e7eb;'>순위</th>"
+        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;border-bottom:1px solid #e5e7eb;'>업체명</th>"
+        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:right;border-bottom:1px solid #e5e7eb;'>금액</th>"
+        "</tr>"
+        f"{rows}"
+        "</table>"
+    )
 
 
 def build_org_chart(org_stats):
@@ -357,12 +362,29 @@ def build_org_chart(org_stats):
     if not top:
         return "<p style='font-size:12px;color:#9ca3af;padding:12px 0;'>데이터 없음</p>"
 
-    max_val = max(v for _, v in top) or 1
     rows = ""
     for i, (label, val) in enumerate(top):
-        pct = int(val / max_val * 100)
-        rows += _bar_row(str(i + 1), label, pct, fmt_amount_short(val), "#2d7dd2", "#dce8f5")
-    return f"<table width='100%' cellpadding='0' cellspacing='2' border='0'>{rows}</table>"
+        row_bg = "#ffffff" if i % 2 == 0 else "#fafafa"
+
+        rows += (
+            f"<tr style='background-color:{row_bg};'>"
+            f"<td style='padding:7px 8px;font-size:11px;color:#9ca3af;text-align:center;border-bottom:1px solid #f3f4f6;width:12%;'>{i + 1}</td>"
+            f"<td style='padding:7px 8px;font-size:12px;color:#374151;border-bottom:1px solid #f3f4f6;width:53%;'>{label}</td>"
+            f"<td style='padding:7px 8px;font-size:12px;color:#374151;text-align:right;border-bottom:1px solid #f3f4f6;width:35%;'>{fmt_amount_full(val)}</td>"
+            f"</tr>"
+        )
+
+    return (
+        "<table width='100%' cellpadding='0' cellspacing='0' border='0'>"
+        "<tr style='background-color:#f8fafc;'>"
+        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:center;border-bottom:1px solid #e5e7eb;'>순위</th>"
+        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;border-bottom:1px solid #e5e7eb;'>기관명</th>"
+        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:right;border-bottom:1px solid #e5e7eb;'>금액</th>"
+        "</tr>"
+        f"{rows}"
+        "</table>"
+    )
+
 
 
 def build_category_section(cat, items):
