@@ -522,21 +522,20 @@ def build_report_html(
     contract_blocks = "".join(build_category_section(cat, contract_mail_buckets[cat]) for cat in CAT_KEYWORDS)
 
     dashboard_links = """
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;">
       <tr>
-        <td align="center" style="padding:8px 0 4px 0;">
+        <td align="center" style="padding:14px 16px;font-size:14pt;line-height:1.6;color:#1f2937;">
+          <span style="font-weight:700;color:#1e3a5f;">대시보드 연결 :</span>
           <a href="http://211.171.190.220:3001" target="_blank"
-             style="display:inline-block;padding:10px 18px;background-color:#2d7dd2;color:#ffffff;text-decoration:none;border-radius:6px;font-size:12px;font-weight:700;margin-right:8px;">
-             외부접속
-          </a>
+             style="color:#2d7dd2;text-decoration:none;font-weight:700;">외부접속</a>
+          <span style="color:#9ca3af;"> / </span>
           <a href="http://dashboard.innodep.com:3001/" target="_blank"
-             style="display:inline-block;padding:10px 18px;background-color:#10b981;color:#ffffff;text-decoration:none;border-radius:6px;font-size:12px;font-weight:700;">
-             내부접속
-          </a>
+             style="color:#10b981;text-decoration:none;font-weight:700;">내부접속</a>
         </td>
       </tr>
     </table>
     """
+
 
     return f"""<!DOCTYPE html>
 <html lang="ko">
@@ -589,58 +588,59 @@ def build_report_html(
 
 <tr>
   <td style="padding-bottom:12px;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr valign="top">
-        <td width="50%" style="padding-right:6px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;height:320px;">
-            <tr>
-              <td style="padding:14px 16px 12px;border-bottom:1px solid #f3f4f6;">
-                <p style="margin:0;font-size:13px;font-weight:700;color:#374151;">&#128202; 경쟁사 납품금액 TOP 10</p>
-                <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">어제 기준 · 경쟁사 중 상위 10개</p>
-              </td>
-            </tr>
-            <tr><td style="padding:12px 16px 14px;">{build_vendor_chart(vendor_stats)}</td></tr>
-          </table>
-        </td>
-
-        <td width="50%" style="padding-left:6px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;height:320px;">
-            <tr>
-              <td style="padding:14px 16px 12px;border-bottom:1px solid #f3f4f6;">
-                <p style="margin:0;font-size:13px;font-weight:700;color:#374151;">&#127963; 수요기관 납품금액 TOP 10</p>
-                <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">어제 기준 · 기관별 합산 상위 10개</p>
-              </td>
-            </tr>
-            <tr><td style="padding:12px 16px 14px;">{build_org_chart(org_stats)}</td></tr>
-          </table>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+      <tr>
+        <td style="padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#374151;">
+            &#128202; 경쟁사 납품금액 TOP 10
+          </p>
+          <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">어제 기준 · 경쟁사 중 상위 10개</p>
         </td>
       </tr>
+      <tr><td style="padding:12px 16px 14px;">{build_vendor_chart(vendor_stats)}</td></tr>
     </table>
   </td>
 </tr>
 
 <tr>
   <td style="padding-bottom:12px;">
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
-      <tr valign="top">
-        <td width="50%" style="padding-right:6px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;height:360px;">
-            <tr><td style="padding:12px 16px;background-color:#fffbeb;border-bottom:2px solid #fde68a;">
-              <p style="margin:0;font-size:13px;font-weight:700;color:#92400e;">&#127979; 학교 지능형 CCTV 납품현황</p>
-            </td></tr>
-            <tr><td>{school_table}</td></tr>
-          </table>
-        </td>
-
-        <td width="50%" style="padding-left:6px;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;height:360px;">
-            <tr><td style="padding:12px 16px;background-color:#eff6ff;border-bottom:2px solid #bfdbfe;">
-              <p style="margin:0;font-size:13px;font-weight:700;color:#1e3a5f;">&#11088; 이노뎁 납품 실적</p>
-            </td></tr>
-            <tr><td>{innodep_table}</td></tr>
-          </table>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+      <tr>
+        <td style="padding:14px 16px 10px;border-bottom:1px solid #f3f4f6;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#374151;">
+            &#127963; 수요기관 납품금액 TOP 10
+          </p>
+          <p style="margin:4px 0 0 0;font-size:12px;color:#9ca3af;">어제 기준 · 기관별 합산 상위 10개</p>
         </td>
       </tr>
+      <tr><td style="padding:12px 16px 14px;">{build_org_chart(org_stats)}</td></tr>
+    </table>
+  </td>
+</tr>
+
+
+<tr>
+  <td style="padding-bottom:12px;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+      <tr>
+        <td style="padding:12px 16px;background-color:#fffbeb;border-bottom:2px solid #fde68a;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#92400e;">&#127979; 학교 지능형 CCTV 납품현황</p>
+        </td>
+      </tr>
+      <tr><td>{school_table}</td></tr>
+    </table>
+  </td>
+</tr>
+
+<tr>
+  <td style="padding-bottom:12px;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:8px;border:1px solid #e5e7eb;overflow:hidden;">
+      <tr>
+        <td style="padding:12px 16px;background-color:#eff6ff;border-bottom:2px solid #bfdbfe;">
+          <p style="margin:0;font-size:14px;font-weight:700;color:#1e3a5f;">&#11088; 이노뎁 납품 실적</p>
+        </td>
+      </tr>
+      <tr><td>{innodep_table}</td></tr>
     </table>
   </td>
 </tr>
