@@ -439,7 +439,7 @@ def build_report_html(
     contract_mail_buckets,
 ):
     school_total_amt = sum(item["total_amt"] for item in school_stats.values()) if school_stats else 0
-    innodep_org_count = len(set(item["org"] for item in innodep_rows)) if innodep_rows else 0
+    innodep_org_count = len(innodep_org_summary) if innodep_org_summary else 0
 
     def card(color, label, value, sub=""):
         sub_html = f"<p style='margin:4px 0 0;font-size:10px;color:#9ca3af;'>{sub}</p>" if sub else ""
