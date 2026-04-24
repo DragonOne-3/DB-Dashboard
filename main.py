@@ -1,23 +1,19 @@
-import os, json, datetime, time, requests
+import os, json, datetime, time, re, requests
 import xml.etree.ElementTree as ET
 import pandas as pd
 import io
-import threading
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 from googleapiclient.http import MediaIoBaseUpload
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # =================================================================================
-# 1. 설정 및 환경 변수
+# 1. 설정 및 상수
 # =================================================================================
-MY_DIRECT_KEY = os.environ.get('DATA_GO_KR_API_KEY')
-AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
+MY_DIRECT_KEY   = os.environ.get('DATA_GO_KR_API_KEY')
+AUTH_JSON_STR   = os.environ.get('GOOGLE_AUTH_JSON')
 
-# ★ 나라장터 공고 연도별 파일 저장 폴더 ID
-NOTICE_FOLDER_ID = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
-
-# ★ 종합쇼핑몰 연도별 CSV 저장 폴더 ID
+NOTICE_FOLDER_ID   = "1AsvVmayEmTtY92d1SfXxNi6bL0Zjw5mg"
 SHOPPING_FOLDER_ID = "1N2GjNTpOvtn-5Vbg5zf6Y8kf4xuq0qTr"
 
 HEADER_KOR = [
@@ -31,14 +27,36 @@ HEADER_KOR = [
     '납품기한일자', '업체사업자등록번호', '인도조건명', '물품순번'
 ]
 
-CAT_KEYWORDS = {
+# 쇼핑몰 중복 제거 기준: 납품요구번호 + 물품순번 조합 (변경차수 높은 값 유지)
+SHOPPING_DEDUP_COLS = ['계약납품요구번호', '물품순번']
+# 공고 중복 제거 기준: 공고번호
+NOTICE_DEDUP_COL = 'bidNtceNo'
+
+CAT_KEYWORDS: dict[str, list[str]] = {
     '영상감시장치': ['CCTV', '통합관제', '영상감시장치', '영상정보처리기기'],
-    '국방': ['국방', '부대', '작전', '경계', '방위', '군사', '무인화', '사령부', '군대', '중요시설', '주둔지', '과학화', '육군', '해군', '공군', '해병'],
-    '솔루션': ['데이터', '플랫폼', '솔루션', '주차', '출입', 'GIS'],
-    '스마트도시': ['ITS', '스마트시티', '스마트도시']
+    '국방':        ['국방', '부대', '작전', '경계', '방위', '군사', '무인화', '사령부', '군대',
+                    '중요시설', '주둔지', '과학화', '육군', '해군', '공군', '해병'],
+    '솔루션':      ['데이터', '플랫폼', '솔루션', '주차', '출입', 'GIS'],
+    '스마트도시':   ['ITS', '스마트시티', '스마트도시'],
 }
 
-keywords = sorted(list(set([
+# 카테고리별 regex 패턴 (최초 1회만 컴파일)
+CAT_PATTERNS: dict[str, re.Pattern] = {
+    cat: re.compile('|'.join(map(re.escape, kws)))
+    for cat, kws in CAT_KEYWORDS.items()
+}
+ALL_NOTICE_KEYWORDS = [kw for kws in CAT_KEYWORDS.values() for kw in kws]
+ALL_NOTICE_PATTERN  = re.compile('|'.join(map(re.escape, ALL_NOTICE_KEYWORDS)))
+EXCLUDE_ORG_PATTERN = re.compile(r'학교|민방위|교육청')
+
+CAT_META = {
+    '영상감시장치': {'icon': '📷', 'color': '#2563eb', 'bg': '#eff6ff'},
+    '국방':        {'icon': '🛡️', 'color': '#dc2626', 'bg': '#fef2f2'},
+    '솔루션':      {'icon': '💡', 'color': '#7c3aed', 'bg': '#f5f3ff'},
+    '스마트도시':   {'icon': '🏙️', 'color': '#059669', 'bg': '#ecfdf5'},
+}
+
+KEYWORDS = sorted(set([
     '네트워크시스템장비용랙', '영상감시장치', 'PA용스피커', '안내판', '카메라브래킷', '액정모니터',
     '광송수신모듈', '전원공급장치', '광분배함', '컨버터', '컴퓨터서버', '하드디스크드라이브',
     '네트워크스위치', '광점퍼코드', '풀박스', '서지흡수기', '디지털비디오레코더',
@@ -65,355 +83,589 @@ keywords = sorted(list(set([
     '교통관제시스템', '산업관리소프트웨어', '시스템관리소프트웨어', '적외선카메라',
     '주차경보등', '주차관제주변기기', '주차권판독기', '주차안내판', '주차요금계산기',
     '주차주제어장치', '차량감지기', '차량인식기', '차량차단기',
-    '패키지소프트웨어개발및도입서비스', '무선인식리더기', '바코드시스템', '출입통제시스템', '카드인쇄기'
-])))
+    '패키지소프트웨어개발및도입서비스', '무선인식리더기', '바코드시스템', '출입통제시스템', '카드인쇄기',
+]))
 
 NOTICE_API_MAP = {
     '공사': 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoCnstwkPPSSrch',
     '물품': 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoThngPPSSrch',
-    '용역': 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServcPPSSrch'
+    '용역': 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServcPPSSrch',
 }
 
 
 # =================================================================================
-# 2. 유틸리티 함수
+# 2. 유틸리티
 # =================================================================================
 
-def get_drive_service_for_script():
-    info = json.loads(AUTH_JSON_STR)
+def get_drive_service():
     creds = service_account.Credentials.from_service_account_info(
-        info, scopes=['https://www.googleapis.com/auth/drive']
+        json.loads(AUTH_JSON_STR),
+        scopes=['https://www.googleapis.com/auth/drive']
     )
     return build('drive', 'v3', credentials=creds), creds
 
 
-def get_target_date():
+def get_target_date() -> datetime.datetime:
     now = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=9)
     return now - datetime.timedelta(days=1)
 
 
-def classify_text(text):
-    for cat, kws in CAT_KEYWORDS.items():
-        if any(kw in str(text) for kw in kws):
+def classify_text(text: str) -> str:
+    for cat, pat in CAT_PATTERNS.items():
+        if pat.search(str(text)):
             return cat
     return '기타'
 
 
-def format_html_table(data_list, title):
-    html = f"<div style='margin-top:25px;'><h4 style='color:#2c3e50; border-bottom:2px solid #34495e; padding-bottom:8px;'>{title}</h4>"
-    if not data_list:
-        html += "<p style='color:#888; padding:10px;'>- 해당 내역이 없습니다.</p></div>"
-        return html
-
-    html += "<table border='1' style='border-collapse:collapse; width:100%; font-size:13px; line-height:1.8;'>"
-    html += "<tr style='background-color:#f8f9fa;'><th>수요기관</th><th>명칭(링크)</th><th>업체명</th><th>금액</th></tr>"
-
-    for item in data_list:
-        corp_name = item.get('corp', '-')
-        bg = "background-color:#FFF9C4;" if "이노뎁" in corp_name else ""
-        amt_val = item.get('amt', '0')
-        amt_str = f"{int(amt_val):,}원" if str(amt_val).isdigit() else amt_val
-        link_name = f"<a href='{item['url']}' target='_blank' style='color:#1a73e8; text-decoration:none;'>{item['nm']}</a>"
-        html += f"<tr style='{bg}'><td style='padding:8px; text-align:center;'>{item['org']}</td>"
-        html += f"<td style='padding:8px;'>{link_name}</td>"
-        html += f"<td style='padding:8px; text-align:center;'>{corp_name}</td>"
-        html += f"<td style='padding:8px; text-align:right;'>{amt_str}</td></tr>"
-    html += "</table></div>"
-    return html
-
-
-def fetch_api_data_from_g2b(kw, d_str, retries=3):
-    url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
-    params = {
-        'numOfRows': '999', 'pageNo': '1', 'ServiceKey': MY_DIRECT_KEY,
-        'type': 'xml', 'inqryDiv': '1', 'inqryPrdctDiv': '2',
-        'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'dtilPrdctClsfcNoNm': kw
-    }
-    for attempt in range(retries):
-        try:
-            res = requests.get(url, params=params, timeout=60)  # 15 → 60초
-            if res.status_code == 200 and "<item>" in res.text:
-                root = ET.fromstring(res.content)
-                return [[elem.text if elem.text else '' for elem in item]
-                        for item in root.findall('.//item')]
-            return []
-        except requests.exceptions.Timeout:
-            wait = (attempt + 1) * 5  # 5초, 10초, 15초 간격으로 재시도
-            print(f"[{kw}] 타임아웃 ({attempt+1}/{retries}), {wait}초 후 재시도...")
-            time.sleep(wait)
-        except Exception as e:
-            print(f"[{kw}] 오류: {e}")
-            return []
-    print(f"[{kw}] 최종 실패")
-    return []
-
-
-def fetch_notice_data(category, url, d_str):
-    params = {
-        'serviceKey': MY_DIRECT_KEY, 'pageNo': '1', 'numOfRows': '999',
-        'inqryDiv': '1', 'type': 'json',
-        'inqryBgnDt': d_str + "0000", 'inqryEndDt': d_str + "2359"
-    }
+def fmt_amount(val) -> str:
     try:
-        res = requests.get(url, params=params, timeout=15)
-        if res.status_code == 200:
-            return pd.DataFrame(
-                res.json().get('response', {}).get('body', {}).get('items', [])
-            )
-    except:
-        pass
-    return pd.DataFrame()
+        return f"{int(str(val).replace(',', '').split('.')[0]):,}원"
+    except (ValueError, AttributeError):
+        return str(val) if val else '별도공고'
 
 
-def fetch_single_contract(kw_s, d_str):
-    api_url_servc = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
-    results = []
-    p = {
-        'serviceKey': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml',
-        'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw_s
-    }
+def read_drive_csv(drive_creds, file_id: str) -> pd.DataFrame | None:
+    """구글 드라이브 CSV → DataFrame. 실패 시 None 반환."""
     try:
-        r = requests.get(api_url_servc, params=p, timeout=20)
-        if r.status_code == 200:
-            root = ET.fromstring(r.content)
-            for item in root.findall('.//item'):
-                detail_url = item.findtext('cntrctDtlInfoUrl') or "https://www.g2b.go.kr"
-                raw_demand = item.findtext('dminsttList', '-')
-                clean_demand = raw_demand.replace('[', '').replace(']', '').split('^')[2] \
-                    if '^' in raw_demand else raw_demand
-                raw_corp = item.findtext('corpList', '-')
-                clean_corp = raw_corp.replace('[', '').replace(']', '').split('^')[3] \
-                    if '^' in raw_corp else raw_corp
-                results.append({
-                    'org': clean_demand,
-                    'nm': item.findtext('cntrctNm', '-'),
-                    'corp': clean_corp,
-                    'amt': item.findtext('totCntrctAmt', '0'),
-                    'url': detail_url
-                })
-    except Exception as e:
-        print(f"계약 데이터 수집 오류 ({kw_s}): {e}")
-    return results
-
-
-def save_notice_by_year(drive_service, creds, cat_name, new_df, year):
-    file_name = f"나라장터_공고_{cat_name}_{year}년.csv"
-    res = drive_service.files().list(
-        q=f"name='{file_name}' and '{NOTICE_FOLDER_ID}' in parents and trashed=false",
-        fields='files(id)'
-    ).execute()
-    items = res.get('files', [])
-    file_id = items[0]['id'] if items else None
-
-    if file_id:
         resp = requests.get(
             f'https://www.googleapis.com/drive/v3/files/{file_id}?alt=media',
-            headers={'Authorization': f'Bearer {creds.token}'}
+            headers={'Authorization': f'Bearer {drive_creds.token}'},
+            timeout=30
         )
-        try:
-            old_df = pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
-            new_df = pd.concat([old_df, new_df], ignore_index=True)
-        except Exception as e:
-            print(f"기존 파일 읽기 오류 ({file_name}): {e}")
+        resp.raise_for_status()
+        return pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
+    except Exception as e:
+        print(f"  ⚠️  드라이브 CSV 읽기 실패 (id={file_id}): {e}")
+        return None
 
-    if 'bidNtceNo' in new_df.columns:
-        new_df.drop_duplicates(subset=['bidNtceNo'], keep='last', inplace=True)
 
-    csv_bytes = new_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-    media = MediaIoBaseUpload(io.BytesIO(csv_bytes), mimetype='text/csv')
-
+def upload_drive_csv(drive_service, file_id: str | None, folder_id: str,
+                     file_name: str, df: pd.DataFrame) -> None:
+    """DataFrame → CSV 직렬화 후 드라이브에 업로드(신규 생성 or 갱신)."""
+    csv_bytes = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+    media = MediaIoBaseUpload(io.BytesIO(csv_bytes), mimetype='text/csv', resumable=False)
     if file_id:
         drive_service.files().update(fileId=file_id, media_body=media).execute()
     else:
         drive_service.files().create(
-            body={'name': file_name, 'parents': [NOTICE_FOLDER_ID]},
+            body={'name': file_name, 'parents': [folder_id]},
             media_body=media
         ).execute()
-    print(f"✅ [{cat_name}] {file_name} 저장 완료 ({len(new_df):,}건)")
+
+
+def find_drive_file(drive_service, folder_id: str, file_name: str) -> str | None:
+    """폴더 내 파일명으로 file_id 조회. 없으면 None."""
+    res = drive_service.files().list(
+        q=f"name='{file_name}' and '{folder_id}' in parents and trashed=false",
+        fields='files(id)'
+    ).execute()
+    items = res.get('files', [])
+    return items[0]['id'] if items else None
 
 
 # =================================================================================
-# 3. 메인 로직
+# 3. 데이터 수집
 # =================================================================================
+
+def fetch_shopping(kw: str, d_str: str, retries: int = 3) -> list:
+    """종합쇼핑몰 3자단가 API. 타임아웃 시 최대 retries회 재시도."""
+    url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
+    params = {
+        'numOfRows': '999', 'pageNo': '1', 'ServiceKey': MY_DIRECT_KEY,
+        'type': 'xml', 'inqryDiv': '1', 'inqryPrdctDiv': '2',
+        'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'dtilPrdctClsfcNoNm': kw,
+    }
+    for attempt in range(retries):
+        try:
+            res = requests.get(url, params=params, timeout=60)
+            if res.status_code == 200 and "<item>" in res.text:
+                root = ET.fromstring(res.content)
+                return [[e.text or '' for e in item] for item in root.findall('.//item')]
+            return []
+        except requests.exceptions.Timeout:
+            wait = (attempt + 1) * 5
+            print(f"  [{kw}] 타임아웃 ({attempt+1}/{retries}회), {wait}s 후 재시도...")
+            time.sleep(wait)
+        except Exception as e:
+            print(f"  [{kw}] 수집 오류: {e}")
+            return []
+    print(f"  [{kw}] 최종 실패 — 스킵")
+    return []
+
+
+def fetch_notice(cat_api: str, api_url: str, d_str: str) -> pd.DataFrame:
+    """나라장터 입찰공고 API."""
+    params = {
+        'serviceKey': MY_DIRECT_KEY, 'pageNo': '1', 'numOfRows': '999',
+        'inqryDiv': '1', 'type': 'json',
+        'inqryBgnDt': d_str + "0000", 'inqryEndDt': d_str + "2359",
+    }
+    try:
+        res = requests.get(api_url, params=params, timeout=15)
+        if res.status_code == 200:
+            items = res.json().get('response', {}).get('body', {}).get('items', [])
+            return pd.DataFrame(items)
+    except Exception as e:
+        print(f"  [{cat_api}] 공고 수집 오류: {e}")
+    return pd.DataFrame()
+
+
+def fetch_contract(kw: str, d_str: str) -> list[dict]:
+    """나라장터 용역계약 API."""
+    url = 'http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch'
+    params = {
+        'serviceKey': MY_DIRECT_KEY, 'inqryDiv': '1', 'type': 'xml',
+        'inqryBgnDate': d_str, 'inqryEndDate': d_str, 'cntrctNm': kw,
+    }
+    results = []
+    try:
+        res = requests.get(url, params=params, timeout=20)
+        if res.status_code != 200:
+            return results
+        root = ET.fromstring(res.content)
+        for item in root.findall('.//item'):
+            detail_url = item.findtext('cntrctDtlInfoUrl') or "https://www.g2b.go.kr"
+            raw_demand = item.findtext('dminsttList', '-')
+            clean_org  = (raw_demand.replace('[','').replace(']','').split('^')[2]
+                          if '^' in raw_demand else raw_demand)
+            raw_corp   = item.findtext('corpList', '-')
+            clean_corp = (raw_corp.replace('[','').replace(']','').split('^')[3]
+                          if '^' in raw_corp else raw_corp)
+            results.append({
+                'org':  clean_org,
+                'nm':   item.findtext('cntrctNm', '-'),
+                'corp': clean_corp,
+                'amt':  item.findtext('totCntrctAmt', '0'),
+                'url':  detail_url,
+            })
+    except Exception as e:
+        print(f"  [{kw}] 계약 수집 오류: {e}")
+    return results
+
+
+# =================================================================================
+# 4. 드라이브 저장 (중복 제거 포함)
+# =================================================================================
+
+def save_shopping_to_drive(drive_service, drive_creds,
+                            new_df: pd.DataFrame, year: int) -> dict:
+    """
+    종합쇼핑몰 연도별 CSV 누적 저장.
+
+    중복 제거 전략
+    ─────────────
+    • 기준 컬럼: 계약납품요구번호 + 물품순번
+      - 동일 납품요구의 동일 품목이 중복 수집되는 경우 방지
+    • 변경차수 컬럼이 있을 경우 오름차순 정렬 후 keep='last'
+      → 가장 최신 변경차수 행만 유지
+    """
+    file_name = f"{year}.csv"
+    file_id   = find_drive_file(drive_service, SHOPPING_FOLDER_ID, file_name)
+
+    before_today = len(new_df)
+    combined     = new_df.copy()
+
+    if file_id:
+        old_df = read_drive_csv(drive_creds, file_id)
+        if old_df is not None and not old_df.empty:
+            combined = pd.concat([old_df, new_df], ignore_index=True)
+
+    # 변경차수 기준 정렬 (있을 때만)
+    if '변경차수' in combined.columns:
+        combined['변경차수'] = pd.to_numeric(combined['변경차수'], errors='coerce').fillna(0)
+        combined.sort_values('변경차수', ascending=True, inplace=True)
+
+    # 중복 제거
+    dedup_cols = [c for c in SHOPPING_DEDUP_COLS if c in combined.columns]
+    before_dedup = len(combined)
+    if dedup_cols:
+        combined.drop_duplicates(subset=dedup_cols, keep='last', inplace=True)
+    dropped = before_dedup - len(combined)
+
+    combined.reset_index(drop=True, inplace=True)
+    upload_drive_csv(drive_service, file_id, SHOPPING_FOLDER_ID, file_name, combined)
+
+    action = "갱신" if file_id else "신규 생성"
+    print(f"  ✅ 쇼핑몰 {file_name} {action} | "
+          f"오늘 {before_today:,}건 → 중복 {dropped:,}건 제거 → 누적 {len(combined):,}건")
+    return {'before': before_today, 'after': len(combined), 'dropped': dropped}
+
+
+def save_notice_to_drive(drive_service, drive_creds,
+                          cat_name: str, new_df: pd.DataFrame, year: int) -> dict:
+    """
+    나라장터 공고 연도별 CSV 누적 저장.
+
+    중복 제거 전략
+    ─────────────
+    • 기준 컬럼: bidNtceNo (공고번호)
+      - 재공고·수정공고 등으로 동일 번호가 재수집되는 경우 방지
+    • keep='last' → 가장 최근에 수집된 행(수정본) 유지
+    """
+    file_name = f"나라장터_공고_{cat_name}_{year}년.csv"
+    file_id   = find_drive_file(drive_service, NOTICE_FOLDER_ID, file_name)
+
+    before_today = len(new_df)
+    combined     = new_df.copy()
+
+    if file_id:
+        old_df = read_drive_csv(drive_creds, file_id)
+        if old_df is not None and not old_df.empty:
+            combined = pd.concat([old_df, new_df], ignore_index=True)
+
+    before_dedup = len(combined)
+    if NOTICE_DEDUP_COL in combined.columns:
+        combined.drop_duplicates(subset=[NOTICE_DEDUP_COL], keep='last', inplace=True)
+    dropped = before_dedup - len(combined)
+
+    combined.reset_index(drop=True, inplace=True)
+    upload_drive_csv(drive_service, file_id, NOTICE_FOLDER_ID, file_name, combined)
+
+    action = "갱신" if file_id else "신규 생성"
+    print(f"  ✅ [{cat_name}] {file_name} {action} | "
+          f"오늘 {before_today:,}건 → 중복 {dropped:,}건 제거 → 누적 {len(combined):,}건")
+    return {'before': before_today, 'after': len(combined), 'dropped': dropped}
+
+
+# =================================================================================
+# 5. HTML 리포트 생성
+# =================================================================================
+
+def _stat_card(label: str, value: str, sub: str = '', color: str = '#2563eb') -> str:
+    return (
+        f"<td style='width:25%;padding:0 6px;'>"
+        f"<div style='background:#fff;border-radius:10px;padding:16px 12px;"
+        f"text-align:center;border-top:3px solid {color};"
+        f"box-shadow:0 1px 4px rgba(0,0,0,.07);'>"
+        f"<div style='font-size:20px;font-weight:700;color:{color};'>{value}</div>"
+        f"<div style='font-size:11px;color:#6b7280;margin-top:3px;font-weight:500;'>{label}</div>"
+        + (f"<div style='font-size:10px;color:#9ca3af;margin-top:2px;'>{sub}</div>" if sub else "")
+        + "</div></td>"
+    )
+
+
+def _section_table(items: list[dict], title: str, cat: str) -> str:
+    meta  = CAT_META.get(cat, {'icon': '📋', 'color': '#374151', 'bg': '#f9fafb'})
+    color, bg, icon = meta['color'], meta['bg'], meta['icon']
+
+    html = (
+        f"<div style='margin-top:22px;'>"
+        f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:10px;'>"
+        f"<span style='font-size:17px;'>{icon}</span>"
+        f"<span style='font-size:14px;font-weight:700;color:{color};'>{title}</span>"
+        f"<span style='margin-left:auto;background:{bg};color:{color};"
+        f"border:1px solid {color}44;border-radius:20px;"
+        f"padding:2px 10px;font-size:11px;font-weight:600;'>{len(items)}건</span>"
+        f"</div>"
+    )
+
+    if not items:
+        return (html +
+                "<div style='background:#f9fafb;border:1px dashed #d1d5db;border-radius:8px;"
+                "padding:13px;color:#9ca3af;font-size:13px;text-align:center;'>"
+                "해당 내역이 없습니다.</div></div>")
+
+    rows = ""
+    for i, item in enumerate(items):
+        is_innodep = '이노뎁' in str(item.get('corp', ''))
+        row_bg  = '#fffbf0' if is_innodep else ('#ffffff' if i % 2 == 0 else '#f9fafb')
+        star    = " ★" if is_innodep else ""
+        nm      = item.get('nm', '-')
+        link_nm = (f"<a href='{item['url']}' target='_blank' "
+                   f"style='color:{color};text-decoration:none;font-weight:500;'>{nm}</a>"
+                   if item.get('url', '#') != '#' else nm)
+        rows += (
+            f"<tr style='background:{row_bg};border-bottom:1px solid #e5e7eb;'>"
+            f"<td style='padding:7px 10px;color:#374151;'>{item.get('org','-')}</td>"
+            f"<td style='padding:7px 10px;'>{link_nm}</td>"
+            f"<td style='padding:7px 10px;text-align:center;color:#374151;'>"
+            f"{item.get('corp','-')}{star}</td>"
+            f"<td style='padding:7px 10px;text-align:right;color:#374151;"
+            f"font-variant-numeric:tabular-nums;'>{fmt_amount(item.get('amt','0'))}</td>"
+            f"</tr>"
+        )
+
+    html += (
+        f"<table style='width:100%;border-collapse:collapse;font-size:12.5px;'>"
+        f"<thead><tr style='background:{color};color:#fff;'>"
+        f"<th style='padding:8px 10px;text-align:left;width:22%;font-weight:600;border-radius:6px 0 0 0;'>수요기관</th>"
+        f"<th style='padding:8px 10px;text-align:left;font-weight:600;'>명칭</th>"
+        f"<th style='padding:8px 10px;text-align:center;width:16%;font-weight:600;'>업체명</th>"
+        f"<th style='padding:8px 10px;text-align:right;width:14%;font-weight:600;border-radius:0 6px 0 0;'>금액</th>"
+        f"</tr></thead><tbody>{rows}</tbody></table></div>"
+    )
+    return html
+
+
+def build_report_html(
+    display_date: str, weekday_str: str,
+    shopping_cnt: int, notice_cnt: int, contract_cnt: int,
+    shopping_dedup: int, notice_dedup_total: int,
+    school_stats: dict, innodep_dict: dict, innodep_total: int,
+    notice_buckets: dict, contract_buckets: dict,
+) -> str:
+
+    # 학교 CCTV 테이블
+    if school_stats:
+        total_school_amt = sum(s['total_amt'] for s in school_stats.values())
+        school_rows = "".join(
+            f"<tr><td style='padding:7px 10px;color:#374151;'>{sch}</td>"
+            f"<td style='padding:7px 10px;color:#374151;'>{info['main_vendor']}</td>"
+            f"<td style='padding:7px 10px;text-align:right;color:#374151;'>{info['total_amt']:,}원</td></tr>"
+            for sch, info in school_stats.items()
+        )
+        school_section = (
+            f"<table style='width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px;'>"
+            f"<thead><tr style='background:#f59e0b;color:#fff;'>"
+            f"<th style='padding:8px 10px;text-align:left;border-radius:6px 0 0 0;font-weight:600;'>학교명</th>"
+            f"<th style='padding:8px 10px;text-align:left;font-weight:600;'>납품업체</th>"
+            f"<th style='padding:8px 10px;text-align:right;border-radius:0 6px 0 0;font-weight:600;width:20%;'>납품금액</th>"
+            f"</tr></thead><tbody>{school_rows}</tbody>"
+            f"<tfoot><tr style='background:#fef3c7;font-weight:700;'>"
+            f"<td colspan='2' style='padding:8px 10px;color:#92400e;'>합계 ({len(school_stats)}개교)</td>"
+            f"<td style='padding:8px 10px;text-align:right;color:#92400e;'>{total_school_amt:,}원</td>"
+            f"</tr></tfoot></table>"
+        )
+    else:
+        school_section = "<div style='color:#9ca3af;font-size:13px;padding:10px 0;'>- 해당 내역 없음</div>"
+
+    # 이노뎁 납품 테이블
+    if innodep_dict:
+        innodep_rows = "".join(
+            f"<tr><td style='padding:7px 10px;color:#374151;'>{org}</td>"
+            f"<td style='padding:7px 10px;text-align:right;color:#374151;'>{amt:,}원</td></tr>"
+            for org, amt in innodep_dict.items()
+        )
+        innodep_section = (
+            f"<table style='width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px;'>"
+            f"<thead><tr style='background:#0ea5e9;color:#fff;'>"
+            f"<th style='padding:8px 10px;text-align:left;border-radius:6px 0 0 0;font-weight:600;'>수요기관</th>"
+            f"<th style='padding:8px 10px;text-align:right;border-radius:0 6px 0 0;font-weight:600;width:24%;'>납품금액</th>"
+            f"</tr></thead><tbody>{innodep_rows}</tbody>"
+            f"<tfoot><tr style='background:#e0f2fe;font-weight:700;'>"
+            f"<td style='padding:8px 10px;color:#0369a1;'>합계 ({len(innodep_dict)}건)</td>"
+            f"<td style='padding:8px 10px;text-align:right;color:#0369a1;'>{innodep_total:,}원</td>"
+            f"</tr></tfoot></table>"
+        )
+    else:
+        innodep_section = "<div style='color:#9ca3af;font-size:13px;padding:10px 0;'>- 해당 내역 없음</div>"
+
+    notice_sections   = "".join(_section_table(notice_buckets[c],   f"{c} 공고",   c) for c in CAT_KEYWORDS)
+    contract_sections = "".join(_section_table(contract_buckets[c], f"{c} 계약", c) for c in CAT_KEYWORDS)
+
+    stat_row = (
+        _stat_card('쇼핑몰 수집', f'{shopping_cnt:,}건',  f'중복 {shopping_dedup:,}건 제거',      '#f59e0b') +
+        _stat_card('공고 수집',   f'{notice_cnt:,}건',    f'중복 {notice_dedup_total:,}건 제거',   '#2563eb') +
+        _stat_card('계약 수집',   f'{contract_cnt:,}건',  '',                                      '#7c3aed') +
+        _stat_card('이노뎁 납품', fmt_amount(innodep_total), f'{len(innodep_dict)}개 기관',        '#059669')
+    )
+
+    return f"""<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;
+  font-family:'Apple SD Gothic Neo','Malgun Gothic','맑은 고딕',sans-serif;">
+<div style="max-width:740px;margin:0 auto;padding:20px 12px;">
+
+  <!-- ── 헤더 ── -->
+  <div style="background:linear-gradient(135deg,#0f2044 0%,#1e40af 60%,#2563eb 100%);
+    border-radius:14px 14px 0 0;padding:26px 30px;color:#fff;">
+    <div style="font-size:10px;letter-spacing:3px;opacity:.6;margin-bottom:6px;text-transform:uppercase;">
+      Innodep · Procurement Intelligence
+    </div>
+    <div style="font-size:21px;font-weight:700;letter-spacing:-0.5px;">
+      📋 조달청 데이터 수집 리포트
+    </div>
+    <div style="margin-top:7px;font-size:13px;opacity:.8;">
+      {display_date}({weekday_str}요일) &nbsp;·&nbsp; 자동 수집 완료
+    </div>
+  </div>
+
+  <!-- ── 요약 카드 ── -->
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-top:0;padding:18px 20px;">
+    <table style="width:100%;border-spacing:0;"><tr>{stat_row}</tr></table>
+  </div>
+
+  <!-- ── 본문 ── -->
+  <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:0;
+    border-radius:0 0 14px 14px;padding:26px 30px;">
+
+    <!-- 쇼핑몰 -->
+    <div style="margin-bottom:28px;">
+      <div style="font-size:15px;font-weight:700;color:#92400e;
+        padding-bottom:9px;border-bottom:2px solid #fde68a;margin-bottom:14px;">
+        🛒 종합쇼핑몰 3자단가
+      </div>
+      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:5px;">
+        📌 학교 지능형 CCTV 납품 현황
+      </div>
+      {school_section}
+      <div style="font-size:12px;font-weight:600;color:#374151;margin:16px 0 5px;">
+        📌 이노뎁 나라장터 납품 실적
+      </div>
+      {innodep_section}
+    </div>
+
+    <div style="border-top:1px solid #e5e7eb;margin:6px 0 26px;"></div>
+
+    <!-- 입찰공고 -->
+    <div style="font-size:15px;font-weight:700;color:#dc2626;
+      padding-bottom:9px;border-bottom:2px solid #fecaca;margin-bottom:4px;">
+      📢 나라장터 입찰 공고
+    </div>
+    {notice_sections}
+
+    <div style="border-top:1px solid #e5e7eb;margin:26px 0;"></div>
+
+    <!-- 계약내역 -->
+    <div style="font-size:15px;font-weight:700;color:#1d4ed8;
+      padding-bottom:9px;border-bottom:2px solid #bfdbfe;margin-bottom:4px;">
+      📝 나라장터 계약 내역
+    </div>
+    {contract_sections}
+
+  </div>
+
+  <!-- ── 푸터 ── -->
+  <div style="text-align:center;padding:14px;color:#94a3b8;font-size:11px;">
+    본 메일은 GitHub Actions 자동화 스크립트로 발송됩니다. &nbsp;·&nbsp; Innodep Procurement Bot
+  </div>
+
+</div>
+</body></html>"""
+
+
+# =================================================================================
+# 6. 메인
+# =================================================================================
+
 def main():
     if not MY_DIRECT_KEY or not AUTH_JSON_STR:
+        print("❌ 환경변수 누락: DATA_GO_KR_API_KEY 또는 GOOGLE_AUTH_JSON")
         return
 
     target_dt    = get_target_date()
     d_str        = target_dt.strftime("%Y%m%d")
     year         = target_dt.year
     display_date = target_dt.strftime("%Y년 %m월 %d일")
-    weekday_str  = ["월", "화", "수", "목", "금", "토", "일"][target_dt.weekday()]
+    weekday_str  = ["월","화","수","목","금","토","일"][target_dt.weekday()]
 
-    drive_service, drive_creds = get_drive_service_for_script()
-    keywords_notice_all = [kw for sublist in CAT_KEYWORDS.values() for kw in sublist]
+    drive_service, drive_creds = get_drive_service()
+    print(f"\n{'='*60}\n🗓  수집 날짜: {display_date}({weekday_str})\n{'='*60}")
 
-    # -------------------------------------------------------------------------
-    # PART 1: 종합쇼핑몰 3자단가 수집
-    # ★ 변경: 폴더 ID 지정하여 파일 검색
-    # -------------------------------------------------------------------------
-    final_data = []
+    # ─── PART 1: 종합쇼핑몰 ────────────────────────────────────────────
+    print("\n[1/3] 종합쇼핑몰 3자단가 수집...")
+    raw_shopping: list[list] = []
     with ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {executor.submit(fetch_api_data_from_g2b, kw, d_str): kw for kw in keywords}
+        futures = {executor.submit(fetch_shopping, kw, d_str): kw for kw in KEYWORDS}
         for future in as_completed(futures):
             data = future.result()
             if data:
-                final_data.extend(data)
+                raw_shopping.extend(data)
 
-    school_stats, innodep_today_dict, innodep_total_amt = {}, {}, 0
+    school_stats:      dict = {}
+    innodep_today:     dict = {}
+    innodep_total_amt: int  = 0
+    shopping_dedup_cnt: int = 0
 
-    if final_data:
-        new_df = pd.DataFrame(final_data, columns=HEADER_KOR)
+    if raw_shopping:
+        new_df = pd.DataFrame(raw_shopping, columns=HEADER_KOR)
+        stats  = save_shopping_to_drive(drive_service, drive_creds, new_df, year)
+        shopping_dedup_cnt = stats['dropped']
 
-        # ★ 폴더 ID 지정하여 검색
-        query = f"name='{target_dt.year}.csv' and '{SHOPPING_FOLDER_ID}' in parents and trashed=false"
-        res = drive_service.files().list(q=query, fields='files(id)').execute()
-        items = res.get('files', [])
-        f_id = items[0]['id'] if items else None
-
-        if f_id:
-            resp = requests.get(
-                f'https://www.googleapis.com/drive/v3/files/{f_id}?alt=media',
-                headers={'Authorization': f'Bearer {drive_creds.token}'}
-            )
-            old_df = pd.read_csv(io.BytesIO(resp.content), encoding='utf-8-sig', low_memory=False)
-            df_to_upload = pd.concat([old_df, new_df], ignore_index=True).drop_duplicates(
-                subset=['계약납품요구일자', '수요기관명', '품명', '금액'], keep='last'
-            )
-            media = MediaIoBaseUpload(
-                io.BytesIO(df_to_upload.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')),
-                mimetype='text/csv'
-            )
-            drive_service.files().update(fileId=f_id, media_body=media).execute()
-        else:
-            # 파일이 없으면 새로 생성
-            media = MediaIoBaseUpload(
-                io.BytesIO(new_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')),
-                mimetype='text/csv'
-            )
-            drive_service.files().create(
-                body={'name': f'{target_dt.year}.csv', 'parents': [SHOPPING_FOLDER_ID]},
-                media_body=media
-            ).execute()
-            print(f"✅ 종합쇼핑몰 {target_dt.year}.csv 신규 생성 완료")
-
-        for row in final_data:
-            org = str(row[7])
-            comp = str(row[21])
-            amt_val = str(row[20])
-            item_nm = str(row[14])
+        for row in raw_shopping:
+            org    = str(row[7])
+            comp   = str(row[21])
             cntrct = str(row[23])
-            amt = int(amt_val.replace(',', '').split('.')[0])
+            try:
+                amt = int(str(row[20]).replace(',', '').split('.')[0])
+            except ValueError:
+                amt = 0
 
             if '학교' in org and '지능형' in cntrct and 'CCTV' in cntrct:
-                if org not in school_stats:
-                    school_stats[org] = {'total_amt': 0, 'main_vendor': comp}
+                school_stats.setdefault(org, {'total_amt': 0, 'main_vendor': comp})
                 school_stats[org]['total_amt'] += amt
 
             if '이노뎁' in comp:
-                innodep_today_dict[org] = innodep_today_dict.get(org, 0) + amt
-                innodep_total_amt += amt
+                innodep_today[org]  = innodep_today.get(org, 0) + amt
+                innodep_total_amt  += amt
 
-    # -------------------------------------------------------------------------
-    # PART 2: 나라장터 입찰 공고 수집 → 연도별 파일로 저장 (변경 없음)
-    # -------------------------------------------------------------------------
-    notice_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
-    all_notice_count = 0
+    print(f"  → 쇼핑몰 {len(raw_shopping):,}건 | 이노뎁 {len(innodep_today)}건 ({innodep_total_amt:,}원)")
+
+    # ─── PART 2: 나라장터 입찰공고 ─────────────────────────────────────
+    print("\n[2/3] 나라장터 입찰공고 수집...")
+    notice_buckets: dict[str, list] = {cat: [] for cat in CAT_KEYWORDS}
+    all_notice_cnt:     int = 0
+    notice_dedup_total: int = 0
 
     for cat_api, api_url in NOTICE_API_MAP.items():
-        n_df = fetch_notice_data(cat_api, api_url, d_str)
-        if not n_df.empty:
-            all_notice_count += len(n_df)
-            save_notice_by_year(drive_service, drive_creds, cat_api, n_df, year)
+        n_df = fetch_notice(cat_api, api_url, d_str)
+        if n_df.empty:
+            continue
+        all_notice_cnt += len(n_df)
+        stats = save_notice_to_drive(drive_service, drive_creds, cat_api, n_df, year)
+        notice_dedup_total += stats['dropped']
 
-            pattern = '|'.join(keywords_notice_all)
-            filtered = n_df[n_df['bidNtceNm'].str.contains(pattern, na=False, case=False)]
+        if NOTICE_DEDUP_COL in n_df.columns:
+            filtered = n_df[n_df['bidNtceNm'].str.contains(ALL_NOTICE_PATTERN, na=False)]
             for _, row in filtered.iterrows():
-                cat_found = classify_text(row['bidNtceNm'])
-                if cat_found in notice_mail_buckets:
-                    notice_mail_buckets[cat_found].append({
-                        'org': row.get('dminsttNm', '-'),
-                        'nm':  row.get('bidNtceNm', '-'),
-                        'amt': row.get('presmptPrce', '별도공고'),
-                        'url': row.get('bidNtceDtlUrl', '#')
+                cat = classify_text(row['bidNtceNm'])
+                if cat in notice_buckets:
+                    notice_buckets[cat].append({
+                        'org':  row.get('dminsttNm', '-'),
+                        'nm':   row.get('bidNtceNm', '-'),
+                        'amt':  row.get('presmptPrce', '별도공고'),
+                        'url':  row.get('bidNtceDtlUrl', '#'),
+                        'corp': '',
                     })
 
-    # -------------------------------------------------------------------------
-    # PART 3: 나라장터 용역 계약 내역 수집 (변경 없음)
-    # -------------------------------------------------------------------------
-    contract_mail_buckets = {cat: [] for cat in CAT_KEYWORDS}
-    collected_servc = []
+    print(f"  → 공고 전체 {all_notice_cnt:,}건 | 중복 제거 {notice_dedup_total:,}건")
+
+    # ─── PART 3: 나라장터 용역계약 ─────────────────────────────────────
+    print("\n[3/3] 나라장터 용역계약 수집...")
+    contract_buckets: dict[str, list] = {cat: [] for cat in CAT_KEYWORDS}
+    raw_contracts: list[dict] = []
 
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = {
-            executor.submit(fetch_single_contract, kw_s, d_str): kw_s
-            for kw_s in keywords_notice_all
-        }
+        futures = {executor.submit(fetch_contract, kw, d_str): kw for kw in ALL_NOTICE_KEYWORDS}
         for future in as_completed(futures):
-            collected_servc.extend(future.result())
+            raw_contracts.extend(future.result())
 
-    unique_servc_list = list({f"{d['org']}_{d['nm']}": d for d in collected_servc}.values())
-    for s in unique_servc_list:
-        cat_found = classify_text(s['nm'])
-        if cat_found in contract_mail_buckets:
-            contract_mail_buckets[cat_found].append(s)
+    # 수요기관 + 계약명 조합 기준 중복 제거 (동일 계약 복수 키워드 매칭 방지)
+    seen: dict[str, dict] = {}
+    for c in raw_contracts:
+        key = f"{c['org']}_{c['nm']}"
+        seen[key] = c  # 마지막 수집 데이터 유지
+    unique_contracts = list(seen.values())
 
-    exclude_keywords = ['학교', '민방위', '교육청']
+    for c in unique_contracts:
+        cat = classify_text(c['nm'])
+        if cat in contract_buckets:
+            contract_buckets[cat].append(c)
 
-    def is_valid_org(org_name):
-        for word in exclude_keywords:
-            if word in org_name:
-                return False
-        return True
+    # 국방 카테고리: 학교·민방위·교육청 제외
+    for bucket in (notice_buckets, contract_buckets):
+        bucket['국방'] = [i for i in bucket['국방'] if not EXCLUDE_ORG_PATTERN.search(i['org'])]
 
-    notice_mail_buckets['국방']   = [i for i in notice_mail_buckets['국방']   if is_valid_org(i['org'])]
-    contract_mail_buckets['국방'] = [i for i in contract_mail_buckets['국방'] if is_valid_org(i['org'])]
+    print(f"  → 계약 {len(raw_contracts):,}건 수집 | 중복 제거 후 {len(unique_contracts):,}건")
 
-    # -------------------------------------------------------------------------
-    # PART 4: 최종 HTML 리포트 조립 (변경 없음)
-    # -------------------------------------------------------------------------
-    report_html = f"""
-    <div style="font-family:'Malgun Gothic'; line-height:2.0; border:1px solid #ddd; padding:20px; border-radius:10px;">
-        <h1 style="color:#1a73e8; margin-top:0;">📋 조달청 데이터 자동 수집 리포트</h1>
-        <b>🔹 수집날짜 :</b> {display_date}({weekday_str}요일)<br>
-        <b>🔹 종합쇼핑몰 3자단가 데이터 :</b> {len(final_data):,}건<br>
-        <b>🔹 나라장터 공고 데이터 :</b> {all_notice_count:,}건 (필터링 전 전체)<br>
-        <b>🔹 나라장터 계약 데이터 :</b> {len(unique_servc_list):,}건<br>
-        <b>🔹 상태 :</b> 성공
-        <hr style="border:0.5px solid #eee; margin:20px 0;">
+    # ─── PART 4: 리포트 출력 ───────────────────────────────────────────
+    report_html = build_report_html(
+        display_date        = display_date,
+        weekday_str         = weekday_str,
+        shopping_cnt        = len(raw_shopping),
+        notice_cnt          = all_notice_cnt,
+        contract_cnt        = len(unique_contracts),
+        shopping_dedup      = shopping_dedup_cnt,
+        notice_dedup_total  = notice_dedup_total,
+        school_stats        = school_stats,
+        innodep_dict        = innodep_today,
+        innodep_total       = innodep_total_amt,
+        notice_buckets      = notice_buckets,
+        contract_buckets    = contract_buckets,
+    )
 
-        <h1 style='color:#e67e22;'>🛒 종합쇼핑몰 3자단가 요약</h1>
-        <b>★ 학교 지능형 CCTV 납품 현황</b>
-        <div style='padding-left:10px; border-left:3px solid #e67e22;'>
-    """
-
-    if school_stats:
-        for sch, info in school_stats.items():
-            report_html += f"<p style='margin:5px 0;'>- {sch} / {info['total_amt']:,}원 / {info['main_vendor']}</p>"
-        report_html += f"<b>👉 학교 내역 총 {len(school_stats)}건 / 총액 {sum(s['total_amt'] for s in school_stats.values()):,}원</b>"
-    else:
-        report_html += "<p> - 학교 내역 0건</p>"
-
-    report_html += "</div><br><b>★ 이노뎁 나라장터 납품 실적</b><div style='padding-left:10px; border-left:3px solid #e67e22;'>"
-
-    if innodep_today_dict:
-        for org, amt in innodep_today_dict.items():
-            report_html += f"<p style='margin:5px 0;'>- {org} / 총액 {amt:,}원</p>"
-        report_html += f"<b>👉 이노뎁 납품내역 총 {len(innodep_today_dict)}건 / 총액 {innodep_total_amt:,}원</b>"
-    else:
-        report_html += "<p> - 이노뎁 납품내역 0건</p>"
-
-    report_html += "</div>"
-
-    report_html += "<h1 style='margin-top:35px; color:#d32f2f;'>📢 나라장터 입찰 공고 요약</h1>"
-    for i, cat in enumerate(CAT_KEYWORDS.keys(), 1):
-        report_html += format_html_table(notice_mail_buckets[cat], f"{i}) {cat} 요약")
-
-    report_html += "<h1 style='margin-top:35px; color:#1a73e8;'>📝 나라장터 계약 내역 요약</h1>"
-    for i, cat in enumerate(CAT_KEYWORDS.keys(), 1):
-        report_html += format_html_table(contract_mail_buckets[cat], f"{i}) {cat} 요약")
-
-    report_html += "</div>"
+    print(f"\n✅ 완료\n{'='*60}")
 
     if "GITHUB_OUTPUT" in os.environ:
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
