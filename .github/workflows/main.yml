@@ -38,6 +38,8 @@ jobs:
           subject:        "[조달 리포트] ${{ steps.run_script.outputs.collect_date }} 수집 결과"
           to:             조달데이터봇
           bcc: >-
-            mhy9680@innodep.com
+            mhy9680@innodep.com,
+            mhy9680@naver.com,
+            hcm00008@gmail.com
           from:      조달데이터봇 <jetti4856@gmail.com>
           html_body:  file://${{ steps.run_script.outputs.report_path }}
