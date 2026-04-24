@@ -39,7 +39,10 @@ jobs:
           to:             조달데이터봇
           bcc: >-
             mhy9680@innodep.com,
-            mhy9680@naver.com,
-            hcm00008@gmail.com
+            jinseok8809@innodep.com, 
+            seungju@innodep.com, 
+            jbgg@innodep.com, 
+            choi29sep@innodep.com, 
+            sg.lee@innodep.com
           from:      조달데이터봇 <jetti4856@gmail.com>
           html_body:  file://${{ steps.run_script.outputs.report_path }}
