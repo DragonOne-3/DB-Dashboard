@@ -39,6 +39,7 @@ jobs:
           to:             조달데이터봇
           bcc: >-
             mhy9680@innodep.com,
+            csjang76@innodep.com,
             jinseok8809@innodep.com, 
             seungju@innodep.com, 
             jbgg@innodep.com, 
