@@ -512,7 +512,7 @@ def build_report_html(
     else:
         school_table = "<p style='color:#9ca3af;font-size:13px;padding:14px 16px;'>해당 내역 없음</p>"
 
-        innodep_rows_html = ""
+    innodep_rows_html = ""
     if innodep_org_summary:
         sorted_rows = sorted(innodep_org_summary.items(), key=lambda x: x[1], reverse=True)
         for i, (org, amt) in enumerate(sorted_rows):
