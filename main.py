@@ -153,7 +153,7 @@ def fmt_amount_short(val):
         if n >= 100_000_000:
             return f"{n / 100_000_000:.1f}억"
         if n >= 10_000:
-            return f"{n / 10_000:.0f}만"
+            return f"{n / 10_000:,.0f}만"
         return f"{n:,}원"
     except Exception:
         return str(val) if val else "-"
@@ -165,7 +165,7 @@ def fmt_amount_full(val):
         if n >= 100_000_000:
             return f"{n / 100_000_000:.1f}억원"
         if n >= 10_000:
-            return f"{n / 10_000:.0f}만원"
+            return f"{n / 10_000:.,0f}만원"
         return f"{n:,}원"
     except Exception:
         return str(val) if val else "별도공고"
