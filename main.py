@@ -178,7 +178,7 @@ def format_html_table(data_list, title):
         return html
 
     html += "<table border='1' style='border-collapse:collapse; width:100%; font-size:13px; line-height:1.8;'>"
-    html += "<tr style='background-color:#f8f9fa;'><th>수요기관</th><th>명칭(링크)</th><th>업체명</th><th>금액</th></tr>"
+    html += "<tr style='background-color:#f8f9fa;'><th>수요기관</th><th>명칭(링크)</th><th>업체명</th><th>증감금액</th></tr>"
 
     for item in data_list:
         corp_name = item.get("corp", "-")
@@ -359,7 +359,7 @@ def build_vendor_chart(vendor_stats):
         "<tr style='background-color:#f8fafc;'>"
         "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:center;border-bottom:1px solid #e5e7eb;'>순위</th>"
         "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;border-bottom:1px solid #e5e7eb;'>업체명</th>"
-        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:right;border-bottom:1px solid #e5e7eb;'>금액</th>"
+        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:right;border-bottom:1px solid #e5e7eb;'>증감금액</th>"
         "</tr>"
         f"{rows}"
         "</table>"
@@ -388,7 +388,7 @@ def build_org_chart(org_stats):
         "<tr style='background-color:#f8fafc;'>"
         "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:center;border-bottom:1px solid #e5e7eb;'>순위</th>"
         "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;border-bottom:1px solid #e5e7eb;'>기관명</th>"
-        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:right;border-bottom:1px solid #e5e7eb;'>금액</th>"
+        "<th style='padding:7px 8px;font-size:10px;font-weight:700;color:#6b7280;text-align:right;border-bottom:1px solid #e5e7eb;'>증감금액</th>"
         "</tr>"
         f"{rows}"
         "</table>"
@@ -510,7 +510,7 @@ def build_report_html(
             "<tr style='background-color:#fffbeb;'>"
             "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#92400e;text-align:left;border-bottom:1px solid #fde68a;'>학교명</th>"
             "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#92400e;text-align:left;border-bottom:1px solid #fde68a;'>납품업체</th>"
-            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#92400e;text-align:right;border-bottom:1px solid #fde68a;'>금액</th>"
+            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#92400e;text-align:right;border-bottom:1px solid #fde68a;'>증감금액</th>"
             "</tr>"
             f"{school_rows_html}"
             f"<tr style='background-color:#fef9ec;'>"
@@ -537,7 +537,7 @@ def build_report_html(
             "<table width='100%' cellpadding='0' cellspacing='0' border='0'>"
             "<tr style='background-color:#eff6ff;'>"
             "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#1e3a5f;text-align:left;border-bottom:1px solid #bfdbfe;'>수요기관</th>"
-            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#1e3a5f;text-align:right;border-bottom:1px solid #bfdbfe;'>금액</th>"
+            "<th style='padding:7px 12px;font-size:12px;font-weight:700;color:#1e3a5f;text-align:right;border-bottom:1px solid #bfdbfe;'>증감금액</th>"
             "</tr>"
             f"{innodep_rows_html}"
             f"<tr style='background-color:#dbeafe;'>"
@@ -787,7 +787,7 @@ def main():
             )
             old_df = pd.read_csv(io.BytesIO(resp.content), encoding="utf-8-sig", low_memory=False)
             df_to_upload = pd.concat([old_df, new_df], ignore_index=True).drop_duplicates(
-                subset=["계약납품요구일자", "수요기관명", "품명", "금액"],
+                subset=["계약납품요구일자", "수요기관명", "품명", "증감금액"],
                 keep="last",
             )
             media = MediaIoBaseUpload(
