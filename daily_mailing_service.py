@@ -7,6 +7,7 @@ send_b.py  ─  필터링 리포트 발송 스크립트 (드라이브 데이터 
   • 국방 카테고리 제거
   • 수집 데이터 0건이면 sys.exit(1) → 메일 스텝 자동 스킵
   • 월요일 실행 시 금·토·일 3일치 합산
+  • 경쟁사 목록: 스크립트와 같은 디렉토리의 companies.txt에서 로드
 """
 
 import os
@@ -125,8 +126,8 @@ def get_date_range():
 def fmt_amount(val):
     """
     금액 포맷 — 천단위 쉼표 포함 전체 표시
-      1억 이상  → X억 X,XXX만원  (예: 1,234,567,890 → 12억 3,456만원)
-      1만 이상  → X,XXX만원      (예: 12,345,678   → 1,234만원)
+      1억 이상  → X억 X,XXX만원
+      1만 이상  → X,XXX만원
       1만 미만  → X,XXX원
     별도공고/0/None → "별도공고"
     """
@@ -152,6 +153,29 @@ def classify_text(text):
         if any(kw in str(text) for kw in kws):
             return cat
     return "기타"
+
+
+# ── 경쟁사 목록 (main.py와 동일한 방식) ──────────────────────────────────────
+
+def get_target_companies():
+    """
+    스크립트와 같은 디렉토리의 companies.txt에서 경쟁사 목록을 읽습니다.
+    파일이 없으면 기본값(이노뎁)을 반환합니다.
+    """
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, "companies.txt")
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as f:
+            companies = [line.strip() for line in f if line.strip()]
+        print(f"📋 경쟁사 목록 로드: {len(companies)}개 ({file_path})")
+        return companies
+    print("⚠️ companies.txt 없음 — 기본값(이노뎁) 사용")
+    return ["이노뎁(주)", "이노뎁"]
+
+
+def normalize_company_name(name):
+    """main.py와 동일한 정규화 함수"""
+    return str(name).replace(" ", "").replace("(주)", "").replace("주식회사", "").upper()
 
 
 # =============================================================================
@@ -299,14 +323,23 @@ def load_contracts_from_api(date_list):
 
 
 # =============================================================================
-# 통계 계산
+# 통계 계산 — companies.txt 기반 경쟁사 필터 (main.py와 동일한 방식)
 # =============================================================================
 
-def calc_stats(all_shopping):
+def calc_stats(all_shopping, companies=None):
+    """
+    companies 리스트가 있으면 정규화 비교 OR 이노뎁 직접 포함으로 vendor_stats 필터링.
+    없으면 이노뎁만 포함 (기본 동작).
+    main.py의 normalize_company_name + normalized_target_companies 방식과 동일.
+    """
     vendor_stats        = {}
     org_stats           = {}
     innodep_org_summary = {}
     innodep_total_amt   = 0
+
+    # 경쟁사 집합 정규화 (main.py와 동일)
+    normalized_target = {normalize_company_name(c) for c in companies} if companies else set()
+
     for row in all_shopping:
         try:
             org     = str(row[7])
@@ -315,11 +348,18 @@ def calc_stats(all_shopping):
             amt     = int(amt_val.replace(",", "").split(".")[0])
         except Exception:
             continue
+
         org_stats[org] = org_stats.get(org, 0) + amt
+
+        # main.py와 동일 조건: 정규화 일치 OR 이노뎁 직접 포함
+        normalized_comp = normalize_company_name(comp)
+        if normalized_comp in normalized_target or "이노뎁" in comp:
+            vendor_stats[comp] = vendor_stats.get(comp, 0) + amt
+
         if "이노뎁" in comp:
-            vendor_stats[comp]       = vendor_stats.get(comp, 0) + amt
             innodep_org_summary[org] = innodep_org_summary.get(org, 0) + amt
             innodep_total_amt       += amt
+
     return vendor_stats, org_stats, innodep_org_summary, innodep_total_amt
 
 
@@ -733,6 +773,9 @@ def main():
 
     drive_service, drive_creds = get_drive_service()
 
+    # ── 경쟁사 목록 로드 (main.py와 동일 방식) ──────────────────────────────
+    target_companies = get_target_companies()
+
     print("📦 쇼핑몰 데이터 로드 중 (드라이브)...")
     all_shopping = load_shopping_from_drive(drive_service, drive_creds, date_list)
     print(f"   └ {len(all_shopping):,}행")
@@ -750,7 +793,10 @@ def main():
     contract_cnt     = sum(len(v) for v in contract_buckets.values())
     print(f"   └ 계약 {contract_cnt:,}건")
 
-    vendor_stats, org_stats, innodep_org_summary, innodep_total_amt = calc_stats(all_shopping)
+    # ── 통계 계산 (경쟁사 목록 전달) ────────────────────────────────────────
+    vendor_stats, org_stats, innodep_org_summary, innodep_total_amt = calc_stats(
+        all_shopping, companies=target_companies
+    )
 
     if is_weekly:
         period_label = (
