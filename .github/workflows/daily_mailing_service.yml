@@ -32,7 +32,7 @@ jobs:
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           GOOGLE_AUTH_JSON:   ${{ secrets.GOOGLE_AUTH_JSON }}
-        run: python send_b.py
+        run: python daily_mailing_service.py
 
       # run_b 성공 + report_b_path 존재할 때만 메일 발송
       - name: Send Filtered Email
