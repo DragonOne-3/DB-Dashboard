@@ -672,8 +672,6 @@ def build_report_html_b(
           Innodep &middot; Procurement Intelligence</p>
         <p style="margin:0 0 4px;font-size:20px;font-weight:800;color:#f0f9ff;letter-spacing:-0.5px;">
           조달청 데이터 리포트 {weekly_badge}</p>
-        <p style="margin:0;font-size:11px;color:#60a5fa;opacity:0.8;">
-          &#128683;&nbsp; 학교 CCTV &middot; 국방 분야 제외</p>
       </td>
       <td style="padding:22px 24px 20px;text-align:right;vertical-align:middle;white-space:nowrap;">
         <p style="margin:0 0 2px;font-size:10px;color:#60a5fa;letter-spacing:1px;text-transform:uppercase;">Period</p>
