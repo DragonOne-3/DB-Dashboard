@@ -46,7 +46,8 @@ jobs:
           subject:        "[조달 리포트] ${{ steps.run_b.outputs.collect_period }} 수집 결과"
           to:             수신자B그룹
           bcc: >-
-            mhy9680@naver.com
+            mhy9680@naver.com,
+            choi29sep@innodep.com
           # 발신자 주소는 secrets로 숨김 처리 — 수신자에게 이름만 표시됨
           from:           '"조달데이터봇" <${{ secrets.EMAIL_USER }}>'
           html_body:      file://${{ steps.run_b.outputs.report_b_path }}
