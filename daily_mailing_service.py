@@ -719,7 +719,7 @@ def build_report_html_b(
 
 <!-- ══ 나라장터 입찰공고 ═════════════════════════════════════════════════ -->
 <tr><td style="padding-bottom:6px;">
-  {section_title("&#128226;", "나라장터 입찰공고", "키워드 필터링 · 국방 제외", "#dc2626")}
+  {section_title("&#128226;", "나라장터 입찰공고", "키워드 필터링", "#dc2626")}
 </td></tr>
 <tr><td style="padding-bottom:4px;">
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:16px;">
@@ -729,7 +729,7 @@ def build_report_html_b(
 
 <!-- ══ 나라장터 계약내역 ═════════════════════════════════════════════════ -->
 <tr><td style="padding-bottom:6px;">
-  {section_title("&#128221;", "나라장터 계약내역", "키워드 필터링 · 국방 제외", "#1d4ed8")}
+  {section_title("&#128221;", "나라장터 계약내역", "키워드 필터링", "#1d4ed8")}
 </td></tr>
 <tr><td style="padding-bottom:4px;">
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:16px;">
