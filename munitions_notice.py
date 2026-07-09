@@ -12,8 +12,8 @@ import time
 SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
-def fetch_daily_data(target_date, max_retries=3):
-    url = 'http://openapi.d2b.go.kr/openapi/service/BidPblancInfoService/getDmstcCmpetBidPblancList'
+def fetch_daily_data(target_date):
+    url = 'https://apis.data.go.kr/1690000/BidPblancInfoService/getDmstcCmpetBidPblancList'
     all_items = []
     page_no = 1
 
