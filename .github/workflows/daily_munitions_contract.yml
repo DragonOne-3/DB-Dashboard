@@ -1,4 +1,4 @@
-name: Daily Update Munitions
+name: Daily Update Munitions Contract
 
 on:
   schedule:
@@ -27,4 +27,4 @@ jobs:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
           TZ: Asia/Seoul # 타임존 설정
-        run: python munitions_dailydata.py
+        run: python munitions_contract.py
