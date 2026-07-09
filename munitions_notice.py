@@ -12,7 +12,8 @@ import time
 SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
-def fetch_daily_data(target_date):
+def fetch_daily_data(target_date, max_retries=3):
+    """특정 날짜(하루)의 입찰공고 데이터를 수집"""
     url = 'https://apis.data.go.kr/1690000/BidPblancInfoService/getDmstcCmpetBidPblancList'
     all_items = []
     page_no = 1
@@ -26,26 +27,26 @@ def fetch_daily_data(target_date):
             'pageNo': str(page_no)
         }
 
+        root = None
         for attempt in range(max_retries):
             try:
                 response = requests.get(url, params=params, timeout=90)
                 if response.status_code != 200:
                     print(f"    [오류] HTTP {response.status_code}")
-                    break
+                    return all_items
                 root = ET.fromstring(response.content)
-                break  # 성공하면 재시도 루프 탈출
-            except (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout) as e:
+                break
+            except (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout):
                 wait = (attempt + 1) * 10
                 print(f"    [타임아웃] {attempt + 1}/{max_retries}회차, {wait}초 후 재시도...")
                 time.sleep(wait)
-                if attempt == max_retries - 1:
-                    print(f"    [실패] {target_date} 최종 타임아웃")
-                    return all_items
             except Exception as e:
                 print(f"    [예외] {target_date} 수집 중 오류: {e}")
                 return all_items
-        else:
-            continue  # for-else: 재시도 다 실패하면 여기로 안 옴 (break 안 걸렸을 때만)
+
+        if root is None:
+            print(f"    [실패] {target_date} 최종 타임아웃")
+            return all_items
 
         items = root.findall('.//item')
         if not items:
