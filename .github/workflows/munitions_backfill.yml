@@ -1,0 +1,32 @@
+name: Backfill 3 Years Data
+
+# 수동 실행 버튼(workflow_dispatch) + 자동 반복 실행(schedule) 둘 다 지원
+on:
+  workflow_dispatch:
+  schedule:
+    # 15분마다 실행 (백필이 끝날 때까지 자동으로 계속 이어서 진행됨)
+    # 필요하면 숫자만 바꿔서 주기 조절 가능 (예: '*/30 * * * *' 는 30분마다)
+    - cron: '*/15 * * * *'
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 필요한 패키지 설치
+        run: pip install -r requirements.txt
+
+      - name: 백필 스크립트 실행
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+        run: python backfill_3years.py
