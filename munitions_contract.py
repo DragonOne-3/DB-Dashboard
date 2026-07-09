@@ -12,7 +12,7 @@ SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
 def get_yesterday_data():
-    url = 'http://openapi.d2b.go.kr/openapi/service/CntrctInfoService/getDmstcCntrctInfoList'
+    url = 'https://apis.data.go.kr/1690000/CntrctInfoService/getDmstcCntrctInfoList'
     
     # 어제 날짜 계산
     yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y%m%d')
