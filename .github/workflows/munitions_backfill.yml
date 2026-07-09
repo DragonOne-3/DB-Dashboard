@@ -34,4 +34,4 @@ jobs:
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
           # 한 번 실행할 때 서비스당 최대 36개월(=3년 전체)까지 한 번에 처리
           BACKFILL_STEPS_PER_RUN: '36'
-        run: python backfill_3years.py
+        run: python munitions_backfill_3y.py
