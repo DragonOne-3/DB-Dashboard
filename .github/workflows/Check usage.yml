@@ -1,0 +1,25 @@
+name: Check Spreadsheet Usage
+
+# 수동 실행 전용 (스케줄 없음)
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 필요한 패키지 설치
+        run: pip install gspread oauth2client
+
+      - name: 시트 용량 확인
+        env:
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+        run: python check_spreadsheet_usage.py
