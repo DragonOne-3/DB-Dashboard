@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>음식물처리기 조달 레이더</title>
+<style>
+  :root {
+    --bg: #12151A;
+    --surface: #1B2028;
+    --surface-hover: #212734;
+    --line: #2A2F3A;
+    --text: #E8EAED;
+    --text-dim: #8B93A1;
+    --amber: #FF9F1C;
+    --amber-dim: #4A3517;
+    --teal: #4FD1C5;
+    --teal-dim: #163C39;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.5;
+  }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* ---- Header ---- */
+  header {
+    margin-bottom: 32px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  h1 {
+    font-size: 30px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 14px;
+    margin: 0;
+  }
+
+  .meta {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 10px;
+  }
+
+  /* ---- Scan line signature ---- */
+  .scanbar {
+    position: relative;
+    height: 2px;
+    background: var(--line);
+    margin: 28px 0 28px;
+    overflow: hidden;
+    border-radius: 2px;
+  }
+  .scanbar::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -30%;
+    width: 30%; height: 100%;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    animation: sweep 2.2s ease-out 1;
+  }
+  @keyframes sweep {
+    from { left: -30%; }
+    to { left: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scanbar::after { animation: none; display: none; }
+  }
+
+  /* ---- Stat strip ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  @media (max-width: 720px) {
+    .stats { grid-template-columns: 1fr; }
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+
+  .stat-source {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--mono);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 3px 0;
+  }
+  .stat-row .num { font-size: 20px; font-weight: 600; }
+  .stat-row.equip .num { color: var(--amber); }
+  .stat-row.other .num { color: var(--teal); }
+  .stat-row:hover { color: var(--text); }
+
+  /* ---- Controls ---- */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  input#search {
+    flex: 1 1 240px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: var(--sans);
+  }
+  input#search:focus {
+    outline: none;
+    border-color: var(--amber);
+  }
+
+  .chip {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .chip.active {
+    color: var(--bg);
+    background: var(--amber);
+    border-color: var(--amber);
+    font-weight: 600;
+  }
+  .chip[data-cat="other"].active {
+    background: var(--teal);
+    border-color: var(--teal);
+  }
+
+  .count-line {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+  }
+
+  /* ---- Cards ---- */
+  #results { display: flex; flex-direction: column; gap: 10px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+  .card:hover { background: var(--surface-hover); }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .card-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .card-title mark {
+    background: transparent;
+    color: var(--amber);
+    font-weight: 700;
+  }
+
+  .badge {
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    letter-spacing: 0.02em;
+  }
+  .badge.equip { background: var(--amber-dim); color: var(--amber); }
+  .badge.other { background: var(--teal-dim); color: var(--teal); }
+
+  .card-sub {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    font-family: var(--mono);
+  }
+
+  .card-detail {
+    display: none;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px 20px;
+  }
+  .card-detail.open { display: grid; }
+  @media (max-width: 640px) {
+    .card-detail { grid-template-columns: 1fr; }
+  }
+
+  .kv {
+    font-size: 12.5px;
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+  }
+  .kv .k { color: var(--text-dim); flex-shrink: 0; }
+  .kv .v { color: var(--text); word-break: break-all; }
+
+  .empty {
+    text-align: center;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 60px 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">FOOD WASTE EQUIPMENT / SALES RADAR</div>
+    <h1>음식물처리기 조달 레이더</h1>
+    <p class="subtitle">발주계획 · 입찰공고 · 계약정보 안에서 "음식물" 키워드를 스캔해 영업 리드를 정리합니다.</p>
+    <div class="meta" id="updated-at">데이터 불러오는 중...</div>
+  </header>
+
+  <div class="scanbar"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="controls">
+    <input id="search" type="text" placeholder="검색 (기관명, 사업명, 품명 등 전체 필드)">
+  </div>
+  <div class="controls" id="chips"></div>
+
+  <div class="count-line" id="count-line"></div>
+  <div id="results"></div>
+
+</div>
+
+<script>
+let DATA = null;
+let state = { source: "전체", category: "equipment", query: "" };
+
+const SOURCES = ["전체", "발주계획", "계약정보", "입찰공고"];
+
+fetch('data.json')
+  .then(r => r.json())
+  .then(json => {
+    DATA = json;
+    document.getElementById('updated-at').textContent =
+      `마지막 업데이트: ${json.updated_at}  ·  검색 키워드: "${json.keyword}"`;
+    renderStats();
+    renderChips();
+    renderResults();
+  })
+  .catch(err => {
+    document.getElementById('updated-at').textContent = '데이터를 불러오지 못했습니다.';
+    document.getElementById('results').innerHTML =
+      `<div class="empty">data.json을 찾을 수 없습니다. 워크플로우가 아직 안 돌았거나 경로를 확인해주세요.</div>`;
+  });
+
+function renderStats() {
+  const box = document.getElementById('stats');
+  box.innerHTML = '';
+  Object.keys(DATA.sources).forEach(label => {
+    const s = DATA.sources[label];
+    const div = document.createElement('div');
+    div.className = 'stat-card';
+    div.innerHTML = `
+      <div class="stat-source">${label}</div>
+      <div class="stat-row equip" data-source="${label}" data-cat="equipment">
+        <span>음식물처리기</span><span class="num">${s.equipment.length}</span>
+      </div>
+      <div class="stat-row other" data-source="${label}" data-cat="other">
+        <span>그 외 음식물</span><span class="num">${s.other.length}</span>
+      </div>
+    `;
+    box.appendChild(div);
+  });
+  box.querySelectorAll('.stat-row').forEach(el => {
+    el.addEventListener('click', () => {
+      state.source = el.dataset.source;
+      state.category = el.dataset.cat;
+      renderChips();
+      renderResults();
+    });
+  });
+}
+
+function renderChips() {
+  const box = document.getElementById('chips');
+  box.innerHTML = '';
+
+  SOURCES.forEach(s => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (state.source === s ? ' active' : '');
+    chip.textContent = s;
+    chip.addEventListener('click', () => { state.source = s; renderChips(); renderResults(); });
+    box.appendChild(chip);
+  });
+
+  const sep = document.createElement('div');
+  sep.style.width = '1px';
+  sep.style.background = 'var(--line)';
+  sep.style.alignSelf = 'stretch';
+  box.appendChild(sep);
+
+  [["equipment", "음식물처리기"], ["other", "그 외 음식물"], ["all", "전체"]].forEach(([key, labelText]) => {
+    const chip = document.createElement('div');
+    chip.dataset.cat = key;
+    chip.className = 'chip' + (state.category === key ? ' active' : '');
+    chip.textContent = labelText;
+    chip.addEventListener('click', () => { state.category = key; renderChips(); renderResults(); });
+    box.appendChild(chip);
+  });
+}
+
+document.getElementById('search').addEventListener('input', (e) => {
+  state.query = e.target.value.trim();
+  renderResults();
+});
+
+function collectRows() {
+  let rows = [];
+  const sourceList = state.source === "전체" ? Object.keys(DATA.sources) : [state.source];
+  sourceList.forEach(label => {
+    const s = DATA.sources[label];
+    if (state.category === "equipment" || state.category === "all") {
+      s.equipment.forEach(r => rows.push({ _source: label, _cat: "equipment", row: r }));
+    }
+    if (state.category === "other" || state.category === "all") {
+      s.other.forEach(r => rows.push({ _source: label, _cat: "other", row: r }));
+    }
+  });
+
+  if (state.query) {
+    const q = state.query.toLowerCase();
+    rows = rows.filter(({ row }) =>
+      Object.values(row).some(v => v && String(v).toLowerCase().includes(q))
+    );
+  }
+  return rows;
+}
+
+function guessTitle(row) {
+  const keyword = DATA.keyword;
+  for (const v of Object.values(row)) {
+    if (v && String(v).includes(keyword)) return String(v);
+  }
+  const firstVal = Object.values(row).find(v => v && String(v).trim());
+  return firstVal ? String(firstVal) : '(제목 없음)';
+}
+
+function highlight(text) {
+  const q = state.query;
+  const kw = DATA.keyword;
+  let out = text;
+  if (kw) out = out.split(kw).join(`<mark>${kw}</mark>`);
+  return out;
+}
+
+function renderResults() {
+  const rows = collectRows();
+  document.getElementById('count-line').textContent = `${rows.length.toLocaleString()}건 표시 중`;
+
+  const box = document.getElementById('results');
+  box.innerHTML = '';
+
+  if (rows.length === 0) {
+    box.innerHTML = `<div class="empty">조건에 맞는 데이터가 없습니다.</div>`;
+    return;
+  }
+
+  rows.slice(0, 500).forEach(({ _source, _cat, row }) => {
+    const title = guessTitle(row);
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-top">
+        <div class="card-title">${highlight(title)}</div>
+        <div class="badge ${_cat === 'equipment' ? 'equip' : 'other'}">
+          ${_cat === 'equipment' ? '음식물처리기' : '그외음식물'}
+        </div>
+      </div>
+      <div class="card-sub">${_source} · ${row._tab || ''}</div>
+      <div class="card-detail"></div>
+    `;
+    const detail = card.querySelector('.card-detail');
+    Object.entries(row).forEach(([k, v]) => {
+      if (k === '_tab' || !v) return;
+      const kv = document.createElement('div');
+      kv.className = 'kv';
+      kv.innerHTML = `<span class="k">${k}</span><span class="v">${String(v)}</span>`;
+      detail.appendChild(kv);
+    });
+    card.addEventListener('click', () => detail.classList.toggle('open'));
+    box.appendChild(card);
+  });
+
+  if (rows.length > 500) {
+    const note = document.createElement('div');
+    note.className = 'empty';
+    note.textContent = `... 외 ${(rows.length - 500).toLocaleString()}건 (검색으로 좁혀보세요)`;
+    box.appendChild(note);
+  }
+}
+</script>
+</body>
+</html>
