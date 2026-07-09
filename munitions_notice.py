@@ -12,51 +12,58 @@ import time
 SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
-def fetch_daily_data(target_date):
-    """특정 날짜(하루)의 입찰공고 데이터를 수집"""
+def fetch_daily_data(target_date, max_retries=3):
     url = 'http://openapi.d2b.go.kr/openapi/service/BidPblancInfoService/getDmstcCmpetBidPblancList'
     all_items = []
     page_no = 1
-    
+
     while True:
         params = {
             'serviceKey': SERVICE_KEY,
-            'anmtDateBegin': target_date, # 공고일자 시작 (어제)
-            'anmtDateEnd': target_date,   # 공고일자 종료 (어제)
+            'anmtDateBegin': target_date,
+            'anmtDateEnd': target_date,
             'numOfRows': '500',
             'pageNo': str(page_no)
         }
-        
-        try:
-            response = requests.get(url, params=params, timeout=60)
-            if response.status_code != 200:
-                print(f"    [오류] HTTP {response.status_code}")
-                break
 
-            root = ET.fromstring(response.content)
-            items = root.findall('.//item')
-            
-            if not items:
-                break
-                
-            for item in items:
-                all_items.append({child.tag: child.text for child in item})
-            
-            # totalCount 확인하여 다음 페이지 여부 결정
-            total_element = root.find('.//totalCount')
-            if total_element is not None:
-                total_count = int(total_element.text)
-                if len(all_items) >= total_count:
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, params=params, timeout=90)
+                if response.status_code != 200:
+                    print(f"    [오류] HTTP {response.status_code}")
                     break
-                page_no += 1
-                time.sleep(0.5)
-            else:
-                break
-                
-        except Exception as e:
-            print(f"    [예외] {target_date} 수집 중 오류: {e}")
+                root = ET.fromstring(response.content)
+                break  # 성공하면 재시도 루프 탈출
+            except (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout) as e:
+                wait = (attempt + 1) * 10
+                print(f"    [타임아웃] {attempt + 1}/{max_retries}회차, {wait}초 후 재시도...")
+                time.sleep(wait)
+                if attempt == max_retries - 1:
+                    print(f"    [실패] {target_date} 최종 타임아웃")
+                    return all_items
+            except Exception as e:
+                print(f"    [예외] {target_date} 수집 중 오류: {e}")
+                return all_items
+        else:
+            continue  # for-else: 재시도 다 실패하면 여기로 안 옴 (break 안 걸렸을 때만)
+
+        items = root.findall('.//item')
+        if not items:
             break
-            
+
+        for item in items:
+            all_items.append({child.tag: child.text for child in item})
+
+        total_element = root.find('.//totalCount')
+        if total_element is not None:
+            total_count = int(total_element.text)
+            if len(all_items) >= total_count:
+                break
+            page_no += 1
+            time.sleep(0.5)
+        else:
+            break
+
     return all_items
 
 def run_process():
