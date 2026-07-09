@@ -3,8 +3,8 @@ name: Update Dashboard Site Data
 on:
   workflow_dispatch:
   schedule:
-    # 매일 오전 8시(UTC) = 한국시간 오전 5시
-    - cron: '0 8 * * *'
+    # 1시간마다 실행 (데이터 최신성을 위해 하루 1번 -> 1시간마다로 단축)
+    - cron: '0 * * * *'
 
 permissions:
   contents: write   # 결과 파일을 저장소에 커밋하기 위해 필요
