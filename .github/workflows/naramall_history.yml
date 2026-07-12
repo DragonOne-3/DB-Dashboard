@@ -38,7 +38,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install gspread oauth2client requests
+          pip install google-api-python-client google-auth pandas requests
 
       - name: Run History Collector
         env:
