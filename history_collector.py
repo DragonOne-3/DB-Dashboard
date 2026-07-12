@@ -29,8 +29,7 @@ keywords = [
     '비디오믹서','절연전선및피복선','레이더','적외선방사기', '보안용카메라', '통신소프트웨어','분석및과학용소프트웨어','소프트웨어유지및지원서비스'
 ]
 
-def fetch_all_pages_data(keyword, start_date, end_date):
-    """키워드별 전체 페이지 데이터 수집"""
+def fetch_all_pages_data(keyword, start_date, end_date, retries=3):
     all_data = []
     current_page = 1
     while True:
@@ -39,33 +38,49 @@ def fetch_all_pages_data(keyword, start_date, end_date):
             'numOfRows': '999',
             'pageNo': str(current_page),
             'ServiceKey': MY_DIRECT_KEY,
-            'Type_A': 'xml',
+            'type': 'xml',              # Type_A -> type 으로 수정 (main.py와 통일)
             'inqryDiv': '1',
             'inqryPrdctDiv': '2',
             'inqryBgnDate': start_date,
             'inqryEndDate': end_date,
             'dtilPrdctClsfcNoNm': keyword
         }
-        try:
-            res = requests.get(url, params=params, timeout=30)
-            if res.status_code == 200 and "<item>" in res.text:
-                root = ET.fromstring(res.content)
-                items = root.findall('.//item')
-                for item in items:
-                    all_data.append([elem.text if elem.text else '' for elem in item])
-                
-                total_count_elem = root.find('.//totalCount')
-                if total_count_elem is None: break
-                total_count = int(total_count_elem.text)
-                
-                if len(all_data) >= total_count or not items: break
-                current_page += 1
-                time.sleep(0.5)
-            else:
+        success = False
+        for attempt in range(retries):
+            try:
+                res = requests.get(url, params=params, timeout=30)
+                if res.status_code == 200 and "<item>" in res.text:
+                    root = ET.fromstring(res.content)
+                    items = root.findall('.//item')
+                    for item in items:
+                        all_data.append([elem.text if elem.text else '' for elem in item])
+
+                    total_count_elem = root.find('.//totalCount')
+                    if total_count_elem is None:
+                        success = True
+                        break
+                    total_count = int(total_count_elem.text)
+                    success = True
+                    if len(all_data) >= total_count or not items:
+                        return all_data
+                    break  # 다음 페이지로
+                else:
+                    success = True  # 데이터 없음 (정상 종료)
+                    break
+            except requests.exceptions.Timeout:
+                wait = (attempt + 1) * 5
+                print(f"  [{keyword}] 타임아웃 ({attempt+1}/{retries}), {wait}초 후 재시도...")
+                time.sleep(wait)
+            except Exception as e:
+                print(f"      ❌ 에러: {e}")
                 break
-        except Exception as e:
-            print(f"      ❌ 에러: {e}")
+
+        if not success:
+            print(f"  [{keyword}] {start_date}~{end_date} 최종 실패 (일부 데이터 유실 가능)")
             break
+
+        current_page += 1
+        time.sleep(0.5)
     return all_data
 
 def get_shared_sheet(client, year, month):
