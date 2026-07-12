@@ -3,13 +3,21 @@ name: item history
 on:
   workflow_dispatch:
     inputs:
+      start_date:
+        description: '백필 시작일 (YYYYMMDD, 예: 20250601)'
+        required: false
+        default: ''
+      end_date:
+        description: '백필 종료일 (YYYYMMDD, 예: 20250630)'
+        required: false
+        default: ''
       start_year:
-        description: '수집 시작 연도'
-        required: true
+        description: '연도 단위 수집 시작 연도 (start_date 미입력시 사용)'
+        required: false
         default: '2021'
       end_year:
-        description: '수집 종료 연도'
-        required: true
+        description: '연도 단위 수집 종료 연도 (start_date 미입력시 사용)'
+        required: false
         default: '2025'
 
 jobs:
@@ -36,7 +44,8 @@ jobs:
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          START_DATE: ${{ github.event.inputs.start_date }}
+          END_DATE: ${{ github.event.inputs.end_date }}
           START_YEAR: ${{ github.event.inputs.start_year }}
           END_YEAR: ${{ github.event.inputs.end_year }}
-        # 파일명을 정확히 확인하세요 (언더바 _ 인지 하이픈 - 인지)
         run: python history_collector.py
