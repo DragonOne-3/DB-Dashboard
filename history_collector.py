@@ -91,34 +91,67 @@ def get_shared_sheet(client, year, month):
         print(f"  └ 📑 새 탭 생성됨: {sheet_name}")
     return ws
 
+def get_month_ranges(start_date_str, end_date_str):
+    """YYYYMMDD ~ YYYYMMDD 사이를 월 단위로 쪼갠 (year, month, s_date, e_date) 리스트 생성"""
+    start = datetime.datetime.strptime(start_date_str, "%Y%m%d").date()
+    end = datetime.datetime.strptime(end_date_str, "%Y%m%d").date()
+    ranges = []
+    cur = datetime.date(start.year, start.month, 1)
+    while cur <= end:
+        yr, month = cur.year, cur.month
+        # 해당 월의 말일 계산
+        if month == 12:
+            month_end = datetime.date(yr, 12, 31)
+        else:
+            month_end = datetime.date(yr, month + 1, 1) - datetime.timedelta(days=1)
+
+        s_date = max(cur, start).strftime("%Y%m%d")
+        e_date = min(month_end, end).strftime("%Y%m%d")
+        ranges.append((yr, month, s_date, e_date))
+
+        # 다음 달 1일로 이동
+        if month == 12:
+            cur = datetime.date(yr + 1, 1, 1)
+        else:
+            cur = datetime.date(yr, month + 1, 1)
+    return ranges
+
+
 def main():
     creds_dict = json.loads(AUTH_JSON_STR)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
 
-    start_year = int(os.environ.get('START_YEAR', 2021))
-    end_year = int(os.environ.get('END_YEAR', 2025))
+    # 특정 기간 백필: START_DATE/END_DATE(YYYYMMDD)가 있으면 우선 사용
+    start_date_env = os.environ.get('START_DATE')
+    end_date_env = os.environ.get('END_DATE')
 
-    for yr in range(start_year, end_year + 1):
-        for month in range(1, 13):
-            s_date = f"{yr}{month:02d}01"
-            if month == 12:
-                e_date = f"{yr}1231"
-            else:
-                e_date = (datetime.date(yr, month + 1, 1) - datetime.timedelta(days=1)).strftime("%Y%m%d")
-            
-            print(f"📅 [{yr}년 {month}월] 수집 시작...")
-            
-            ws = get_shared_sheet(client, yr, month)
-            if ws is None: 
-                continue # 파일을 못 찾으면 다음 달로 건너뜀
+    if start_date_env and end_date_env:
+        periods = get_month_ranges(start_date_env, end_date_env)
+    else:
+        # 기존 연도 단위 백필 (하위호환)
+        start_year = int(os.environ.get('START_YEAR', 2021))
+        end_year = int(os.environ.get('END_YEAR', 2025))
+        periods = []
+        for yr in range(start_year, end_year + 1):
+            for month in range(1, 13):
+                s_date = f"{yr}{month:02d}01"
+                if month == 12:
+                    e_date = f"{yr}1231"
+                else:
+                    e_date = (datetime.date(yr, month + 1, 1) - datetime.timedelta(days=1)).strftime("%Y%m%d")
+                periods.append((yr, month, s_date, e_date))
 
-            for kw in keywords:
-                data = fetch_all_pages_data(kw, s_date, e_date)
-                if data:
-                    ws.append_rows(data)
-                    print(f"   ✅ {kw}: {len(data)}건 저장 완료")
-                time.sleep(0.3)
+    for yr, month, s_date, e_date in periods:
+        print(f"📅 [{yr}년 {month}월 / {s_date}~{e_date}] 수집 시작...")
 
-if __name__ == "__main__":
-    main()
+        ws = get_shared_sheet(client, yr, month)
+        if ws is None:
+            continue
+
+        for kw in keywords:
+            data = fetch_all_pages_data(kw, s_date, e_date)
+            if data:
+                ws.append_rows(data)
+                print(f"   ✅ {kw}: {len(data)}건 저장 완료")
+            time.sleep(0.3)
