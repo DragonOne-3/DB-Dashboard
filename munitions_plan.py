@@ -1,110 +1,81 @@
-import json
+from __future__ import annotations
+
 import os
-import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-import xml.etree.ElementTree as ET
 
-import gspread
-import requests
-from oauth2client.service_account import ServiceAccountCredentials
+from procurement_common import (
+    digits, fetch_paged, first_value, google_client, merge_rows,
+    read_existing, rewrite_single_sheet, stable_fallback_key,
+)
 
-SERVICE_KEY = os.environ["DATA_GO_KR_API_KEY"]
-GOOGLE_AUTH_JSON = os.environ["GOOGLE_AUTH_JSON"]
-PAGE_SIZE = int(os.environ.get("PROCUREMENT_PAGE_SIZE", "500"))
-REQUEST_TIMEOUT = int(os.environ.get("PROCUREMENT_REQUEST_TIMEOUT", "90"))
-SEOUL = ZoneInfo("Asia/Seoul")
-SPREADSHEET_NAME = "군수품조달_국내_발주계획"
 API_URL = "https://apis.data.go.kr/1690000/PrcurePlanInfoService/getDmstcPrcurePlanList"
+SPREADSHEET_NAME = "군수품조달_국내_발주계획"
+RETENTION_DAYS = int(os.environ.get("PROCUREMENT_RETENTION_DAYS", "365"))
+FULL_REFRESH = os.environ.get("PROCUREMENT_FULL_REFRESH", "false").lower() == "true"
+SEOUL = ZoneInfo("Asia/Seoul")
+
+ID_COLUMNS = ["dcsNo", "판단번호", "prcurePlanNo", "발주계획번호", "id"]
+DATE_COLUMNS = ["orderPrearngeMt", "발주예정월", "demandYear", "요구년도"]
+TITLE_COLUMNS = ["reprsntPrdlstNm", "대표품목명", "사업명", "품명"]
+AGENCY_COLUMNS = ["ornt", "발주기관", "orntCode", "발주기관코드"]
+AMOUNT_COLUMNS = ["budgetAmount", "예산금액", "예정가격"]
 
 
-def google_client():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(GOOGLE_AUTH_JSON), scope)
-    return gspread.authorize(creds)
+def row_month(row: dict) -> str:
+    value = digits(first_value(row, DATE_COLUMNS))
+    if len(value) >= 6:
+        return value[:6]
+    return value[:4] + "01" if len(value) >= 4 else ""
 
 
-def request_xml(params, max_retries=4):
-    last_error = None
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = requests.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-            root = ET.fromstring(response.content)
-            code = root.findtext(".//resultCode")
-            if code and code not in {"00", "0"}:
-                raise RuntimeError(f"API {code}: {root.findtext('.//resultMsg') or '오류'}")
-            return root
-        except Exception as exc:
-            last_error = exc
-            if attempt < max_retries:
-                wait = min(30, attempt * 5)
-                print(f"  재시도 {attempt}/{max_retries}: {exc} ({wait}초 후)")
-                time.sleep(wait)
-    raise RuntimeError(f"API 호출 최종 실패: {last_error}")
+def row_key(row: dict) -> str:
+    identifier = first_value(row, ID_COLUMNS)
+    if identifier:
+        return f"id:{identifier}"
+    return stable_fallback_key([
+        first_value(row, TITLE_COLUMNS), first_value(row, AGENCY_COLUMNS),
+        row_month(row), digits(first_value(row, AMOUNT_COLUMNS)),
+    ])
 
 
-def fetch_month(target_month):
-    items, page = [], 1
-    while True:
-        root = request_xml({
-            "serviceKey": SERVICE_KEY,
-            "orderPrearngeMtBegin": target_month,
-            "orderPrearngeMtEnd": target_month,
-            "numOfRows": str(PAGE_SIZE),
-            "pageNo": str(page),
-        })
-        page_items = root.findall(".//item")
-        if not page_items:
-            break
-        items.extend({child.tag: child.text or "" for child in item} for item in page_items)
-        total = int(root.findtext(".//totalCount") or len(items))
-        if len(items) >= total:
-            break
-        page += 1
-        time.sleep(0.4)
-    return items
+def month_shift(year: int, month: int, delta: int) -> str:
+    index = year * 12 + month - 1 + delta
+    return f"{index // 12:04d}{index % 12 + 1:02d}"
 
 
-def headers_for(items):
-    headers, seen = [], set()
-    for item in items:
-        for key in item:
-            if key not in seen:
-                seen.add(key)
-                headers.append(key)
-    return headers
+def target_months(now, full: bool) -> list[str]:
+    count = 13 if full else 2
+    return [month_shift(now.year, now.month, -offset) for offset in range(count - 1, -1, -1)]
 
 
-def overwrite_tab(spreadsheet, title, items):
-    headers = headers_for(items)
-    rows = [[item.get(h, "") for h in headers] for item in items]
-    if not headers:
-        headers, rows = ["_조회결과"], [["0건"]]
-    try:
-        sheet = spreadsheet.worksheet(title)
-        sheet.clear()
-    except gspread.exceptions.WorksheetNotFound:
-        sheet = spreadsheet.add_worksheet(title=title, rows=max(1000, len(rows) + 1), cols=max(10, len(headers) + 2))
-    if sheet.row_count < len(rows) + 1 or sheet.col_count < len(headers):
-        sheet.resize(rows=max(sheet.row_count, len(rows) + 1), cols=max(sheet.col_count, len(headers)))
-    sheet.update(range_name="A1", values=[headers] + rows, value_input_option="RAW")
+def fetch_month(month: str) -> list[dict]:
+    return fetch_paged(API_URL, {"orderPrearngeMtBegin": month, "orderPrearngeMtEnd": month})
 
 
-def month_targets(now):
-    current = now.strftime("%Y%m")
-    previous = (now.replace(day=1) - timedelta(days=1)).strftime("%Y%m")
-    return [previous, current]
+def main() -> None:
+    today = datetime.now(SEOUL).date()
+    client = google_client()
+    sheet = client.open(SPREADSHEET_NAME).get_worksheet(0)
+    existing = read_existing(sheet)
+    full = FULL_REFRESH or not existing
 
+    fresh = []
+    print(f"모드: {'최근 1년 전체 재수집' if full else '현재월·직전월 증분 갱신'}")
+    for month in target_months(today, full):
+        batch = fetch_month(month)
+        fresh.extend(batch)
+        print(f"=== 발주계획 {month}: {len(batch):,}건 ===")
 
-def main():
-    now = datetime.now(SEOUL)
-    spreadsheet = google_client().open(SPREADSHEET_NAME)
-    for target in month_targets(now):
-        print(f"=== 발주계획 {target} 수집 ===")
-        items = fetch_month(target)
-        overwrite_tab(spreadsheet, target, items)
-        print(f"완료: {len(items):,}건")
+    cutoff = (today - timedelta(days=RETENTION_DAYS)).strftime("%Y%m")
+    final_rows = merge_rows(
+        [] if full else existing,
+        fresh,
+        row_key,
+        lambda row: not row_month(row) or row_month(row) >= cutoff,
+    )
+    rewrite_single_sheet(sheet, final_rows, row_month)
+    print(f"완료: API {len(fresh):,}건 / 중복 제거 후 {len(final_rows):,}건")
 
 
 if __name__ == "__main__":

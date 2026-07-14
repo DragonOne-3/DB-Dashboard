@@ -10,7 +10,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 KEYWORD = os.environ.get('DASHBOARD_KEYWORD', '음식물')
-OUTPUT_PATH = os.environ.get('DASHBOARD_OUTPUT_PATH', 'docs/data.json')
+OUTPUT_DIR = os.environ.get('DASHBOARD_OUTPUT_DIR', 'docs/data')
+LEGACY_OUTPUT_PATH = os.environ.get('DASHBOARD_OUTPUT_PATH', 'docs/data.json')
 SEOUL = ZoneInfo('Asia/Seoul')
 
 SOURCE_SPREADSHEETS = {
@@ -539,10 +540,29 @@ def main():
         'avg_bid_rate': round(sum(bid_rates) / len(bid_rates), 2) if bid_rates else None,
     }
 
-    os.makedirs(os.path.dirname(OUTPUT_PATH) or '.', exist_ok=True)
-    with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-    print(f'\n✅ {OUTPUT_PATH} 생성 완료.')
+    # 화면별로 필요한 데이터만 분리해 초기 로딩 용량을 줄인다.
+    summary_payload = {key: value for key, value in result.items() if key != 'sources'}
+    leads_payload = {
+        'updated_at': result['updated_at'],
+        'keyword': result['keyword'],
+        'sources': result['sources'],
+        'kpi': result['kpi'],
+    }
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    output_files = {
+        os.path.join(OUTPUT_DIR, 'summary.json'): summary_payload,
+        os.path.join(OUTPUT_DIR, 'leads.json'): leads_payload,
+    }
+    for path, payload in output_files.items():
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False, separators=(',', ':'))
+        print(f'✅ {path} 생성 완료 ({os.path.getsize(path):,} bytes)')
+
+    # 기존 외부 링크와 호환되도록 data.json도 유지한다.
+    os.makedirs(os.path.dirname(LEGACY_OUTPUT_PATH) or '.', exist_ok=True)
+    with open(LEGACY_OUTPUT_PATH, 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, separators=(',', ':'))
+    print(f'✅ {LEGACY_OUTPUT_PATH} 호환 파일 생성 완료 ({os.path.getsize(LEGACY_OUTPUT_PATH):,} bytes)')
 
 
 if __name__ == '__main__':
