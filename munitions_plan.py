@@ -1,118 +1,111 @@
-import os
 import json
-import requests
-import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
-import xml.etree.ElementTree as ET
+import os
 import time
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+import xml.etree.ElementTree as ET
 
-# 환경 변수 로드
-SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
-GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
+import gspread
+import requests
+from oauth2client.service_account import ServiceAccountCredentials
+
+SERVICE_KEY = os.environ["DATA_GO_KR_API_KEY"]
+GOOGLE_AUTH_JSON = os.environ["GOOGLE_AUTH_JSON"]
+PAGE_SIZE = int(os.environ.get("PROCUREMENT_PAGE_SIZE", "500"))
+REQUEST_TIMEOUT = int(os.environ.get("PROCUREMENT_REQUEST_TIMEOUT", "90"))
+SEOUL = ZoneInfo("Asia/Seoul")
+SPREADSHEET_NAME = "군수품조달_국내_발주계획"
+API_URL = "https://apis.data.go.kr/1690000/PrcurePlanInfoService/getDmstcPrcurePlanList"
 
 
-def fetch_monthly_plan(target_month):
-    """특정 월(YYYYMM)의 모든 발주계획 데이터를 수집"""
-    url = 'https://apis.data.go.kr/1690000/PrcurePlanInfoService/getDmstcPrcurePlanList'
-    all_items = []
-    page_no = 1
+def google_client():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(json.loads(GOOGLE_AUTH_JSON), scope)
+    return gspread.authorize(creds)
 
-    while True:
-        params = {
-            'serviceKey': SERVICE_KEY,
-            'orderPrearngeMtBegin': target_month,
-            'orderPrearngeMtEnd': target_month,
-            'numOfRows': '500',
-            'pageNo': str(page_no)
-        }
 
+def request_xml(params, max_retries=4):
+    last_error = None
+    for attempt in range(1, max_retries + 1):
         try:
-            response = requests.get(url, params=params, timeout=60)
-            if response.status_code != 200:
-                print(f"  [오류] HTTP {response.status_code} 응답")
-                break
+            response = requests.get(API_URL, params=params, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
             root = ET.fromstring(response.content)
-            items = root.findall('.//item')
+            code = root.findtext(".//resultCode")
+            if code and code not in {"00", "0"}:
+                raise RuntimeError(f"API {code}: {root.findtext('.//resultMsg') or '오류'}")
+            return root
+        except Exception as exc:
+            last_error = exc
+            if attempt < max_retries:
+                wait = min(30, attempt * 5)
+                print(f"  재시도 {attempt}/{max_retries}: {exc} ({wait}초 후)")
+                time.sleep(wait)
+    raise RuntimeError(f"API 호출 최종 실패: {last_error}")
 
-            if not items:
-                break
 
-            for item in items:
-                all_items.append({child.tag: child.text for child in item})
-
-            total_element = root.find('.//totalCount')
-            if total_element is not None:
-                total_count = int(total_element.text)
-                if len(all_items) >= total_count:
-                    break
-                page_no += 1
-                time.sleep(0.5)
-            else:
-                break
-        except Exception as e:
-            print(f"  [오류] {target_month} 수집 중 에러: {e}")
+def fetch_month(target_month):
+    items, page = [], 1
+    while True:
+        root = request_xml({
+            "serviceKey": SERVICE_KEY,
+            "orderPrearngeMtBegin": target_month,
+            "orderPrearngeMtEnd": target_month,
+            "numOfRows": str(PAGE_SIZE),
+            "pageNo": str(page),
+        })
+        page_items = root.findall(".//item")
+        if not page_items:
             break
+        items.extend({child.tag: child.text or "" for child in item} for item in page_items)
+        total = int(root.findtext(".//totalCount") or len(items))
+        if len(items) >= total:
+            break
+        page += 1
+        time.sleep(0.4)
+    return items
 
-    return all_items
+
+def headers_for(items):
+    headers, seen = [], set()
+    for item in items:
+        for key in item:
+            if key not in seen:
+                seen.add(key)
+                headers.append(key)
+    return headers
 
 
-def get_or_create_monthly_sheet(spreadsheet, target_month, header):
-    """
-    이번 달 이름의 워크시트를 가져오거나, 없으면 새로 생성.
-    이미 있으면 내용을 전부 지우고(clear) 헤더만 다시 씀.
-    """
-    sheet_name = target_month  # 예: '202607'
-
+def overwrite_tab(spreadsheet, title, items):
+    headers = headers_for(items)
+    rows = [[item.get(h, "") for h in headers] for item in items]
+    if not headers:
+        headers, rows = ["_조회결과"], [["0건"]]
     try:
-        sheet = spreadsheet.worksheet(sheet_name)
-        # 기존 탭이 있으면 통째로 비움 (헤더 포함 전체 삭제 후 재작성)
+        sheet = spreadsheet.worksheet(title)
         sheet.clear()
     except gspread.exceptions.WorksheetNotFound:
-        # 없으면 새로 생성
-        sheet = spreadsheet.add_worksheet(
-            title=sheet_name, rows="1000", cols=str(len(header) + 5)
-        )
-
-    # 헤더 다시 씀
-    sheet.append_row(header, value_input_option='RAW')
-    return sheet
+        sheet = spreadsheet.add_worksheet(title=title, rows=max(1000, len(rows) + 1), cols=max(10, len(headers) + 2))
+    if sheet.row_count < len(rows) + 1 or sheet.col_count < len(headers):
+        sheet.resize(rows=max(sheet.row_count, len(rows) + 1), cols=max(sheet.col_count, len(headers)))
+    sheet.update(range_name="A1", values=[headers] + rows, value_input_option="RAW")
 
 
-def run_process():
-    # 1. 구글 인증 및 시트 열기
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = json.loads(GOOGLE_AUTH_JSON)
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    spreadsheet = client.open("군수품조달_국내_발주계획")
+def month_targets(now):
+    current = now.strftime("%Y%m")
+    previous = (now.replace(day=1) - timedelta(days=1)).strftime("%Y%m")
+    return [previous, current]
 
-    # 2. 이번 달 날짜 설정 (YYYYMM)
-    # 발주계획은 수시로 업데이트되므로, 매일 실행 시 이번 달 전체를 다시 확인하여
-    # "덮어쓰기" 방식으로 항상 최신 상태를 유지합니다. (중복 누적 방지)
-    current_month = datetime.now().strftime('%Y%m')
 
-    print(f"====================================")
-    print(f">>> {current_month} 발주계획 업데이트 시작")
-    print(f"====================================")
-
-    # 3. 데이터 수집
-    items = fetch_monthly_plan(current_month)
-
-    # 4. 데이터 저장 (해당 월 탭을 지우고 최신 데이터로 통째로 재작성)
-    if items:
-        df = pd.DataFrame(items)
-        header = df.columns.tolist()
-        values = df.fillna('').values.tolist()
-
-        sheet = get_or_create_monthly_sheet(spreadsheet, current_month, header)
-        sheet.append_rows(values, value_input_option='RAW')
-
-        print(f"✅ {current_month} 탭 갱신 완료. 총 {len(items)}건 (최신 상태로 덮어쓰기).")
-    else:
-        print(f"ℹ️ {current_month}에 해당하는 발주계획 데이터가 없습니다.")
+def main():
+    now = datetime.now(SEOUL)
+    spreadsheet = google_client().open(SPREADSHEET_NAME)
+    for target in month_targets(now):
+        print(f"=== 발주계획 {target} 수집 ===")
+        items = fetch_month(target)
+        overwrite_tab(spreadsheet, target, items)
+        print(f"완료: {len(items):,}건")
 
 
 if __name__ == "__main__":
-    run_process()
+    main()
