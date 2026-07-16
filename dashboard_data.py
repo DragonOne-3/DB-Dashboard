@@ -20,7 +20,7 @@ EXCLUDE_TABS = {'백필_진행상황'}
 
 TITLE_COLUMNS = ['대표품목명','공고명','입찰공고명','입찰명','사업명','품명','계약명','수요품명','구매품명','용역명','건명','bidNm','itemNm','cntrctNm','prcurePlanNm']
 AGENCY_COLUMNS = ['발주기관','수요기관','수요부대','기관명','ornt','dminsttNm','orderInsttNm']
-COMPANY_COLUMNS = ['업체명','계약업체명','낙찰업체명','상호','cntrctEntrpsNm','corpNm','companyNm']
+COMPANY_COLUMNS = ['업체명','계약업체명','계약상대자','계약상대자명','계약업체','낙찰업체명','낙찰자명','업체상호','상호','업체','cntrctEntrpsNm','cntrctCorpNm','cntrctCompanyNm','sucsfbidEntrpsNm','corpNm','companyNm']
 STATUS_COLUMNS = ['진행상태','계약상태','공고구분','pblancSe','bidNtceSttusNm']
 BID_RATE_COLUMNS = ['낙찰률','낙찰율','sucsfbidRate','bidRate']
 DATE_COLUMNS = ['공고일자','계약일자','계약일','발주예정월','등록일자','작성일자','pblancDate','cntrctDate','orderPrearngeMt','rgstDt']
@@ -34,7 +34,7 @@ LOOKUP_COLUMNS = {
 AMOUNT_COLUMNS = {
     '발주계획':['예산금액','추정금액','사업금액','예정금액','budgetAmount','orderPlanAmount','asignBdgtAmt'],
     '입찰공고':['기초예비가격','기초예가','추정가격','배정예산','예정가격','예산금액','bsicExpt','bsisPrdprc','presmptPrce','asignBdgtAmt'],
-    '계약정보':['계약금액','총계약금액','낙찰금액','계약단가','예산금액','cntrctAmt','totCntrctAmt','sucsfbidAmt'],
+    '계약정보':['계약금액','계약금액(원)','총계약금액','총계약금액(원)','계약총액','계약액','최종계약금액','낙찰금액','낙찰금액(원)','계약단가','예산금액','cntrctAmt','cntrctAmount','totCntrctAmt','totalCntrctAmt','sucsfbidAmt','sucsfbidAmount'],
 }
 
 RENTAL = ['임차','렌탈','리스','대여']
@@ -67,11 +67,37 @@ def title_of(row):
     return '(제목 없음)'
 
 def amount_of(row, source):
+    # 출처별 우선 필드를 먼저 사용합니다.
     for c in AMOUNT_COLUMNS[source]:
-        if row.get(c) not in (None, ''): return number(row[c])
+        if row.get(c) not in (None, ''):
+            n = number(row[c])
+            if n > 0:
+                return n
+
+    # 실제 스프레드시트의 컬럼명이 조금 달라도 계약금액을 찾도록 보완합니다.
+    ranked = []
     for k, v in row.items():
-        if v and any(x in k for x in ('금액','가격','예가','예산')): return number(v)
-    return 0
+        if v in (None, ''):
+            continue
+        key = str(k).replace(' ', '').lower()
+        score = 0
+        if source == '계약정보':
+            if '계약금액' in key or 'cntrctamt' in key or 'contractamount' in key:
+                score = 100
+            elif '낙찰금액' in key or 'sucsfbidamt' in key:
+                score = 90
+            elif '계약총액' in key or '총계약' in key:
+                score = 85
+            elif '금액' in key and '단가' not in key:
+                score = 50
+        else:
+            if any(x in key for x in ('금액','가격','예가','예산','amount','price','expt')):
+                score = 50
+        if score:
+            n = number(v)
+            if n > 0:
+                ranked.append((score, n))
+    return max(ranked, default=(0, 0))[1]
 
 def date_key(row):
     for c in DATE_COLUMNS:
@@ -119,6 +145,9 @@ def bid_rate(row):
     except: return None
 
 def lookup_keyword(row, source):
+    # D2B 통합검색은 계약번호보다 계약명이 검색 성공률이 높습니다.
+    if source == '계약정보':
+        return title_of(row)
     return first(row, LOOKUP_COLUMNS[source]) or title_of(row)
 
 def dedupe(row, source):
@@ -201,7 +230,8 @@ def compact(r):
         'source':r['_source'],'title':r['_title'],'agency':r['_agency'],'company':r['_company'],
         'amount':r['_amount'],'status':r['_status'],'date':r['_date'],'deadline':r['_deadline'],
         'category':r['_category'],'score':r['_score'],'grade':r['_grade'],
-        'lookup_keyword':r['_lookup_keyword'],'open':bool(r['_open']),'bid_rate':r['_bid_rate']
+        'lookup_keyword':r['_lookup_keyword'],'open':bool(r['_open']),'bid_rate':r['_bid_rate'],
+        'amount_missing': bool(r['_source']=='계약정보' and not r['_amount'])
     }
 
 def main():
