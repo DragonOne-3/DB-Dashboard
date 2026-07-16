@@ -201,7 +201,7 @@ def compact(r):
         'source':r['_source'],'title':r['_title'],'agency':r['_agency'],'company':r['_company'],
         'amount':r['_amount'],'status':r['_status'],'date':r['_date'],'deadline':r['_deadline'],
         'category':r['_category'],'score':r['_score'],'grade':r['_grade'],
-        'lookup_keyword':r['_lookup_keyword']
+        'lookup_keyword':r['_lookup_keyword'],'open':bool(r['_open']),'bid_rate':r['_bid_rate']
     }
 
 def main():
@@ -233,6 +233,7 @@ def main():
         'updated_at':now.strftime('%Y-%m-%d %H:%M:%S'),'keyword':KEYWORD,'pipeline':pipeline,
         'monthly':month_data,'agencies':agencies,'competitors':{'계약정보':comp},
         'priority_leads':[compact(r) for r in open_rows[:30]],
+        'dashboard_records':[compact(r) for r in sorted(all_rows,key=lambda r:(r['_date'],r['_amount']),reverse=True)],
         'contract_records':contract_records,'contract_agencies':contract_agency_summary,
         'kpi':{
             'total_count':len(all_rows),'open_count':len(open_rows),'open_amount':sum(r['_amount'] for r in open_rows),
