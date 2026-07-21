@@ -59,6 +59,10 @@ def number(v):
     try: return int(float(str(v).replace(',','').strip()))
     except: return 0
 
+def norm_title(t):
+    """공백/대소문자 차이로 같은 사업이 다르게 인식되지 않도록 정규화."""
+    return re.sub(r'\s+', '', str(t or '')).upper()
+
 def title_of(row):
     v = first(row, TITLE_COLUMNS)
     if v: return v
@@ -167,6 +171,21 @@ def score_row(r):
     elif r['_source'] == '발주계획': score += 10
     return min(score, 100)
 
+def consolidate(rows):
+    """같은 사업(정규화한 사업명+발주기관)이 여러 탭/회차에 걸쳐 반복 등록된 경우
+    가장 최신 1건만 남기고, 몇 번 반복 등록됐는지는 _repeat_count로 남깁니다."""
+    groups = defaultdict(list)
+    for r in rows:
+        key = (norm_title(r['_title']), r['_agency'] or '')
+        groups[key].append(r)
+    out = []
+    for grp in groups.values():
+        grp.sort(key=lambda r: (r['_date_sort_key'] or '', r['_amount']), reverse=True)
+        best = grp[0]
+        best['_repeat_count'] = len(grp)
+        out.append(best)
+    return out
+
 def scan(client, name, source):
     ss = client.open(name); rows=[]; seen=set(); headers=[]
     for ws in ss.worksheets():
@@ -194,7 +213,7 @@ def scan(client, name, source):
             row['_score'] = score_row(row)
             row['_grade'] = 'A' if row['_score'] >= 70 else ('B' if row['_score'] >= 45 else ('C' if row['_score'] > 0 else '-'))
             rows.append(row)
-    return headers, rows
+    return headers, consolidate(rows)
 
 def monthly(rows):
     d=defaultdict(lambda:{'count':0,'amount':0,'open_count':0,'open_amount':0})
@@ -231,7 +250,8 @@ def compact(r):
         'amount':r['_amount'],'status':r['_status'],'date':r['_date'],'deadline':r['_deadline'],
         'category':r['_category'],'score':r['_score'],'grade':r['_grade'],
         'lookup_keyword':r['_lookup_keyword'],'open':bool(r['_open']),'bid_rate':r['_bid_rate'],
-        'amount_missing': bool(r['_source']=='계약정보' and not r['_amount'])
+        'amount_missing': bool(r['_source']=='계약정보' and not r['_amount']),
+        'repeat_count': r.get('_repeat_count', 1),
     }
 
 def main():
