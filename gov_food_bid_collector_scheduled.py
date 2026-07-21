@@ -159,9 +159,12 @@ def fetch_data_chunk(category: str, url: str, start_date: str, end_date: str) ->
                 "type": "json",
                 "inqryBgnDt": start_date + "0000",
                 "inqryEndDt": end_date + "2359",
+                # 나라장터 검색조건 API에 공고명 키워드를 직접 전달합니다.
+                # 서버에서 먼저 '음식물' 공고만 추려 오므로 전체 공고를 전부 순회하지 않습니다.
+                "bidNtceNm": KEYWORD,
             }
 
-            log(f"   - [{category}] {start_date} ~ {end_date} | {page_no}p 요청")
+            log(f"   - [{category}] {start_date} ~ {end_date} | 키워드 '{KEYWORD}' | {page_no}p 요청")
             try:
                 response = session.get(url, params=params, timeout=60)
                 response.raise_for_status()
@@ -184,7 +187,7 @@ def fetch_data_chunk(category: str, url: str, start_date: str, end_date: str) ->
 
                 all_items.extend(items)
                 total_count = int(body.get("totalCount", 0) or 0)
-                log(f"   - [{category}] 전체 진행: {len(all_items):,} / {total_count:,}")
+                log(f"   - [{category}] 키워드 검색 진행: {len(all_items):,} / {total_count:,}")
 
                 if len(all_items) >= total_count or len(items) < 999:
                     break
@@ -385,10 +388,11 @@ def process_category(category: str, url: str, date_chunks) -> None:
             log(f"ℹ️ [{category}] API 반환 데이터 없음")
             continue
 
+        # API 서버 검색 결과를 다시 한 번 로컬에서 검증해 오탐을 제거합니다.
         keyword_df = filter_keyword_rows(full_df, KEYWORD)
         log(
-            f"🔎 [{category}] 전체 {len(full_df):,}건 중 "
-            f"'{KEYWORD}' 공고 {len(keyword_df):,}건"
+            f"🔎 [{category}] API 키워드 검색 {len(full_df):,}건 중 "
+            f"최종 일치 {len(keyword_df):,}건"
         )
 
         if not keyword_df.empty:
