@@ -1,0 +1,65 @@
+name: Collect government food bids
+
+on:
+  schedule:
+    # GitHub Actions cron은 UTC 기준입니다.
+    # 21:30 UTC = 다음 날 06:30 KST
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "수집 방식"
+        required: true
+        default: "daily"
+        type: choice
+        options:
+          - daily
+          - backfill-year
+      start_date:
+        description: "직접 지정 시작일(YYYYMMDD, 선택)"
+        required: false
+        type: string
+      end_date:
+        description: "직접 지정 종료일(YYYYMMDD, 선택)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas requests gspread google-auth google-api-python-client
+
+      - name: Collect notices
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          GOV_BID_KEYWORD: 음식물
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            python gov_food_bid_collector_scheduled.py --daily
+          elif [[ -n "${{ inputs.start_date }}" && -n "${{ inputs.end_date }}" ]]; then
+            python gov_food_bid_collector_scheduled.py "${{ inputs.start_date }}" "${{ inputs.end_date }}"
+          elif [[ "${{ inputs.mode }}" == "backfill-year" ]]; then
+            python gov_food_bid_collector_scheduled.py --backfill-year
+          else
+            python gov_food_bid_collector_scheduled.py --daily
+          fi
