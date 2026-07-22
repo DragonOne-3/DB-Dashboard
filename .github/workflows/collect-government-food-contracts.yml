@@ -1,0 +1,70 @@
+name: Collect government food contracts
+
+on:
+  schedule:
+    # 매일 오전 6:30 KST = 전날 21:30 UTC
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "수집 방식"
+        required: true
+        default: "daily"
+        type: choice
+        options:
+          - daily
+          - backfill-year
+          - range
+      start_date:
+        description: "range 모드 시작일 (YYYYMMDD)"
+        required: false
+        type: string
+      end_date:
+        description: "range 모드 종료일 (YYYYMMDD)"
+        required: false
+        type: string
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas gspread google-auth
+
+      - name: Collect contracts
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          GOV_CONTRACT_SPREADSHEET_ID: ${{ secrets.GOV_CONTRACT_SPREADSHEET_ID }}
+          GOV_CONTRACT_SPREADSHEET_NAME: 나라장터_음식물_계약내역
+          GOV_CONTRACT_WORKSHEET_NAME: 계약내역
+          GOV_CONTRACT_KEYWORD: 음식물
+        shell: bash
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+
+          if [ "${{ github.event_name }}" = "schedule" ] || [ -z "$MODE" ] || [ "$MODE" = "daily" ]; then
+            python gov_food_contract_collector.py --daily
+          elif [ "$MODE" = "backfill-year" ]; then
+            python gov_food_contract_collector.py --backfill-year
+          elif [ "$MODE" = "range" ]; then
+            python gov_food_contract_collector.py --range \
+              --start "${{ github.event.inputs.start_date }}" \
+              --end "${{ github.event.inputs.end_date }}"
+          else
+            echo "Unknown mode: $MODE"
+            exit 1
+          fi
