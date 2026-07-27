@@ -27,8 +27,9 @@ jobs:
           GOOGLE_AUTH_JSON:   ${{ secrets.GOOGLE_AUTH_JSON }}
         run: python main.py
       # HTML 리포트를 /tmp 파일에서 읽어 메일 본문으로 전달
+      # 토/일에는 main.py가 send_mail=false를 출력하므로 메일 발송을 skip
       - name: Send Email Notification
-        if: always()
+        if: always() && steps.run_script.outputs.send_mail == 'true'
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
@@ -45,7 +46,5 @@ jobs:
             jbgg@innodep.com, 
             choi29sep@innodep.com, 
             sg.lee@innodep.com
-
-
           from:      조달데이터봇 <jetti4856@gmail.com>
           html_body:  file://${{ steps.run_script.outputs.report_path }}
