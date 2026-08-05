@@ -255,7 +255,7 @@ def fetch_notice_data(category, url, d_str):
  
  
 def fetch_single_contract(kw_s, d_str):
-    api_url_servc = "http://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch"
+    api_url_servc = "https://apis.data.go.kr/1230000/ao/CntrctInfoService/getCntrctInfoListServcPPSSrch"
     results = []
     p = {
         "serviceKey": MY_DIRECT_KEY,
