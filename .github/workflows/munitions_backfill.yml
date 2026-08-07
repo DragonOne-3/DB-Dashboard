@@ -1,21 +1,37 @@
-name: Backfill 3 Years Data
+name: Backfill (수동 실행 - 기간/서비스 선택)
 
-# 수동 실행 버튼(workflow_dispatch) + 자동 반복 실행(schedule) 둘 다 지원
+# 자동 스케줄 없음 - Actions 탭에서 수동으로만 실행
 on:
   workflow_dispatch:
-  schedule:
-    # 5분마다 실행 (백필이 끝날 때까지 자동으로 계속 이어서 진행됨)
-    # 다 끝난 뒤에는 이 workflow 파일을 지우거나 schedule 부분만 삭제하세요.
-    - cron: '*/5 * * * *'
+    inputs:
+      start_month:
+        description: '시작 월 (YYYYMM, 예: 202301)'
+        required: true
+        type: string
+      end_month:
+        description: '종료 월 (YYYYMM, 예: 202412)'
+        required: true
+        type: string
+      run_plan:
+        description: '발주계획 수집'
+        required: true
+        type: boolean
+        default: true
+      run_contract:
+        description: '계약정보 수집'
+        required: true
+        type: boolean
+        default: true
+      run_bid:
+        description: '입찰공고 수집'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   backfill:
     runs-on: ubuntu-latest
-    timeout-minutes: 20   # 한 번에 36개월씩 처리할 수 있도록 여유 있게 설정
-    concurrency:
-      group: backfill-3years   # 이전 실행이 끝나기 전에는 새 실행을 큐에서 대기시킴 (동시 실행 방지)
-      cancel-in-progress: false
-
+    timeout-minutes: 60
     steps:
       - name: 저장소 체크아웃
         uses: actions/checkout@v4
@@ -28,10 +44,20 @@ jobs:
       - name: 필요한 패키지 설치
         run: pip install -r requirements.txt
 
+      - name: 선택한 서비스 목록 조합
+        id: services
+        run: |
+          SERVICES=""
+          if [ "${{ inputs.run_plan }}" = "true" ]; then SERVICES="${SERVICES}plan,"; fi
+          if [ "${{ inputs.run_contract }}" = "true" ]; then SERVICES="${SERVICES}contract,"; fi
+          if [ "${{ inputs.run_bid }}" = "true" ]; then SERVICES="${SERVICES}bid,"; fi
+          echo "list=${SERVICES%,}" >> "$GITHUB_OUTPUT"
+
       - name: 백필 스크립트 실행
         env:
           DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
           GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
-          # 한 번 실행할 때 서비스당 최대 36개월(=3년 전체)까지 한 번에 처리
-          BACKFILL_STEPS_PER_RUN: '36'
+          BACKFILL_START_MONTH: ${{ inputs.start_month }}
+          BACKFILL_END_MONTH: ${{ inputs.end_month }}
+          BACKFILL_SERVICES: ${{ steps.services.outputs.list }}
         run: python munitions_backfill_3y.py
