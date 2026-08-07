@@ -16,16 +16,17 @@ from oauth2client.service_account import ServiceAccountCredentials
 SERVICE_KEY = os.environ['DATA_GO_KR_API_KEY']
 GOOGLE_AUTH_JSON = os.environ['GOOGLE_AUTH_JSON']
 
-# ========================================================
-# 설정
-# ========================================================
-BACKFILL_TOTAL_MONTHS = 36          # 3년치 (36개월)
-BACKFILL_SHEET_NAME = "백필"         # 데이터가 쌓이는 탭 이름
-PROGRESS_SHEET_NAME = "백필_진행상황"  # 진행상황을 저장하는 탭 이름
+# 워크플로우 입력값으로 넘어오는 기간/대상 서비스
+START_MONTH = os.environ['BACKFILL_START_MONTH']   # YYYYMM, 예: "202301"
+END_MONTH = os.environ['BACKFILL_END_MONTH']        # YYYYMM, 예: "202412"
 
-# 실행 1회당 서비스별로 처리할 "월" 개수. 기본값 1 = 한 번 실행할 때 딱 1개월만 처리.
-# 쿼터 여유가 있어서 더 빠르게 돌리고 싶으면 환경변수로 늘릴 수 있음 (예: BACKFILL_STEPS_PER_RUN=3)
-STEPS_PER_RUN = int(os.environ.get('BACKFILL_STEPS_PER_RUN', '1'))
+# "plan,contract,bid" 형태의 콤마 구분 문자열 (workflow에서 boolean 입력값 조합해서 만들어 넘겨줌)
+SELECTED_SERVICE_KEYS = {
+    key.strip() for key in os.environ.get('BACKFILL_SERVICES', 'plan,contract,bid').split(',')
+    if key.strip()
+}
+
+BACKFILL_SHEET_NAME = "백필"  # 데이터가 쌓이는 탭 이름
 
 # 서비스 3개 정의 (URL, 파라미터명, 날짜 형식만 다르고 로직은 공통 함수로 처리)
 SERVICES = [
@@ -60,21 +61,25 @@ SERVICES = [
 
 
 # ========================================================
-# 유틸: 월 계산
+# 유틸: 월 범위 계산
 # ========================================================
-def shift_month(year, month, offset):
-    """year, month(1~12)에서 offset개월만큼 이동한 (year, month) 반환"""
-    idx = (year * 12 + (month - 1)) + offset
-    return idx // 12, idx % 12 + 1
+def build_month_list(start_yyyymm, end_yyyymm):
+    """start_yyyymm ~ end_yyyymm 사이 월(YYYYMM) 리스트를 과거 -> 현재 순서로 생성"""
+    start_year, start_month = int(start_yyyymm[:4]), int(start_yyyymm[4:6])
+    end_year, end_month = int(end_yyyymm[:4]), int(end_yyyymm[4:6])
 
+    start_idx = start_year * 12 + (start_month - 1)
+    end_idx = end_year * 12 + (end_month - 1)
 
-def build_month_list():
-    """3년(36개월) 치 대상 월(YYYYMM) 리스트를 과거 -> 현재 순서로 생성"""
-    now = datetime.now()
+    if start_idx > end_idx:
+        raise ValueError(f"시작월({start_yyyymm})이 종료월({end_yyyymm})보다 뒤에 있습니다.")
+
     months = []
-    for offset in range(-(BACKFILL_TOTAL_MONTHS - 1), 1):
-        y, m = shift_month(now.year, now.month, offset)
+    idx = start_idx
+    while idx <= end_idx:
+        y, m = idx // 12, idx % 12 + 1
         months.append(f"{y}{m:02d}")
+        idx += 1
     return months
 
 
@@ -158,24 +163,6 @@ def get_or_create_worksheet(spreadsheet, title, rows="2000", cols="30"):
         return spreadsheet.add_worksheet(title=title, rows=rows, cols=cols)
 
 
-def read_progress(spreadsheet):
-    """진행상황 탭에서 마지막으로 완료된 월(YYYYMM) 또는 'DONE'을 읽어옴. 없으면 None."""
-    sheet = get_or_create_worksheet(spreadsheet, PROGRESS_SHEET_NAME, rows="10", cols="5")
-    values = sheet.get_all_values()
-    if len(values) < 1 or len(values[0]) < 2:
-        return sheet, None
-    last = values[0][1].strip()
-    return sheet, (last if last else None)
-
-
-def write_progress(progress_sheet, last_completed):
-    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    progress_sheet.update('A1:B2', [
-        ['last_completed_month', last_completed],
-        ['updated_at', now_str],
-    ])
-
-
 def append_backfill_rows(spreadsheet, items):
     if not items:
         return
@@ -196,52 +183,20 @@ def append_backfill_rows(spreadsheet, items):
 # ========================================================
 # 메인 로직
 # ========================================================
-def process_one_service_step(client, service, month_list):
-    """
-    이 서비스에서 아직 처리 안 된 월을 STEPS_PER_RUN개만큼 처리.
-    이번 실행에서 뭔가 처리했으면 True, 이미 다 끝나 있었으면 False 반환.
-    """
+def process_service(client, service, month_list):
     spreadsheet = client.open(service['spreadsheet'])
-    progress_sheet, last_completed = read_progress(spreadsheet)
 
-    if last_completed == "DONE":
-        return False  # 이 서비스는 이미 완료됨
+    print(f"\n>>> [{service['label']}] {month_list[0]} ~ {month_list[-1]} 수집 시작 (총 {len(month_list)}개월)")
 
-    if last_completed is None:
-        start_idx = 0
-    else:
-        try:
-            start_idx = month_list.index(last_completed) + 1
-        except ValueError:
-            # 진행상황 값이 이상하면 안전하게 처음부터 다시 시작
-            start_idx = 0
-
-    if start_idx >= len(month_list):
-        write_progress(progress_sheet, "DONE")
-        return False
-
-    end_idx = min(start_idx + STEPS_PER_RUN, len(month_list))
-    target_months = month_list[start_idx:end_idx]
-
-    print(f"\n>>> [{service['label']}] {target_months[0]} ~ {target_months[-1]} 수집 시작 "
-          f"({start_idx + 1}~{end_idx} / {len(month_list)}개월)")
-
-    for yyyymm in target_months:
+    for yyyymm in month_list:
         begin, end = month_to_range(yyyymm, service['date_mode'])
         print(f"  - {yyyymm} ({begin}~{end}) 수집 중...")
         items = fetch_range_data(service, begin, end)
         append_backfill_rows(spreadsheet, items)
         print(f"    -> {len(items)}건 수집 및 저장 완료")
-
-        # 월 단위로 진행상황을 즉시 저장 -> 중간에 끊겨도 다음 실행에서 이어서 진행
-        write_progress(progress_sheet, yyyymm)
         time.sleep(1)
 
-    if end_idx >= len(month_list):
-        write_progress(progress_sheet, "DONE")
-        print(f">>> [{service['label']}] 3년치 백필 완료!")
-
-    return True
+    print(f">>> [{service['label']}] 수집 완료!")
 
 
 def run_backfill():
@@ -250,21 +205,20 @@ def run_backfill():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
 
-    month_list = build_month_list()
-    print(f"백필 대상 기간: {month_list[0]} ~ {month_list[-1]} (총 {len(month_list)}개월)")
-    print(f"이번 실행에서는 서비스당 최대 {STEPS_PER_RUN}개월씩만 처리합니다.")
+    month_list = build_month_list(START_MONTH, END_MONTH)
+    target_services = [s for s in SERVICES if s['key'] in SELECTED_SERVICE_KEYS]
 
-    for service in SERVICES:
-        did_work = process_one_service_step(client, service, month_list)
-        if did_work:
-            # 여러 서비스를 한 번에 몰아서 호출하면 쿼터 초과 위험이 있으므로,
-            # 이번 실행에서는 아직 안 끝난 첫 번째 서비스만 처리하고 종료.
-            print("\n이번 실행은 여기까지 처리했습니다. 스크립트를 다시 실행하면 이어서 진행됩니다.")
-            return
-        else:
-            print(f"[{service['label']}] 이미 백필 완료 상태 -> 다음 서비스 확인")
+    if not target_services:
+        print("선택된 서비스가 없습니다. (plan/contract/bid 중 최소 1개는 선택해야 합니다)")
+        return
 
-    print("\n🎉 3개 서비스 모두 3년치 백필이 완료되었습니다!")
+    print(f"수집 대상 기간: {month_list[0]} ~ {month_list[-1]} (총 {len(month_list)}개월)")
+    print(f"수집 대상 서비스: {', '.join(s['label'] for s in target_services)}")
+
+    for service in target_services:
+        process_service(client, service, month_list)
+
+    print("\n🎉 선택한 기간·서비스 수집이 모두 완료되었습니다!")
 
 
 if __name__ == "__main__":
