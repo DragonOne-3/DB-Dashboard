@@ -154,7 +154,7 @@ def write_sheet(svc, df):
     log(f"✅ 시트 저장 완료: 총 {len(df)}행")
 
 # ================= API 수집 =================
-def fetch_data_chunk(s_dt, e_dt):
+def fetch_data_chunk(s_dt, e_dt, max_retries=3):
     all_data = []
     page = 1
     with requests.Session() as session:
@@ -169,8 +169,23 @@ def fetch_data_chunk(s_dt, e_dt):
                 'inqryEndDt': e_dt + '2359',
             }
             log(f"  API 요청 - {s_dt}~{e_dt} | {page}p")
+
+            res = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    res = session.get(API_URL, params=params, timeout=45)
+                    break
+                except (requests.exceptions.ConnectTimeout,
+                        requests.exceptions.ConnectionError) as e:
+                    log(f"  ⚠️ 연결 실패 (재시도 {attempt}/{max_retries}): {e}")
+                    if attempt < max_retries:
+                        time.sleep(5 * attempt)  # 5s, 10s, 15s...
+
+            if res is None:
+                log(f"  ❌ {max_retries}회 재시도 후 이 페이지 포기")
+                break
+
             try:
-                res = session.get(API_URL, params=params, timeout=45)
                 if res.status_code != 200:
                     log(f"  ⚠️ HTTP {res.status_code}")
                     break
@@ -292,7 +307,7 @@ def collect_initial():
         log(f"\n🔄 [{i}/{len(chunks)}] {s} ~ {e}")
         raw = fetch_data_chunk(s, e)
         merge_and_save(svc, filter_by_keywords(raw))
-        time.sleep(1)
+        time.sleep(3)
 
     log("🏁 [초기 수집] 완료")
 
