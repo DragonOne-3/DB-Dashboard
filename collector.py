@@ -311,14 +311,38 @@ def collect_initial():
 
     log("🏁 [초기 수집] 완료")
 
+# ================= 날짜 지 =================
+def collect_custom(start_str, end_str):
+    log("=" * 50)
+    log(f"🚀 [사용자 지정 수집] {start_str} ~ {end_str} 시작")
+    chunks = make_date_chunks(start_str, end_str)
+    log(f"📅 {len(chunks)}개 구간")
+
+    svc = get_sheets_service()
+    ensure_sheet_exists(svc)
+
+    for i, (s, e) in enumerate(chunks, 1):
+        log(f"\n🔄 [{i}/{len(chunks)}] {s} ~ {e}")
+        raw = fetch_data_chunk(s, e)
+        merge_and_save(svc, filter_by_keywords(raw))
+        time.sleep(1)
+
+    log("🏁 [사용자 지정 수집] 완료")
+
 # ================= 진입점 =================
 if __name__ == "__main__":
     """
-    python collector.py init    → 최근 6개월치 초기 수집 (최초 1회)
-    python collector.py daily   → 어제~오늘치 수집 (Actions 일일 자동 실행)
+    python collector.py init                       → 최근 6개월치 초기 수집
+    python collector.py daily                      → 어제~오늘치 수집
+    python collector.py custom YYYYMMDD YYYYMMDD    → 지정 구간 수집
     """
     mode = sys.argv[1] if len(sys.argv) > 1 else 'daily'
     if mode == 'init':
         collect_initial()
+    elif mode == 'custom':
+        if len(sys.argv) < 4:
+            log("❌ custom 모드는 시작일/종료일이 필요합니다: python collector.py custom 20250101 20250630")
+            sys.exit(1)
+        collect_custom(sys.argv[2], sys.argv[3])
     else:
         collect_daily()
