@@ -325,7 +325,7 @@ def get_processed_df():
     cn = df["★가공_계약명"].astype(str)
     df = df[
         cn.str.contains("유지", na=False) &
-        cn.str.contains("통합관제|통합|CCTV", na=False) &
+        cn.str.contains("통합관제|통합|CCTV|안전센터|스마트관제시스템|스마트관제|스마트시티센터|스마트시티|스마트도시", na=False) &
         ~cn.str.contains("상수도|청사|악취|미세먼지|상담실|보건소", na=False)
     ].copy()
 
@@ -410,7 +410,7 @@ def get_baljoo_df() -> pd.DataFrame:
     df         = df[mask & ~agency_col.str.contains("교육청", na=False)].copy()
 
     sn           = df["사업명"].astype(str)
-    include_mask = sn.str.contains("유지", na=False) & sn.str.contains("통합관제|통합|CCTV", na=False)
+    include_mask = sn.str.contains("유지", na=False) & sn.str.contains("통합관제|통합|CCTV|안전센터|스마트관제시스템|스마트관제|스마트시티센터|스마트시티|스마트도시", na=False)
     exclude_mask = sn.str.contains("청사|악취|미세먼지|상담실|보건소|홈페이지|발급기|공간정보|계측기|부동산", na=False)
     df           = df[include_mask & ~exclude_mask].copy()
 
@@ -456,7 +456,7 @@ def get_gong_df() -> pd.DataFrame:
     df         = df[mask & ~agency_col.str.contains("교육청", na=False)].copy()
 
     sn           = df["입찰공고명"].astype(str)
-    include_mask = sn.str.contains("유지", na=False) & sn.str.contains("통합관제|통합|CCTV", na=False)
+    include_mask = sn.str.contains("유지", na=False) & sn.str.contains("통합관제|통합|CCTV|안전센터|스마트관제시스템|스마트관제|스마트시티센터|스마트시티|스마트도시", na=False)
     exclude_mask = sn.str.contains("상수도|청사|악취|미세먼지|상담실|보건소", na=False)
     df           = df[include_mask & ~exclude_mask].copy()
 
