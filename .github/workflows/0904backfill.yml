@@ -1,0 +1,30 @@
+name: 나라장터 계약내역 백필 수집
+on:
+  workflow_dispatch:
+    inputs:
+      date_from:
+        description: '백필 시작일 (YYYYMMDD)'
+        required: true
+        default: '20250301'
+      date_to:
+        description: '백필 종료일 (YYYYMMDD)'
+        required: true
+        default: '20260904'
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+      - name: Python 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 패키지 설치
+        run: pip install -r requirements.txt
+      - name: 백필 수집 실행
+        env:
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+        run: python daily_update.py backfill ${{ github.event.inputs.date_from }} ${{ github.event.inputs.date_to }}
