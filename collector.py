@@ -20,7 +20,7 @@ SHEET_NAME = '나라장터_유지보수_공고'
 
 API_URL = 'https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServcPPSSrch'
 
-KEYWORDS = ['통합관제', 'CCTV', '통합플랫폼', '스마트도시', '스마트시티', '주차', '출입']
+KEYWORDS = ['통합관제', 'CCTV', '통합플랫폼', '스마트도시', '스마트시티', '주차', '출입','안전센터','스마트관제시스템','스마트관제','스마트시티센터']
 REQUIRED_WORD = '유지'
 
 # API 응답 영문 컬럼 → 한글 헤더 매핑
