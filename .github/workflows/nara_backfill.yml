@@ -1,0 +1,43 @@
+name: 조달청 납품내역 백필 수집
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: '시작일 (YYYYMMDD). 비우면 20260101'
+        required: false
+        default: ''
+      end_date:
+        description: '종료일 (YYYYMMDD). 비우면 어제 날짜'
+        required: false
+        default: ''
+
+# 같은 연도별 CSV를 쓰는 매일 수집 워크플로와 동시에 돌지 않도록
+# 매일 수집 워크플로에도 동일한 concurrency 블록을 넣어주세요.
+concurrency:
+  group: nara-shopping-csv
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 패키지 설치
+        run: pip install requests pandas google-api-python-client google-auth
+
+      - name: 백필 실행
+        env:
+          PYTHONUNBUFFERED: '1'
+          DATA_GO_KR_API_KEY: ${{ secrets.DATA_GO_KR_API_KEY }}
+          GOOGLE_AUTH_JSON: ${{ secrets.GOOGLE_AUTH_JSON }}
+          START_DATE: ${{ github.event.inputs.start_date }}
+          END_DATE: ${{ github.event.inputs.end_date }}
+        run: python nara_backfill.py
