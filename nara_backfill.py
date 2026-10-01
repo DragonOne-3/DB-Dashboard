@@ -1,114 +1,202 @@
-import os, json, datetime, time, requests
+"""
+조달청 종합쇼핑몰 납품내역 백필 수집 (연도별 CSV -> 구글드라이브)
+- main.py(매일 수집 코드)와 같은 폴더에 두고 실행합니다.
+- 키워드/헤더/폴더ID/드라이브 인증은 main.py에서 그대로 가져옵니다.
+- 기간을 월 단위로 처리하고, 월이 끝날 때마다 {연도}.csv 에 병합 + 중복제거 후 업로드합니다.
+"""
+import os
+import io
+import time
+import calendar
+import datetime
+import requests
 import xml.etree.ElementTree as ET
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 1. 설정 정보
-MY_DIRECT_KEY = "8ccf45461f6834ad0643601f5884d4a79460e441026b3f5041b7da0c67183374"
-AUTH_JSON_STR = os.environ.get('GOOGLE_AUTH_JSON')
+import pandas as pd
+from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
-# [요청사항] 국문 헤더 44개 (생략 없이 전체 적용)
-HEADER_KOR = ['조달구분명',	'계약구분명',	'계약납품구분명',	'계약납품요구일자',	'계약납품요구번호',	'변경차수',	'최종변경차수여부',	'수요기관명',	'수요기관구분명',	'수요기관지역명',	'수요기관코드',	'물품분류번호',	'품명',	'세부물품분류번호',	'세부품명',	'물품식별번호',	'물품규격명',	'단가',	'수량',	'단위',	'금액',	'업체명',	'업체기업구분명',	'계약명',	'우수제품여부',	'공사용자재직접구매대상여부',	'다수공급자계약여부',	'다수공급자계약2단계진행여부',	'단가계약번호',	'단가계약변경차수',	'최초계약(납품요구)일자',	'계약체결방법명',	'증감수량',	'증감금액',	'납품장소명',	'납품기한일자',	'업체사업자등록번호',	'인도조건명',	'물품순번']
+from main import (
+    keywords,
+    HEADER_KOR,
+    SHOPPING_FOLDER_ID,
+    MY_DIRECT_KEY,
+    get_drive_service_for_script,
+)
 
-# 품목 리스트 (전체 리스트 사용)
-keywords = [
-    "1종금속제가요전선관",     "3차원프린터",    "450/750V 유연성단심비닐절연전선",    "450/750V 일반용유연성단심비닐절연전선",    "450/750V유연성단심비닐절연전선",    "AV스위쳐",    "CD녹음및플레이어",    "DVD드라이브",   "IP전화기",    "LAP외피광케이블",    "LED가로등기구",    "LED경관조명기구",
-    "LED다운라이트",    "LED램프",    "LED보안등기구",    "LED실내조명등",    "LED터널용등기구",    "LED투광등기구",    "PA용스피커",    "SSD저장장치",    "UTP케이블",    "가로등자동점멸기",    "가로등주부속자재",    "견인용갈고리",    "결선보드유닛",    "경관조명기구",    "경광등",    "계장제어장치",
-    "고주파동축케이블",    "광분배함",    "광송수신기",    "광송수신모듈",    "광수신기",    "광점퍼코드",    "교육용소프트웨어",    "교통관제시스템",    "교통신호등",    "교통신호제어기",    "구내단자함",    "구내방송장치",    "그래픽용어댑터",   "그레이팅덮개",    "금속기둥",    "금속상자",    "기상전광판",
-    "기억유닛",    "난연전력케이블",    "난연접지용비닐절연전선",    "냉각팬",    "네트워크스위치",    "네트워크시스템장비용랙",    "네트워크회의용소프트웨어",    "논슬립",   "누전차단기",    "다목적승용차",    "대기오염측정기",    "데스크톱컴퓨터",    "데이터베이스관리소프트웨어",
-    "도난방지기",    "도로안전표지판지주",    "도로표지병",    "도서관리시스템",    "동작분석기",    "등기구보강대",    "디바이더",    "디스크어레이",    "디지털비디오레코더",    "라디오튜너",    "랙캐비닛용패널",    "랜접속카드",    "레이더",    "레이드저장장치",    "레이드컨트롤러",    "레이스웨이",
-    "리모트앰프",    "릴레이유닛",    "마그네틱카드판독기",    "마을무선방송장치",   "마이크로폰",    "마이크스탠드",    "매트릭스로직유닛",    "멀티미디어학습장치",    "멀티스크린컴퓨터",    "멀티탭",    "메가폰",    "무선랜액세스포인트",   "무선마이크장치",    "무선인식리더기",
-    "무선통신장치",    "무인교통감시장치",    "무정전전원장치",    "밀폐고정형납축전지",    "바닥형보행신호등",    "바코드시스템",    "방송수신기",    "방화벽장치",    "배선장치",    "버스및차량정보안내장치",    "베어본컴퓨터",    "벨",    "보건용마스크",    "보관용선반",    "보안소프트웨어",
-    "보안용카메라",    "보행매트",    "보행신호음성안내보조장치",    "보행자안전차단기",    "보행자작동신호기",    "볼라드",    "분배기",    "분석및과학용소프트웨어",    "분전반",    "분전함",    "브래킷",    "비대면방역감지장비",    "비디오네트워킹장비",    "비디오믹서",    "비디오프로젝터",
-    "비상경보기",    "비상유닛",    "산업관리소프트웨어",    "서지흡수기",    "세탁물건조기",    "소방용방화복세탁기",    "소프트웨어유지및지원서비스",    "소형기기용충전기",    "솔내시스템",    "송신기",    "수업자동녹화시스템",    "수위조절기",    "스위치박스",    "스위칭모드전원공급장치",    "스테이플",
-    "스테인리스가로등주",    "스피커",    "스피커선택유닛",    "스피커스탠드",    "시스템관리소프트웨어",    "식별용태그",    "안내전광판",    "안내판",    "액정모니터",    "엔코더",    "열선감지기",    "영사대",    "영사용스크린",    "영상감시장치",    "영상분배기",    "영상정보디스플레이장치",    "영상회의시스템",
-    "오디오모니터",    "오디오믹서",    "오디오앰프",    "온습도트랜스미터",    "우산빗물제거기",    "운영체제",    "원격단말장치(RTU)",    "원격자동검침시스템",    "유틸리티소프트웨어",    "융복합UTP케이블",    "융복합그래픽용어댑터",    "융복합네트워크스위치",    "융복합네트워크시스템장비용랙",    "융복합대기오염측정기",
-    "융복합데스크톱컴퓨터",    "융복합무선데이터통신장비",    "융복합배선장치",    "융복합베어본컴퓨터",    "융복합서지흡수기",    "융복합안내전광판",    "융복합액정모니터",    "융복합영상감시장치",    "융복합카메라브래킷",    "융복합화염감지기",    "응용과학용소프트웨어",    "의료용살충제",    "이퀄라이저",
-    "인증관리시스템",    "인터랙티브화이트보드",    "인터콤장비",    "인터폰",    "자기식테이프",    "자동변속기",    "자동승강조명장치",    "장치제어보드",    "적외선방사기",    "적외선카메라",    "적외선탐지기",    "전동기제어반",     "전력공급장치",    "전원공급장치",    "전자카드",    "절연전선및피복선",    
-    "접지봉",    "접지판",    "정보통신공사",    "정보화교육서비스",    "제어케이블",    "조명용제어장치",    "조명타워",    "종합폴",    "주차경보등",    "주차관제주변기기",    "주차권판독기",    "주차안내판",    "주차요금계산기",    "주차주제어장치",
-    "주파수분할다중화장치",    "지도소프트웨어",    "차량감지기",    "차량검지기",    "차량번호판독기",    "차량인식기",    "차량지지용아우트리거",    "차량차단기",    "철근콘크리트공사",    "철제가로등주",    "출입통제시스템",    "카드락",    "카드인쇄기",    "카메라받침대",
-    "카메라브래킷",    "카메라컨트롤러",    "카메라하우징",    "카메라회전대",    "캠코더",    "컨버터",    "컴바이너",    "컴퓨터망전환장치",    "컴퓨터및주변기기설치",    "컴퓨터서버",    "컴퓨터정맥인식장치",    "컴퓨터지문인식장치",    "케이블타이",    "콘솔익스텐더",    "콘텐츠관리소프트웨어",    "콤바인",
-    "탐조등",    "태양광가로등",    "태양광발전장치",    "태양전지조절기",    "테이프백업장치",    "텔레비전",    "텔레비전거치대",    "토공사",    "통신소프트웨어",    "통신용변조기",    "통신케이블어셈블리",    "통합배선반",     "특수목적컴퓨터",    "패키지소프트웨어개발및도입서비스",    "패키지용품",
-    "폐쇄형배전반",    "포장공사",    "폴리에틸렌전선관",    "풀박스",    "플러그용잭",    "피뢰탄기반",    "하드디스크드라이브",    "호온스피커"  
-]
+KST = datetime.timezone(datetime.timedelta(hours=9))
+API_URL = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
 
-def fetch_all_pages_data(keyword, start_date, end_date):
-    """[핵심] 999건이 넘어도 페이지를 넘기며 끝까지 가져오는 함수"""
-    all_data = []
-    current_page = 1
-    
+# main.py의 중복제거 기준과 반드시 동일하게 유지 (main.py가 매일 전체 파일에 이 기준을 다시 적용함)
+DEDUPE_KEY = ["계약납품요구일자", "수요기관명", "품명", "금액"]
+
+CHUNK_DAYS = int(os.environ.get("CHUNK_DAYS") or 10)   # API 1회 조회 기간(일)
+MAX_WORKERS = int(os.environ.get("MAX_WORKERS") or 3)  # main.py와 동일하게 3
+
+
+# ---------------------------------------------------------------------------
+# 수집
+# ---------------------------------------------------------------------------
+def fetch_keyword_all_pages(kw, bgn, end, retries=3):
+    """키워드 1개를 999건 단위로 끝까지 페이징하며 수집"""
+    n_cols = len(HEADER_KOR)
+    rows, page = [], 1
     while True:
-        url = "https://apis.data.go.kr/1230000/at/ShoppingMallPrdctInfoService/getSpcifyPrdlstPrcureInfoList"
         params = {
-            'numOfRows': '999',
-            'pageNo': str(current_page),
-            'ServiceKey': MY_DIRECT_KEY,
-            'Type_A': 'xml',
-            'inqryDiv': '1',
-            'inqryPrdctDiv': '2',
-            'inqryBgnDate': start_date,
-            'inqryEndDate': end_date,
-            'dtilPrdctClsfcNoNm': keyword
+            "numOfRows": "999",
+            "pageNo": str(page),
+            "ServiceKey": MY_DIRECT_KEY,
+            "type": "xml",
+            "inqryDiv": "1",
+            "inqryPrdctDiv": "2",
+            "inqryBgnDate": bgn,
+            "inqryEndDate": end,
+            "dtilPrdctClsfcNoNm": kw,
         }
-        
-        try:
-            res = requests.get(url, params=params, timeout=30)
-            if res.status_code == 200 and "<item>" in res.text:
-                root = ET.fromstring(res.content)
-                items = root.findall('.//item')
-                
-                # 이번 페이지 데이터 저장
-                for item in items:
-                    all_data.append([elem.text if elem.text else '' for elem in item])
-                
-                # 전체 개수 파악
-                total_count = int(root.find('.//totalCount').text)
-                print(f"   -> [{keyword}] {current_page}페이지 수집 중... ({len(all_data)}/{total_count})")
-                
-                # 수집된 데이터가 전체 개수보다 크거나 같으면 종료
-                if len(all_data) >= total_count or not items:
+        root = None
+        for attempt in range(retries):
+            try:
+                res = requests.get(API_URL, params=params, timeout=60)
+                if res.status_code == 200:
+                    root = ET.fromstring(res.content)
                     break
-                    
-                current_page += 1
-                time.sleep(0.5) # 서버 보호
-            else:
-                print(f"   -> {keyword}: 응답 오류 또는 데이터 없음")
-                break
-        except Exception as e:
-            print(f"   -> 에러 발생: {e}")
+            except Exception as e:
+                print(f"[{kw}] 오류({attempt + 1}/{retries}): {e}")
+            time.sleep((attempt + 1) * 5)
+
+        if root is None:
+            print(f"[{kw}] {bgn}~{end} p{page} 최종 실패")
             break
-            
-    return all_data
 
+        items = root.findall(".//item")
+        if not items:
+            break
+        for it in items:
+            r = [el.text if el.text else "" for el in it]
+            rows.append((r + [""] * n_cols)[:n_cols])
+
+        total = int(root.findtext(".//totalCount") or 0)
+        if len(rows) >= total:
+            break
+        page += 1
+        time.sleep(0.3)
+    return rows
+
+
+def collect_period(bgn, end):
+    rows = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as ex:
+        futures = {ex.submit(fetch_keyword_all_pages, kw, bgn, end): kw for kw in keywords}
+        for fut in as_completed(futures):
+            rows.extend(fut.result())
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# 구글드라이브 연도별 CSV 병합
+# ---------------------------------------------------------------------------
+def find_file(drive, name):
+    res = drive.files().list(
+        q=f"name='{name}' and '{SHOPPING_FOLDER_ID}' in parents and trashed=false",
+        fields="files(id)",
+    ).execute()
+    items = res.get("files", [])
+    return items[0]["id"] if items else None
+
+
+def download_csv(drive, file_id):
+    buf = io.BytesIO()
+    downloader = MediaIoBaseDownload(buf, drive.files().get_media(fileId=file_id))
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    buf.seek(0)
+    # 전부 문자열로 읽어야 새로 받은 데이터(문자열)와 중복 비교가 정확함
+    return pd.read_csv(buf, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+
+
+def upload_csv(drive, file_id, name, df):
+    data = df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
+    media = MediaIoBaseUpload(io.BytesIO(data), mimetype="text/csv", resumable=True)
+    if file_id:
+        drive.files().update(fileId=file_id, media_body=media).execute()
+    else:
+        drive.files().create(
+            body={"name": name, "parents": [SHOPPING_FOLDER_ID]},
+            media_body=media,
+        ).execute()
+
+
+def merge_into_year_file(drive, year, new_rows):
+    name = f"{year}.csv"
+    new_df = pd.DataFrame(new_rows, columns=HEADER_KOR).astype(str)
+    file_id = find_file(drive, name)
+
+    if file_id:
+        old_df = download_csv(drive, file_id)
+        merged = pd.concat([old_df, new_df], ignore_index=True)
+        old_cnt = len(old_df)
+    else:
+        merged = new_df
+        old_cnt = 0
+
+    before = len(merged)
+    merged = merged.drop_duplicates(subset=DEDUPE_KEY, keep="last")
+    upload_csv(drive, file_id, name, merged)
+    print(f"✅ {name}: 기존 {old_cnt:,} + 신규 {len(new_df):,} -> 중복 {before - len(merged):,}건 제거 -> 최종 {len(merged):,}건")
+
+
+# ---------------------------------------------------------------------------
+# 기간 계산
+# ---------------------------------------------------------------------------
+def get_date_range():
+    yesterday = datetime.datetime.now(KST).date() - datetime.timedelta(days=1)
+    s = (os.environ.get("START_DATE") or "").strip() or "20260101"
+    e = (os.environ.get("END_DATE") or "").strip() or yesterday.strftime("%Y%m%d")
+    return (datetime.datetime.strptime(s, "%Y%m%d").date(),
+            datetime.datetime.strptime(e, "%Y%m%d").date())
+
+
+def month_ranges(s, e):
+    cur = s
+    while cur <= e:
+        last = calendar.monthrange(cur.year, cur.month)[1]
+        m_end = min(e, cur.replace(day=last))
+        yield cur, m_end
+        cur = m_end + datetime.timedelta(days=1)
+
+
+def split_days(s, e, n):
+    cur = s
+    while cur <= e:
+        c_end = min(e, cur + datetime.timedelta(days=n - 1))
+        yield cur, c_end
+        cur = c_end + datetime.timedelta(days=1)
+
+
+# ---------------------------------------------------------------------------
 def main():
-    creds_dict = json.loads(AUTH_JSON_STR)
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
-    client = gspread.authorize(creds)
+    if not MY_DIRECT_KEY:
+        raise SystemExit("DATA_GO_KR_API_KEY 가 없습니다.")
 
-    # --- [수집 설정] ---
-    # 6개월 단위로 수집 날짜를 바꿔가며 실행하세요
-    year = "2026"
-    quarter = "1분기"
-    s_date = "20260101"
-    e_date = "20260111"
-    sheet_name = "2026_1월"
-    # ------------------
+    s, e = get_date_range()
+    print(f"📅 수집 기간: {s} ~ {e}")
+    drive, _ = get_drive_service_for_script()
 
-    # 파일 및 시트 로드 (수동 생성 권장)
-    sh = client.open(f"조달청_납품내역_{year}_{quarter}")
-    try:
-        ws = sh.worksheet(sheet_name)
-    except:
-        ws = sh.add_worksheet(title=sheet_name, rows="10000", cols="44")
-        ws.append_row(HEADER_KOR)
+    for m_start, m_end in month_ranges(s, e):
+        print(f"\n===== {m_start:%Y-%m} ({m_start} ~ {m_end}) =====")
+        month_rows = []
+        for c_start, c_end in split_days(m_start, m_end, CHUNK_DAYS):
+            bgn, end = c_start.strftime("%Y%m%d"), c_end.strftime("%Y%m%d")
+            rows = collect_period(bgn, end)
+            print(f"   {bgn}~{end}: {len(rows):,}건")
+            month_rows.extend(rows)
 
-    for kw in keywords:
-        print(f"🚀 {kw} 기간 수집 시작 ({s_date} ~ {e_date})")
-        data = fetch_all_pages_data(kw, s_date, e_date)
-        if data:
-            ws.append_rows(data)
-            print(f"✅ {kw} 총 {len(data)}건 저장 완료!")
-        time.sleep(1)
+        if month_rows:
+            merge_into_year_file(drive, m_start.year, month_rows)
+        else:
+            print("   수집된 데이터 없음 - 업로드 생략")
+
 
 if __name__ == "__main__":
     main()
